@@ -412,6 +412,8 @@ export function createTraffic(ctx, materials, count = 5) {
     add(k.e, materials.emissive.material, false);
     const dir = i % 2 === 0 ? 1 : -1;
     const c = { root, dir, x: rng.range(TUNNEL.w, TUNNEL.e), z: dir > 0 ? laneW : laneE, v: rng.range(8, 11), vMax: rng.range(9, 12), wait: 0 };
+    // the body is solid for walkers (cars also brake for anyone in their lane)
+    c.solid = ctx.colliders?.addDynamicBox(2.05, 0.85, 0, COAST.y + 1.7, COAST.y - 0.5);
     root.position.set(c.x, COAST.y + 0.03, c.z);
     root.rotation.y = dir > 0 ? 0 : Math.PI;
     group.add(root);
@@ -423,6 +425,7 @@ export function createTraffic(ctx, materials, count = 5) {
       if (c.wait > 0) {
         c.wait -= dt;
         c.root.visible = false;
+        if (c.solid) c.solid.off = true;
         if (c.wait <= 0) {
           c.x = c.dir > 0 ? TUNNEL.w - 8 : TUNNEL.e + 8;
           c.v = c.vMax;
@@ -444,6 +447,11 @@ export function createTraffic(ctx, materials, count = 5) {
       c.x += c.dir * c.v * dt;
       c.root.visible = true;
       c.root.position.x = c.x;
+      if (c.solid) {
+        c.solid.cx = c.x;
+        c.solid.cz = c.z;
+        c.solid.off = false;
+      }
       if (c.dir > 0 ? c.x > TUNNEL.e + 10 : c.x < TUNNEL.w - 10) c.wait = rng.range(4, 18);
     }
   };

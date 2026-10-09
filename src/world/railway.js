@@ -266,7 +266,7 @@ export function buildCrossings(ctx, scene) {
     const half = crossingHalf(x);
     // the crossing deck is raised to rail height: walk on it, not on the terrain beneath
     ctx.colliders.addSurface(x - half, 51.2, x + half, 60.3, (xx, zz) => roadSurfaceY(xx, zz) - 0.03, 0);
-    const state = { x, active: false, armT: 0, timer: 0, lampsA: [], lampsB: [], arms: [], blink: 0 };
+    const state = { x, half, active: false, armT: 0, timer: 0, lampsA: [], lampsB: [], arms: [], blink: 0 };
     // two sides: north (z=51) gate on the west side of the road; south (z=61) on the east
     for (const side of [-1, 1]) {
       const z = side < 0 ? 51.2 : 60.4;
@@ -325,7 +325,11 @@ export function buildCrossings(ctx, scene) {
       pivot.rotation.y = side < 0 ? Math.PI : 0;
       pivot.add(arm);
       scene.add(pivot);
-      state.arms.push({ arm, pivot });
+      // a lowered arm closes the road to anyone outside the crossing
+      const solid = ctx.colliders.addDynamicBox(armLen / 2, 0.1, 0, y + 1.25, y + 0.55);
+      solid.cx = pivot.position.x + (side < 0 ? -1 : 1) * (armLen / 2);
+      solid.cz = pivot.position.z;
+      state.arms.push({ arm, pivot, solid });
       ctx.colliders.addCircle(px, z, 0.2);
       ctx.colliders.addBox(gx + side * -0.45, z - side * 0.45, 0.25, 0.22, 0);
     }
@@ -461,7 +465,7 @@ export function buildTrain(ctx, scene) {
     cars.push(car);
   }
   scene.add(group);
-  const train = new TrainController(cars, group);
+  const train = new TrainController(cars, group, ctx.colliders);
   ctx.train = train;
   return train;
 }
@@ -471,9 +475,11 @@ const GAP = 0.6;
 const STOP_CENTER = (STATION.platX0 + STATION.platX1) / 2;
 
 export class TrainController {
-  constructor(cars, group) {
+  constructor(cars, group, colliders = null) {
     this.cars = cars;
     this.group = group;
+    // the car bodies are solid: nobody walks into a train standing at the platform
+    this.solids = colliders ? cars.map(() => colliders.addDynamicBox(CAR_L / 2, 1.42, 0, RAIL_TOP + 4.0, RAIL_TOP - 0.6)) : [];
     this.length = CAR_L * 2 + GAP;
     this.state = 'wait';
     this.dir = -1; // -1 westbound, +1 eastbound
@@ -575,6 +581,12 @@ export class TrainController {
       car.position.set(c, RAIL_TOP - 0.02, RAIL_Z);
       car.rotation.y = this.dir > 0 ? 0 : Math.PI;
       car.visible = c > X_W - 25 && c < X_E + 25;
+      const solid = this.solids[i];
+      if (solid) {
+        solid.cx = c;
+        solid.cz = RAIL_Z;
+        solid.off = !car.visible;
+      }
     }
   }
 
@@ -589,8 +601,10 @@ export class TrainController {
   }
 }
 
-export function updateCrossings(crossings, train, dt, t) {
+export function updateCrossings(crossings, train, dt, t, player = null) {
   for (const c of crossings) {
+    // whoever is already on the crossing can always get off it
+    const inside = player && player.z > 50.6 && player.z < 61.0 && Math.abs(player.x - c.x) < c.half + 1.2;
     const need = train.crossingNeeded(c.x);
     if (need) c.timer = 3.0;
     else c.timer -= dt;
@@ -600,7 +614,10 @@ export function updateCrossings(crossings, train, dt, t) {
     if (!c.active) c.armDelay = 0;
     c.armT += (target - c.armT) * Math.min(1, dt * (target > c.armT ? 1.1 : 1.6));
     const ang = (1 - c.armT) * (Math.PI / 2 - 0.08);
-    for (const a of c.arms) a.arm.rotation.z = ang;
+    for (const a of c.arms) {
+      a.arm.rotation.z = ang;
+      if (a.solid) a.solid.off = c.armT < 0.8 || inside;
+    }
     const blink = c.active ? Math.floor(t * 1.7) % 2 : -1;
     for (const m of c.lampsA) m.color.setRGB(blink === 0 ? 4 : 0.18, blink === 0 ? 0.25 : 0.03, blink === 0 ? 0.12 : 0.03);
     for (const m of c.lampsB) m.color.setRGB(blink === 1 ? 4 : 0.18, blink === 1 ? 0.25 : 0.03, blink === 1 ? 0.12 : 0.03);

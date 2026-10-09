@@ -123,6 +123,57 @@ export class Colliders {
   }
 
   // Push a circle (x,z,r) out of solid colliders. feetY lets low objects be stepped over.
+  // Moving solids (train cars, ...): boxes whose cx/cz/off the owner updates each frame.
+  addDynamicBox(hx, hz, ry = 0, yTop = 99, yBottom = -99) {
+    const item = { t: 0, cx: 0, cz: 0, hx, hz, c: Math.cos(ry), s: Math.sin(ry), yTop, yBottom, off: true };
+    (this.dynamic = this.dynamic || []).push(item);
+    return item;
+  }
+
+  // push the circle p out of one item; true when it moved
+  _push(it, p, r, feetY) {
+    if (it.off || it.yTop < feetY + 0.45 || it.yBottom > feetY + 1.7) return false;
+    if (it.t === 1) {
+      const dx = p.x - it.cx, dz = p.z - it.cz;
+      const d = Math.hypot(dx, dz);
+      const m = r + it.r;
+      if (d < m && d > 1e-6) {
+        p.x = it.cx + (dx / d) * m;
+        p.z = it.cz + (dz / d) * m;
+        return true;
+      }
+      return false;
+    }
+    const wx = p.x - it.cx, wz = p.z - it.cz;
+    const lx = it.c * wx - it.s * wz;
+    const lz = it.s * wx + it.c * wz;
+    const qx = Math.max(-it.hx, Math.min(it.hx, lx));
+    const qz = Math.max(-it.hz, Math.min(it.hz, lz));
+    const dx = lx - qx, dz = lz - qz;
+    const d = Math.hypot(dx, dz);
+    if (d >= r) return false;
+    let px, pz;
+    if (d < 1e-6) {
+      // inside: push along the shallow axis
+      const ox = it.hx - Math.abs(lx), oz = it.hz - Math.abs(lz);
+      if (ox < oz) {
+        px = Math.sign(lx || 1) * (ox + r);
+        pz = 0;
+      } else {
+        px = 0;
+        pz = Math.sign(lz || 1) * (oz + r);
+      }
+    } else {
+      const k = (r - d) / d;
+      px = dx * k;
+      pz = dz * k;
+    }
+    // back to world
+    p.x += it.c * px + it.s * pz;
+    p.z += -it.s * px + it.c * pz;
+    return true;
+  }
+
   resolve(p, r, feetY) {
     const c = this.cell;
     for (let iter = 0; iter < 3; iter++) {
@@ -137,49 +188,11 @@ export class Colliders {
           for (const it of arr) {
             if (seen.has(it)) continue;
             seen.add(it);
-            if (it.off || it.yTop < feetY + 0.45 || it.yBottom > feetY + 1.7) continue;
-            if (it.t === 1) {
-              const dx = p.x - it.cx, dz = p.z - it.cz;
-              const d = Math.hypot(dx, dz);
-              const m = r + it.r;
-              if (d < m && d > 1e-6) {
-                p.x = it.cx + (dx / d) * m;
-                p.z = it.cz + (dz / d) * m;
-                moved = true;
-              }
-            } else {
-              const wx = p.x - it.cx, wz = p.z - it.cz;
-              const lx = it.c * wx - it.s * wz;
-              const lz = it.s * wx + it.c * wz;
-              const qx = Math.max(-it.hx, Math.min(it.hx, lx));
-              const qz = Math.max(-it.hz, Math.min(it.hz, lz));
-              let dx = lx - qx, dz = lz - qz;
-              let d = Math.hypot(dx, dz);
-              if (d >= r) continue;
-              let px, pz;
-              if (d < 1e-6) {
-                // inside: push along the shallow axis
-                const ox = it.hx - Math.abs(lx), oz = it.hz - Math.abs(lz);
-                if (ox < oz) {
-                  px = Math.sign(lx || 1) * (ox + r);
-                  pz = 0;
-                } else {
-                  px = 0;
-                  pz = Math.sign(lz || 1) * (oz + r);
-                }
-              } else {
-                const k = (r - d) / d;
-                px = dx * k;
-                pz = dz * k;
-              }
-              // back to world
-              p.x += it.c * px + it.s * pz;
-              p.z += -it.s * px + it.c * pz;
-              moved = true;
-            }
+            if (this._push(it, p, r, feetY)) moved = true;
           }
         }
       }
+      if (this.dynamic) for (const it of this.dynamic) if (this._push(it, p, r, feetY)) moved = true;
       if (!moved) break;
     }
     return p;

@@ -570,7 +570,7 @@ function frame() {
   train.update(dt, state.mode === 'play' ? player.pos : null);
   if (lastTrainState === 'depart' && train.state === 'wait') state.trains++;
   lastTrainState = train.state;
-  updateCrossings(world.crossings, train, dt, t);
+  updateCrossings(world.crossings, train, dt, t, state.mode === 'play' ? player.pos : null);
   if (padOn && train.v > 2 && Math.abs(player.pos.z - 56) < 12) {
     const [a, b] = train.span();
     const dx = Math.max(a - player.pos.x, 0, player.pos.x - b);
