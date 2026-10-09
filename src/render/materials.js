@@ -561,9 +561,14 @@ export function createRiverWaterMaterial() {
         body *= mix(uSkyAmb * 1.05, uSkyAmb + uSunColor, 0.3 + 0.7 * sh);
         vec3 col = mix(body, sky * (0.55 + 0.45 * sh), 0.08 + 0.42 * fres);
         // painted ripple strokes drifting downstream
+        vec3 lift = vec3(0.2, 0.22, 0.22) * (0.4 + 0.6 * sh) * (1.0 - uNight * 0.6);
+        col += lift * 0.5;
+        // thin light strokes on noise iso-lines, broken into short dashes
+        // (whole iso-lines over the wide mouth would read as a contour map)
         float rip = vnoise(vec2(p.x * 0.32, along * 0.85));
-        float stroke = smoothstep(0.045, 0.0, abs(fract(rip * 5.0) - 0.5) - 0.455);
-        col = mix(col, col + vec3(0.2, 0.22, 0.22) * (0.4 + 0.6 * sh), stroke * 0.5 * (1.0 - uNight * 0.6));
+        float stroke = smoothstep(0.45, 0.49, abs(fract(rip * 5.0) - 0.5));
+        stroke *= smoothstep(0.45, 0.7, vnoise(vec2(p.x * 1.3, along * 2.2) + 4.7));
+        col += lift * stroke * 0.6;
         // 花筏: petals drifting with the current, gathering into rafts near the banks
         vec2 pc = vec2(p.x * 3.4, along * 3.4);
         vec2 cell = floor(pc);

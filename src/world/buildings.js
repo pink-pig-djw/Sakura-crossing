@@ -424,7 +424,16 @@ export function buildOldHouse(ctx, lot) {
     const [wx, wz] = L.toW(-pineX * 0.6, L.D - 1.2);
     ctx.trees.push({ kind: rng.chance(0.4) ? 'sakuraSmall' : 'shrubTree', x: wx, z: wz, seed: rng.int(1, 1e9) });
   }
-  if (rng.chance(0.3)) ctx.catSpots.push({ x: L.toW(gx + 1.3, 0.2)[0], z: L.toW(gx + 1.3, 0.2)[1], y: L.yAt(gx + 1.3, 0.2) + 1.2, kind: 'wall', ry: L.ry });
+  // a cat dozing on the front wall (on the coping of the 3 m wall segment it sits on)
+  const catX = gx + 1.3;
+  if (rng.chance(0.3) && wallKind !== 'hedge' && catX < L.W / 2 - 0.3) {
+    const a = gx + 0.9, b = L.W / 2;
+    const segs = Math.max(1, Math.ceil((b - a) / 3));
+    const i = Math.min(segs - 1, Math.floor(((catX - a) / (b - a)) * segs));
+    const top = Math.max(L.yAt(a + ((b - a) * i) / segs, 0.2), L.yAt(a + ((b - a) * (i + 1)) / segs, 0.2)) + (wallKind === 'stone' ? 1.1 : 1.3) + 0.06;
+    const [cwx, cwz] = L.toW(catX, 0.2);
+    ctx.catSpots.push({ x: cwx, z: cwz, y: top, kind: 'wall', ry: L.ry });
+  }
   kit.end();
 }
 
