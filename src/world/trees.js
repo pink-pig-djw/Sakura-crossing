@@ -181,19 +181,40 @@ export function buildTrees(ctx, specs) {
       const forest = sp.kind === 'forest';
       const H = (small ? rng.range(2.2, 3.4) : forest ? rng.range(7, 12) : rng.range(6, 9)) * s;
       const R = (small ? rng.range(0.9, 1.4) : forest ? rng.range(3.5, 5.5) : rng.range(2.6, 3.6)) * s;
+      let cy = y0 + H * (small ? 0.62 : 0.66);
       if (!forest) {
         const trunk = branchPath(base, V(rng.range(-0.1, 0.1), 1, rng.range(-0.1, 0.1)), H * 0.55, 0.06, rng, 3);
         const r0 = small ? 0.08 : 0.2;
         tb.tube(trunk, trunk.map((_, i) => r0 * (1 - i * 0.15)), 5, 0x6b5546, PAT.NONE);
         if (!small) ctx.colliders.addCircle(sp.x, sp.z, r0 + 0.1);
+      } else {
+        // hillside tree: the crown settles toward the downhill ground (so it never hangs
+        // in the air on a slope) and a trunk with a couple of limbs carries it
+        let lo = y0;
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2;
+          lo = Math.min(lo, terrainH(sp.x + Math.cos(a) * R * 0.75, sp.z + Math.sin(a) * R * 0.75));
+        }
+        cy = Math.max(lo + H * 0.6, y0 + R * 0.55);
+        const r0 = 0.24 * s;
+        const trunk = branchPath(V(sp.x, y0 - 0.4, sp.z), V(rng.range(-0.08, 0.08), 1, rng.range(-0.08, 0.08)), cy - y0 + 0.4, 0.05, rng, 3);
+        tb.tube(trunk, trunk.map((_, i) => r0 * (1 - i * 0.2)), 5, 0x5a4a40, PAT.BARK);
+        const mid = trunk[1];
+        for (let i = 0; i < 2; i++) {
+          const a = rng.range(0, Math.PI * 2);
+          const limb = branchPath(mid, V(Math.cos(a) * 0.6, 1, Math.sin(a) * 0.6), R * 0.7, 0.1, rng, 3);
+          tb.tube(limb, limb.map((_, k) => r0 * 0.5 * (1 - k * 0.25) + 0.02), 4, 0x5a4a40, PAT.BARK);
+        }
+        ctx.colliders.addCircle(sp.x, sp.z, r0 + 0.1);
       }
-      const cc = V(sp.x, y0 + H * (small ? 0.62 : 0.66), sp.z);
+      const cc = V(sp.x, cy, sp.z);
       const cols = forest ? DARK_GREENS : GREEN_COLS;
       canopy(fol.get(forest ? 'forest' : 'leaf', sp.x, sp.z), cc, R, R * (small ? 0.85 : 0.75), cols, rng, {
         puffs: small ? 5 : forest ? 6 : 12,
         cardsPer: small ? 4 : forest ? 4 : 6,
         cardSize: small ? [0.7, 1.1] : forest ? [2.6, 4.0] : [1.2, 1.9],
         puffScale: small ? 0.5 : forest ? 1.8 : 1,
+        flatBottom: forest ? -0.5 : -0.35,
       });
     } else if (sp.kind === 'zelkova') {
       // vase shape: a straight trunk that splits into upward-reaching limbs, broad crown

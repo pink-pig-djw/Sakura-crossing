@@ -498,27 +498,34 @@ export function hedge(b, x0, z0, x1, z1, yFn, h, color = 0x5e9150) {
   }
 }
 
-export function metalFence(b, x0, z0, x1, z1, yFn, h, color = 0xd8dcd8) {
+// Mesh fence on posts. By default it stands on a low concrete footing (the posts are
+// set into it), so the fence meets the ground along its whole length.
+export function metalFence(b, x0, z0, x1, z1, yFn, h, color = 0xd8dcd8, o = {}) {
+  const base = o.base ?? true;
+  const lift = base ? 0.1 : 0; // fence starts on top of the footing
   const len = Math.hypot(x1 - x0, z1 - z0);
   const n = Math.max(1, Math.ceil(len / 2));
   for (let i = 0; i <= n; i++) {
     const t = i / n;
     const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
     const y = yFn(x, z);
-    b.box(x, y + h / 2, z, 0.05, h, 0.05, { color });
+    // posts reach a little below the ground
+    b.box(x, y + (lift + h - 0.1) / 2, z, 0.05, lift + h + 0.1, 0.05, { color });
     if (i < n) {
       const t2 = (i + 1) / n;
       const xb = x0 + (x1 - x0) * t2, zb = z0 + (z1 - z0) * t2;
       const yb = yFn(xb, zb);
-      b.wall(x, z, xb, zb, Math.min(y, yb) + h - 0.06, Math.max(y, yb) + h, 0.04, { color });
-      b.wall(x, z, xb, zb, Math.min(y, yb) + 0.1, Math.max(y, yb) + 0.14, 0.04, { color });
+      const lo = Math.min(y, yb), hi = Math.max(y, yb);
+      if (base) b.wall(x, z, xb, zb, lo - 0.25, hi + 0.12, 0.16, { color: 0xb9b5ab, pattern: PAT.CONCRETE, ao: 0.2 });
+      b.wall(x, z, xb, zb, lo + lift + h - 0.06, hi + lift + h, 0.04, { color });
+      b.wall(x, z, xb, zb, lo + lift + 0.1, hi + lift + 0.14, 0.04, { color });
       // vertical bars (non shadow casting detail)
       const db = b.detail || b;
       const bars = Math.round(Math.hypot(xb - x, zb - z) / 0.16);
       for (let k = 1; k < bars; k++) {
         const tt = k / bars;
         const px = x + (xb - x) * tt, pz = z + (zb - z) * tt;
-        const py = y + (yb - y) * tt;
+        const py = y + (yb - y) * tt + lift;
         db.box(px, py + 0.1 + (h - 0.16) / 2, pz, 0.02, h - 0.16, 0.02, { color, skip: 'yY' });
       }
     }

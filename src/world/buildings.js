@@ -298,7 +298,7 @@ function yard(ctx, kit, L, rng, h) {
     else if (fenceKind === 'hedge') hedge(t, a, 0.4, b, 0.4, yFn, wallH + 0.1);
     else if (fenceKind === 'metal') {
       blockWall(t, a, 0.15, b, 0.15, yFn, 0.35, {});
-      metalFence(t, a, 0.15, b, 0.15, (lx, lz) => yFn(lx, lz) + 0.4, 0.8, rng.pick([0xd8dcd8, 0x4a4e52, 0x8a7a66]));
+      metalFence(t, a, 0.15, b, 0.15, (lx, lz) => yFn(lx, lz) + 0.35, 0.8, rng.pick([0xd8dcd8, 0x4a4e52, 0x8a7a66]), { base: false });
     }
     collideSeg(ctx, L, a, 0.15, b, 0.15);
   };
