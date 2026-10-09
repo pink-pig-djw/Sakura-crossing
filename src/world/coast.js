@@ -252,10 +252,11 @@ export function buildCoast(ctx) {
     const dx = rng.range(X0 + 10, X1 - 10);
     if (nearRiver(dx, 14)) continue;
     const dz = rng.range(SEAWALL_Z + 4, shoreZ(dx) - 6);
-    const y = terrainH(dx, dz);
     const L = rng.range(1.8, 3.6);
     const a = rng.range(0, Math.PI);
-    B(dx, dz).rod(V(dx - Math.cos(a) * L / 2, y + 0.12, dz - Math.sin(a) * L / 2), V(dx + Math.cos(a) * L / 2, y + 0.15, dz + Math.sin(a) * L / 2), 0.16, 0.1, 6, 0x9a8a78, PAT.BOARDS);
+    // half sunk in the sand at both ends
+    const ya = terrainH(dx - Math.cos(a) * L / 2, dz - Math.sin(a) * L / 2), yb = terrainH(dx + Math.cos(a) * L / 2, dz + Math.sin(a) * L / 2);
+    B(dx, dz).rod(V(dx - Math.cos(a) * L / 2, ya + 0.1, dz - Math.sin(a) * L / 2), V(dx + Math.cos(a) * L / 2, yb + 0.06, dz + Math.sin(a) * L / 2), 0.16, 0.1, 6, 0x9a8a78, PAT.BOARDS);
   }
   // sand fences (bamboo)
   for (let fx = X0 + 20; fx < X1 - 20; fx += rng.range(28, 40)) {
@@ -269,11 +270,12 @@ export function buildCoast(ctx) {
     }
     B(fx, fz).box(fx + len / 2, terrainH(fx, fz) + 0.6, fz, len, 0.04, 0.05, { color: 0x9a8058 });
   }
-  // boats near the breakwater
+  // fishing boats hauled up the beach by the breakwater, bows to the sea
+  const seats = [];
   for (let i = 0; i < 4; i++) {
     const bx = BREAKWATER.x + 10 + i * 6.5;
-    const bz = SEAWALL_Z + 8 + rng.range(-1, 3);
-    boat(ctx, bx, terrainH(bx, bz) + 0.25, bz, rng.range(-0.3, 0.3) + Math.PI / 2, rng);
+    const bz = SEAWALL_Z + 9.5 + rng.range(-0.6, 1.4);
+    seats.push(boat(ctx, bx, bz, rng.range(-0.18, 0.18), rng));
   }
   // breakwater + tetrapods + lighthouse
   breakwater(ctx, rng);
@@ -287,7 +289,7 @@ export function buildCoast(ctx) {
   }
   // a couple of cats at the beach / promenade
   ctx.catSpots.push({ x: 8, z: 72.6, y: wallTop + 0.86, kind: 'wall', ry: Math.PI });
-  ctx.catSpots.push({ x: BREAKWATER.x + 17, z: SEAWALL_Z + 8.5, y: terrainH(BREAKWATER.x + 17, SEAWALL_Z + 8.5) + 0.85, kind: 'boat', ry: 1.2 });
+  ctx.catSpots.push({ x: seats[1].x, z: seats[1].z, y: seats[1].y, kind: 'boat', ry: 1.2 });
 }
 
 // A bench whose seat faces (-sin ry, -cos ry): the same direction a player with yaw = ry looks.
@@ -342,32 +344,126 @@ function palm(ctx, x, y, z, rng) {
   ctx.colliders.addCircle(x, z, 0.3);
 }
 
-function boat(ctx, x, y, z, ry, rng) {
+// Small FRP fishing boat hauled up the beach bow-first to the sea, resting on two
+// wooden blocks (盤木) with its outboard tilted up. Returns a seat point for a cat.
+function boat(ctx, x, z, ry, rng) {
+  const L = rng.range(5.4, 6.3), Bm = rng.range(1.7, 1.92);
+  const hullC = rng.pick([0xf4f4f0, 0xeceae2, 0xe3ebf1]);
+  const band = rng.pick([0x2f6fb0, 0xc0392b, 0x2e8a5a, 0x1f4f8a]);
+  const bottomC = rng.pick([0xb04a3c, 0x3d6f9a, 0x557a4c]);
+  const blockH = 0.24;
+  // keel line through the two block tops, following the beach
+  const fx = Math.sin(ry), fz = Math.cos(ry);
+  const sA = -0.3 * L, sB = 0.24 * L;
+  const gA = terrainH(x + fx * sA, z + fz * sA), gB = terrainH(x + fx * sB, z + fz * sB);
+  const pitch = Math.atan2(gB - gA, sB - sA);
+  const y0 = gA + blockH - sA * Math.tan(pitch);
+  const m = new THREE.Matrix4().compose(V(x, y0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, ry, 0, 'YXZ')), V(1, 1, 1));
   const b = ctx.builders.get('toon', x, z);
-  b.pushTRS(x, y, z, ry);
-  const hull = rng.pick([0xf4f4f0, 0xeae6da, 0xdfe8ef]);
-  const stripe = rng.pick([0x2f6fb0, 0xc0392b, 0x2e8a5a]);
-  // hull from a scaled, tapered box stack
-  b.box(0, 0.35, 0, 1.9, 0.7, 6.0, { color: hull, ao: 0.2 });
-  b.box(0, 0.75, -3.2, 1.2, 0.5, 0.8, { color: hull });
-  b.box(0, 0.66, 0, 1.94, 0.12, 6.0, { color: stripe });
-  b.box(0, 0.95, 0.8, 1.4, 0.7, 1.4, { color: 0xf0f0ea });
-  ctx.builders.get('window', x, z).pushTRS(x, y, z, ry);
-  ctx.builders.get('window', x, z).quad(V(-0.6, 1.0, 0.09), V(0.6, 1.0, 0.09), V(0.6, 1.25, 0.09), V(-0.6, 1.25, 0.09), 0xffffff, 60, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
-  ctx.builders.get('window', x, z).pop();
-  b.cyl(0, 1.3, -1.0, 0.04, 0.04, 2.4, 5, 0xdedede);
+  const d = b.detail || b;
+  b.push(m);
+  if (d !== b) d.push(m);
+  // hull sections from the transom (t = 0) to the stem (t = 1)
+  const N = 12;
+  const S = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const lz = -L / 2 + t * L;
+    const hb = (Bm / 2) * (t < 0.55 ? 0.86 + 0.14 * Math.sin((t / 0.55) * (Math.PI / 2)) : Math.pow(Math.max(0, Math.cos(((t - 0.55) / 0.45) * (Math.PI / 2))), 0.7));
+    const keel = t > 0.66 ? Math.pow((t - 0.66) / 0.34, 2) * 0.66 : 0;
+    const sheer = 0.84 + 0.36 * t * t;
+    const chY = keel + 0.22 + 0.1 * Math.max(0, t - 0.66);
+    S.push({ t, lz, hb, keel, sheer, chY, chX: hb * 0.8, wY: sheer - 0.17 });
+  }
+  for (let i = 0; i < N; i++) {
+    const a = S[i], c = S[i + 1];
+    const cm = V(0, (a.sheer + c.sheer) * 0.3, (a.lz + c.lz) / 2);
+    for (const e of [-1, 1]) {
+      const K0 = V(0, a.keel, a.lz), K1 = V(0, c.keel, c.lz);
+      const C0 = V(e * a.chX, a.chY, a.lz), C1 = V(e * c.chX, c.chY, c.lz);
+      const W0 = V(e * a.hb * 0.985, a.wY, a.lz), W1 = V(e * c.hb * 0.985, c.wY, c.lz);
+      const T0 = V(e * a.hb, a.sheer, a.lz), T1 = V(e * c.hb, c.sheer, c.lz);
+      b.quadOut(K0, K1, C1, C0, cm, bottomC, PAT.METAL);
+      b.quadOut(C0, C1, W1, W0, cm, hullC, 0);
+      b.quadOut(W0, W1, T1, T0, cm, band, 0);
+      // inside of the topsides down to the floor (open part of the boat only)
+      if (c.t <= 0.78) {
+        const F0 = V(e * a.hb * 0.8, 0.3, a.lz), F1 = V(e * c.hb * 0.8, 0.3, c.lz);
+        b.quadOut(T0, T1, F1, F0, V(e * 9, 0.6, cm.z), 0xe6e4dd, 0);
+      }
+    }
+    if (c.t <= 0.78) {
+      // floor boards
+      b.quadOut(V(-a.hb * 0.8, 0.3, a.lz), V(a.hb * 0.8, 0.3, a.lz), V(c.hb * 0.8, 0.3, c.lz), V(-c.hb * 0.8, 0.3, c.lz), V(0, -5, cm.z), 0xc9c0aa, PAT.PLANKS);
+    } else {
+      // foredeck over the bow
+      b.quadOut(V(-a.hb, a.sheer, a.lz), V(a.hb, a.sheer, a.lz), V(c.hb, c.sheer, c.lz), V(-c.hb, c.sheer, c.lz), V(0, -5, cm.z), 0xe9e7e0, 0);
+    }
+    // gunwale caps and rub rails
+    for (const e of [-1, 1]) {
+      d.rod(V(e * a.hb, a.sheer + 0.02, a.lz), V(e * c.hb, c.sheer + 0.02, c.lz), 0.04, 0.04, 4, 0xd8d4c8);
+      d.rod(V(e * a.hb * 0.99, a.wY, a.lz), V(e * c.hb * 0.99, c.wY, c.lz), 0.035, 0.035, 4, 0x4a4e54);
+    }
+  }
+  // bulkhead in front of the open part
+  const fb = S.find((q) => q.t > 0.78 - 1e-6) || S[N];
+  b.quadOut(V(-fb.hb * 0.8, 0.3, fb.lz), V(fb.hb * 0.8, 0.3, fb.lz), V(fb.hb, fb.sheer, fb.lz), V(-fb.hb, fb.sheer, fb.lz), V(0, 0.6, fb.lz + 3), 0xe6e4dd, 0);
+  // transom (outside, with the painted band) and its inside face
+  const s0 = S[0];
+  const tz = s0.lz;
+  const away = V(0, 0.5, tz + 4);
+  for (const e of [-1, 1]) {
+    b.quadOut(V(0, s0.keel, tz), V(e * s0.chX, s0.chY, tz), V(e * s0.hb * 0.985, s0.wY, tz), V(0, s0.wY, tz), away, hullC, 0);
+    b.quadOut(V(0, s0.wY, tz), V(e * s0.hb * 0.985, s0.wY, tz), V(e * s0.hb, s0.sheer, tz), V(0, s0.sheer, tz), away, band, 0);
+  }
+  b.quadOut(V(-s0.hb * 0.8, 0.3, tz + 0.02), V(s0.hb * 0.8, 0.3, tz + 0.02), V(s0.hb, s0.sheer, tz + 0.02), V(-s0.hb, s0.sheer, tz + 0.02), V(0, 0.5, tz - 4), 0xe6e4dd, 0);
+  // thwarts
+  for (const tt of [0.3, 0.56]) {
+    const q = S[Math.round(tt * N)];
+    b.box(0, q.sheer - 0.2, q.lz, q.hb * 1.6, 0.05, 0.26, { color: 0xb69a74, pattern: PAT.PLANKS });
+  }
+  // outboard motor tilted up on the transom
+  const motor = rng.pick([0xd8dadc, 0x3a3e44, 0xe8e6e0]);
+  b.box(0, s0.sheer + 0.18, tz - 0.3, 0.4, 0.46, 0.55, { color: motor });
+  b.box(0, s0.sheer + 0.02, tz - 0.3, 0.42, 0.08, 0.57, { color: 0x2a2c30 });
+  d.rod(V(0, s0.sheer - 0.02, tz - 0.5), V(0, s0.sheer + 0.12, tz - 1.15), 0.06, 0.05, 6, 0x2f3236);
+  d.box(0, s0.sheer + 0.13, tz - 1.2, 0.36, 0.08, 0.05, { color: 0x2a2c30 });
+  // marker pole with a small flag, orange buoys, a net and a rope coil
+  const px = s0.hb * 0.55;
+  d.cyl(px, s0.sheer, tz + 0.45, 0.025, 0.02, 2.2, 5, 0xc9c6bd);
+  b.quadOut(V(px, s0.sheer + 1.75, tz + 0.45), V(px, s0.sheer + 2.15, tz + 0.45), V(px, s0.sheer + 2.15, tz + 0.95), V(px, s0.sheer + 1.75, tz + 0.95), V(px + 3, s0.sheer + 2, tz + 0.7), rng.pick([0xd8382e, 0xf2c230, 0x2f6fb0]), 0);
+  b.quadOut(V(px, s0.sheer + 1.75, tz + 0.45), V(px, s0.sheer + 2.15, tz + 0.45), V(px, s0.sheer + 2.15, tz + 0.95), V(px, s0.sheer + 1.75, tz + 0.95), V(px - 3, s0.sheer + 2, tz + 0.7), rng.pick([0xd8382e, 0xf2c230, 0x2f6fb0]), 0);
+  const sb = S[3];
+  for (let k = 0; k < 3; k++) b.geom(new THREE.SphereGeometry(0.17, 10, 7), new THREE.Matrix4().makeTranslation(-sb.hb * 0.45 + k * 0.32, 0.47, sb.lz + (k % 2) * 0.25), 0xf07a2a);
+  const nb = S[7];
+  b.box(nb.hb * 0.15, 0.42, nb.lz, nb.hb * 0.9, 0.24, 0.8, { color: 0x4f6258, pattern: PAT.LATTICE });
+  d.cyl(-nb.hb * 0.4, 0.3, nb.lz + 0.2, 0.22, 0.22, 0.1, 10, 0xc8b48a);
   b.pop();
-  ctx.colliders.addBox(x, z, 1.0, 3.2, ry, y + 1.2);
+  if (d !== b) d.pop();
+  // wooden blocks under the keel, bedded in the sand
+  const wb = ctx.builders.get('toon', x, z);
+  for (const sl of [sA, sB]) {
+    const top = V(0, 0, sl).applyMatrix4(m);
+    const g = terrainH(top.x, top.z);
+    const h = top.y - g + 0.12;
+    wb.pushTRS(top.x, g - 0.12, top.z, ry);
+    wb.box(0, h / 2, 0, 1.15, h, 0.26, { color: 0x8a6a4c, pattern: PAT.BOARDS });
+    wb.pop();
+  }
+  ctx.colliders.addBox(x, z, Bm / 2 + 0.1, L / 2 + 0.35, ry, y0 + 1.25);
+  const seat = S[Math.round(0.3 * N)];
+  return V(seat.hb * 0.35, seat.sheer - 0.17, seat.lz).applyMatrix4(m);
 }
 
-function tetrapod(b, x, y, z, s, rng) {
+// a tetrapod resting on the ground: its lowest leg tip bites a little into the sand
+function tetrapod(b, x, ground, z, s, rng) {
   const c = rng.pick([0xbab6ad, 0xc4c0b6, 0xafaba2]);
   const legs = [V(0, 1, 0), V(0.943, -0.333, 0), V(-0.471, -0.333, 0.816), V(-0.471, -0.333, -0.816)];
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)));
-  for (const l of legs) {
-    const d = l.clone().applyQuaternion(q);
-    b.rod(V(x, y, z), V(x + d.x * s, y + d.y * s, z + d.z * s), 0.42 * s, 0.24 * s, 6, c, PAT.CONCRETE);
-  }
+  const dirs = legs.map((l) => l.clone().applyQuaternion(q));
+  const low = Math.min(...dirs.map((d) => d.y * s)) - 0.2 * s;
+  const y = ground - low - 0.12;
+  for (const d of dirs) b.rod(V(x, y, z), V(x + d.x * s, y + d.y * s, z + d.z * s), 0.42 * s, 0.24 * s, 6, c, PAT.CONCRETE);
 }
 
 function breakwater(ctx, rng) {
@@ -383,22 +479,26 @@ function breakwater(ctx, rng) {
     // tetrapods along the east (sea) side and at the head
     for (let k = 0; k < 3; k++) {
       const tz = z + rng.range(0, 8);
-      const tx = bw.x + bw.w / 2 + rng.range(0.8, 3.5);
-      const ty = Math.max(terrainH(tx, tz), -2.5) + rng.range(0.4, 1.2);
-      tetrapod(b, tx, ty, tz, rng.range(1.1, 1.5), rng);
+      const off = rng.range(0.8, 3.5);
+      const tx = bw.x + bw.w / 2 + off;
+      rng.next();
+      // the armour pile climbs the wall above the waterline
+      tetrapod(b, tx, Math.max(terrainH(tx, tz), 1.1 - off * 0.55), tz, rng.range(1.1, 1.5), rng);
     }
     for (let k = 0; k < 2; k++) {
       const tz = z + rng.range(0, 8);
-      const tx = bw.x - bw.w / 2 - rng.range(0.8, 2.5);
-      const ty = Math.max(terrainH(tx, tz), -2.5) + rng.range(0.2, 0.8);
-      tetrapod(b, tx, ty, tz, rng.range(1.0, 1.3), rng);
+      const off = rng.range(0.8, 2.5);
+      const tx = bw.x - bw.w / 2 - off;
+      rng.next();
+      tetrapod(b, tx, Math.max(terrainH(tx, tz), 0.7 - off * 0.45), tz, rng.range(1.0, 1.3), rng);
     }
   }
   for (let k = 0; k < 14; k++) {
     const a = rng.range(-Math.PI * 0.6, Math.PI * 0.6);
     const r = rng.range(3.5, 6);
     const tx = bw.x + Math.sin(a) * r, tz = bw.z1 + Math.cos(a) * r * 0.8;
-    tetrapod(ctx.builders.get('toon', tx, tz), tx, Math.max(terrainH(tx, tz), -3) + rng.range(0.3, 1.3), tz, rng.range(1.2, 1.6), rng);
+    rng.next();
+    tetrapod(ctx.builders.get('toon', tx, tz), tx, Math.max(terrainH(tx, tz), 1.0 - (r - 3.5) * 0.5), tz, rng.range(1.2, 1.6), rng);
   }
   // walkable top + ramp from the beach
   ctx.colliders.addSurface(bw.x - bw.w / 2 + 0.6, bw.z0, bw.x + bw.w / 2, bw.z1, () => top, 1);
