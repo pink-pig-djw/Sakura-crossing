@@ -273,8 +273,14 @@ export function buildStation(ctx) {
     ctx.colliders.addBox(xx, bz0 + 2.15, 0.16, 0.16);
   }
   t.boxMM(bx0, fy + H - 0.7, bz0 + 1.95, bx1, fy + H, bz0 + 2.3, { color: wallC, pattern: PAT.SIDING });
-  const fsign = { o: V(cx + 4.2, fy, bz0 + 1.93), r: V(-1, 0, 0), n: V(0, 0, -1), len: 8.4 };
-  signOnFace(kit, fsign, 4.2, H - 0.66, 6.2, 1.24, 0.02, stationNameSign(ctx), 0.8, 0x6a5a48);
+  // the name board stands on the edge of the eave, in front of the roof slope
+  // (mounted on the wall it disappeared behind the overhang)
+  const eaveZ = cz + 1.0 - (d - 1.6) / 2 - 0.9;
+  const eaveY = H - 0.9 * 0.42;
+  const fsign = { o: V(cx + 4.2, fy, eaveZ + 0.02), r: V(-1, 0, 0), n: V(0, 0, -1), len: 8.4 };
+  signOnFace(kit, fsign, 4.2, eaveY + 0.06, 6.2, 1.24, 0.02, stationNameSign(ctx), 0.8, 0x6a5a48);
+  // brackets tying it back to the roof
+  for (const sx of [cx - 2.4, cx + 2.4]) t.boxMM(sx - 0.05, fy + eaveY - 0.05, eaveZ + 0.06, sx + 0.05, fy + eaveY + 1.0, eaveZ + 0.95, { color: 0x6a5a48 });
   // timetable + posters inside
   const back = { o: V(bx0 + 6.6, fy, bz1 - 4.6), r: V(1, 0, 0), n: V(0, 0, -1), len: w - 7 };
   signOnFace(kit, back, w - 9.5, 1.3, 1.0, 1.25, 0.0, timetable(ctx), 0.6, 0x555555);
@@ -366,7 +372,7 @@ export function buildPlaza(ctx) {
   // bicycle parking racks
   for (let i = 0; i < 14; i++) {
     const bx = -64 + i * 0.75;
-    bicycle(t, bx, y(bx, 45), 45, Math.PI / 2 + (i % 2 ? 0.08 : -0.08), [0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0, 0xf0a0b0][i % 7]);
+    bicycle(t, bx, 0, 45, Math.PI / 2 + (i % 2 ? 0.08 : -0.08), [0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0, 0xf0a0b0][i % 7], y);
   }
   t.boxMM(-64.5, y(-60, 45) + 2.2, 43.6, -53.5, y(-60, 45) + 2.3, 46.4, { color: 0x9db0a4 });
   for (const xx of [-64, -54]) t.cyl(xx, y(xx, 46), 46.2, 0.05, 0.05, 2.25, 6, 0x9db0a4);

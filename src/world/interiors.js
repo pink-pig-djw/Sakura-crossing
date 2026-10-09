@@ -1128,7 +1128,7 @@ function buildPlaza(ctx, block) {
   for (let i = 0; i < 8; i++) {
     const bz = -43.5 + i * 0.72;
     const bx = block.x0 + 0.9;
-    if (rng.chance(0.7)) bicycle(ctx.builders.get('toon', bx, bz), bx, groundH(bx, bz) + 0.02, bz, rng.range(-0.1, 0.1), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0]));
+    if (rng.chance(0.7)) bicycle(ctx.builders.get('toon', bx, bz), bx, 0, bz, rng.range(-0.1, 0.1), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0]), groundH);
   }
   ctx.colliders.addBox(block.x0 + 0.8, -41.0, 0.7, 2.9, 0, groundH(block.x0, -41) + 1.0);
   // classic lamps

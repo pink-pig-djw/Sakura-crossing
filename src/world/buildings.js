@@ -266,9 +266,9 @@ function yard(ctx, kit, L, rng, h) {
     parkedCar(kit, padX, Math.min(h.front, 5.6) / 2 + 0.2, Math.PI / 2, rng, yAt);
     collide(ctx, L, padX, Math.min(h.front, 5.6) / 2 + 0.2, 1.7, 3.6, 1.6);
   } else if (rng.chance(0.6)) {
-    bicycle(t, padX, yAt(padX, 2) + 0.02, 2.4, Math.PI / 2 + rng.range(-0.2, 0.2), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a]));
+    bicycle(t, padX, 0, 2.4, Math.PI / 2 + rng.range(-0.2, 0.2), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a]), yAt);
   }
-  if (rng.chance(0.5)) bicycle(t, doorX + (doorX > 0 ? -1.2 : 1.2), yAt(doorX, h.front - 0.8) + 0.02, h.front - 0.8, rng.range(-0.3, 0.3), rng.pick([0xd8d8d0, 0x5a8fc4, 0xf0a0b0]));
+  if (rng.chance(0.5)) bicycle(t, doorX + (doorX > 0 ? -1.2 : 1.2), 0, h.front - 0.8, rng.range(-0.3, 0.3), rng.pick([0xd8d8d0, 0x5a8fc4, 0xf0a0b0]), yAt);
   // plants
   const nPlants = rng.int(2, 6);
   for (let i = 0; i < nPlants; i++) {
@@ -525,7 +525,7 @@ export function buildApartment(ctx, lot) {
   signOnFace(kit, F.right, hd * 0.25, 2.0, 1.2, 0.3, 0.02, uv, 0);
   // yard
   paint(ctx, L, -L.W / 2, 0, L.W / 2, L.D, 0xb4afa5, PAT.GRAVEL);
-  for (let i = 0; i < units; i++) bicycle(t, cx - hw / 2 + 1 + i * 1.0, L.yAt(0, front - 1.5), front - 1.6, Math.PI / 2 + rng.range(-0.15, 0.15), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0]));
+  for (let i = 0; i < units; i++) bicycle(t, cx - hw / 2 + 1 + i * 1.0, 0, front - 1.6, Math.PI / 2 + rng.range(-0.15, 0.15), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0]), L.yAt);
   if (rng.chance(0.6)) {
     parkedCar(kit, cx + hw / 4, front / 2, Math.PI / 2 + Math.PI, rng, L.yAt);
     collide(ctx, L, cx + hw / 4, front / 2, 1.7, 3.6, 1.6);
@@ -815,7 +815,7 @@ export function buildSento(ctx, lot) {
   signOnFace(kit, face, 0.32, 8, 0.55, 4.5, 0.0, cuv, 0);
   collide(ctx, L, chx, chz, 1.5, 1.5);
   paint(ctx, L, -L.W / 2, 0, L.W / 2, front, 0xc9c1b2, PAT.STONE);
-  for (let i = 0; i < 3; i++) bicycle(t, -L.W / 2 + 1.2 + i * 0.9, L.yAt(-L.W / 2 + 1.2, 1), 1.0, Math.PI / 2, rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a]));
+  for (let i = 0; i < 3; i++) bicycle(t, -L.W / 2 + 1.2 + i * 0.9, 0, 1.0, Math.PI / 2, rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a]), L.yAt);
   ctx.landmarks.push({ id: 'sento', name: '汐の湯', x: L.toW(0, front)[0], z: L.toW(0, front)[1] });
   kit.end();
 }

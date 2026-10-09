@@ -267,9 +267,19 @@ export function mailbox(b0, x, y, z, ry, color = 0xd6d2c8) {
   b.pop();
 }
 
-export function bicycle(b0, x, y, z, ry, color = 0xd8d8d0) {
+// A parked bicycle. With yFn(x, z) (ground height in the same frame) both tyres
+// touch the ground and the frame pitches with the slope; otherwise it stands at y.
+export function bicycle(b0, x, y, z, ry, color = 0xd8d8d0, yFn = null) {
   const b = b0.detail || b0;
+  let pitch = 0;
+  if (yFn) {
+    const cx = Math.cos(ry) * 0.52, cz = -Math.sin(ry) * 0.52; // front wheel (+x) offset
+    const yF = yFn(x + cx, z + cz), yB = yFn(x - cx, z - cz);
+    y = (yF + yB) / 2 + 0.01;
+    pitch = Math.atan2(yF - yB, 1.04);
+  }
   b.pushTRS(x, y, z, ry);
+  if (pitch) b.push(new THREE.Matrix4().makeRotationZ(pitch));
   const wheel = (wx) => {
     const g = new THREE.TorusGeometry(0.31, 0.022, 4, 14);
     const m = new THREE.Matrix4().compose(V(wx, 0.33, 0), new THREE.Quaternion(), V(1, 1, 1));
@@ -287,6 +297,7 @@ export function bicycle(b0, x, y, z, ry, color = 0xd8d8d0) {
   b.rod(V(0.42, 0.9, -0.28), V(0.42, 0.9, 0.28), 0.016, 0.016, 4, 0x8a8a8a);
   b.box(0.62, 0.86, 0, 0.3, 0.2, 0.34, { color: 0xb8bcc0 }); // basket
   b.box(-0.6, 0.62, 0, 0.32, 0.03, 0.18, { color: 0x666666 }); // rear rack
+  if (pitch) b.pop();
   b.pop();
 }
 
