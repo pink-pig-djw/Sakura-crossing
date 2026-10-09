@@ -2,7 +2,11 @@
 
 一个可以在浏览器里自由散步的日本海边小镇。动画背景感的非写实渲染（NPR）、治愈系的日常氛围：樱花坡道、电线杆与电线、商店街、樱花河畔、站前商业街和地铁站、单线小电车和踏切、海堤、沙滩、防波堤灯塔，还有远处的富士山。
 
-An explorable anime-background-style Japanese seaside town in spring, built with Three.js. Everything — houses, signs, trees, clouds, sea, sounds and music — is generated procedurally at load time; there are no image, model or audio assets.
+An explorable anime-background-style Japanese seaside town in spring, built with Three.js. Everything — houses, signs, trees, clouds, sea, sounds and music — is generated procedurally at load time; the only recorded assets are the Japanese voice lines (synthesized with VOICEVOX).
+
+**在线试玩 / Play online：<https://pink-pig-djw.github.io/Sakura-crossing/>**
+
+界面可在 **日本語 / 中文** 之间切换（标题画面或菜单里的「语言」），浏览器语言为中文时默认显示中文。
 
 ## 运行 / Run
 
@@ -11,6 +15,7 @@ npm install
 npm run dev      # 开发服务器 http://localhost:5173
 npm run build    # 产出 dist/，可部署为静态网站
 npm run preview  # 本地预览 dist/
+npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages）
 ```
 
 需要支持 WebGL2 的浏览器（桌面版 Chrome / Edge / Firefox / Safari，或较新的手机浏览器）。
@@ -25,9 +30,10 @@ npm run preview  # 本地预览 dist/
 | `Space` | 跳跃 |
 | `E` | 调查：自动贩卖机买饮料、摸猫、捡贝壳、坐长椅、神社参拜抽签、看地图 |
 | `M` | 散步地图 |
+| `N` | 显示 / 隐藏右上角小地图 |
 | `T` | 切换时间段（朝 / 昼 / 夕 / 夜） |
 | `H` | 隐藏界面（拍照模式） |
-| `Esc` | 菜单：时间、音量、画质、轮廓线、散步手帐 |
+| `Esc` | 菜单：时间、音量（环境音 / 音乐 / 语音）、字幕、画质、轮廓线、小地图、语言、散步手帐 |
 
 手机上：左下摇杆移动，右侧滑动转视角，右下按钮调查 / 跳跃 / 奔跑。
 
@@ -42,7 +48,8 @@ npm run preview  # 本地预览 dist/
 | `A` | 调查 / 确认 |
 | `B` | 返回 / 从长椅起身 |
 | `X` | 跳跃 |
-| `Y` / `View` | 散步地图 |
+| `Y` | 散步地图 |
+| `View` | 显示 / 隐藏小地图 |
 | `RT`（按住） | 奔跑 |
 | `LB` / `RB` | 切换时间段 |
 | `Menu` | 菜单（十字键或左摇杆移动焦点） |
@@ -64,7 +71,12 @@ npm run preview  # 本地预览 dist/
   - **市立図書館**、**中央広場**（喷泉、花坛、钟楼）。
 - **地铁 桜ヶ浜中央駅**：两个出入口 → 地下一层的售票机和闸机 → 地下二层的岛式站台，站台门与列车门同步开关，列车按时进出站，有到站提示音。
 - **ひだまり公園**、**汐の湯**（钱汤和烟囱）、**汐見神社**（石阶、鸟居、拝殿、狛犬、绘马、俯瞰小镇的长椅）。
-- 7 只可以摸的猫、8 枚散落在沙滩上的贝壳、能买到 10 种饮料的自动贩卖机、5 种签运的御神签。
+- 7 只可以摸的猫、8 枚散落在沙滩上的贝壳、能买到 10 种饮料的自动贩卖机（偶尔会中奖再来一瓶）、5 种签运的御神签。
+
+## 小地图与语言
+
+- 右上角的圆形小地图随朝向旋转（前方朝上），边缘的「N」指示北方；画出道路、地块、河流、铁路、地铁出入口和主要地名，地名会自动避让、不遮挡玩家箭头。`N` 键 / 手柄 `View` 键 / 菜单里可以关闭。
+- 界面文字（标题、菜单、提示、地名横幅、地图标注、调查结果、御神签、字幕）都有简体中文版本；街上的招牌、站名牌等「町里的东西」保持日文。
 
 ## 渲染风格 / Rendering
 
@@ -86,7 +98,24 @@ npm run preview  # 本地预览 dist/
 
 ## 声音 / Audio
 
-全部用 Web Audio 合成：海浪、河水与落差工的水声、风、麻雀、树莺（ホーホケキョ）、海边的黑鸢（ピーヒョロロ）、夜晚的蛙鸣、风铃、踏切警报、红绿灯的盲人提示音（ピヨピヨ / カッコー）、便利店开门铃、地铁广播与到站旋律、电车（行驶声、轨缝声、鸣笛、发车旋律）、脚步声（沥青 / 沙 / 浅水），以及基于「王道进行」（IV–V–iii–vi）的生成式钢琴背景音乐。进入室内或地下时环境声会变闷。
+环境声全部用 Web Audio 合成：海浪、河水与落差工的水声、风、麻雀、树莺（ホーホケキョ）、海边的黑鸢（ピーヒョロロ）、夜晚的蛙鸣、风铃、踏切警报、红绿灯的盲人提示音（ピヨピヨ / カッコー）、便利店开门铃、地铁广播与到站旋律、电车（行驶声、轨缝声、鸣笛、发车旋律）、脚步声（沥青 / 沙 / 浅水），以及基于「王道进行」（IV–V–iii–vi）的生成式钢琴背景音乐。进入室内或地下时环境声会变闷。
+
+### 日语配音
+
+25 句日语女声由 [VOICEVOX](https://voicevox.hiroshiba.jp/) 合成（九州そら、冥鳴ひまり、春日部つむぎ），每种场景有自己的声音处理：
+
+| 场景 | 什么时候 | 声音 |
+| --- | --- | --- |
+| 桜ヶ浜駅 | 电车接近（按行驶方向播「花見台行き / 汐風行き」）、到站、发车旋律后关门 | 站台喇叭：限频、两个喇叭的时间差、混响，声源在站台 |
+| 地下铁 桜ヶ浜中央駅 | 1 / 2 号线列车接近、开门、关门，以及不定时的安全提示 | 地下站台喇叭，混响更长 |
+| さくらマート | 进门「いらっしゃいませー！」、收银台、离开时「ありがとうございましたー！」 | 店员在柜台后，带一点房间声 |
+| 喫茶店 / 可丽饼 / 图书馆 | 进店招呼、点单、借书 | 同上 |
+| 自动贩卖机 / 售票机 | 买饮料、中奖、买票 | 小喇叭音色 |
+| さくらモール | 在商场里时不定时的馆内广播 | 商场喇叭 |
+| 町内广播 | 游戏时间到下午 5 点时，一段原创报时旋律后播放「よい子のみなさんは……」 | 远处喇叭在山间的回声 |
+| 商业区红绿灯 | 偶尔在变绿时提示「青になりました」 | 小喇叭 |
+
+说话时背景音乐会自动压低；屏幕下方显示字幕（随界面语言显示日文或中文，菜单里可关闭），语音音量单独可调。台词、说话人和语气预设在 `tools/voice/lines.json`，用 `tools/voice/generate.py`（VOICEVOX CORE 0.17）重新生成 `public/voice/*.mp3` 和 `src/systems/voiceLines.js`。
 
 ## 目录结构
 
@@ -98,12 +127,16 @@ src/
   world/               地形与布局、道路、房屋、商店街/车站/公园/神社、铁路与电车、海岸、
                        河流 (river.js)、商业区 (commercial.js)、地铁 (subway.js)、室内 (interiors.js)、
                        树与绿化 (trees.js / greenery.js / grass.js)、碰撞 (collision.js)、猫与鸟
-  systems/             第一人称控制、手柄、昼夜、音频
-  ui/                  界面与地图
+  systems/             第一人称控制、手柄、昼夜、音频；配音播放 (voice.js) 与触发 (townVoices.js)
+  ui/                  界面、地图与小地图 (ui.js)、语言切换 (i18n.js) 与中文文本 (zh.js)
+public/voice/          VOICEVOX 生成的配音（MP3）
+tools/voice/           配音台词表与生成脚本
+tools/deploy-pages.sh  发布到 GitHub Pages
 ```
 
 ## 致谢
 
 - [three.js](https://threejs.org/)（MIT）
-- 字体来自 Google Fonts：Zen Maru Gothic、Zen Old Mincho、Zen Kaku Gothic New、Yuji Syuku、Dela Gothic One（SIL OFL）。离线时会回退到系统日文字体。
+- 字体来自 Google Fonts：Zen Maru Gothic、Zen Old Mincho、Zen Kaku Gothic New、Yuji Syuku、Dela Gothic One、Noto Sans SC、Noto Serif SC（SIL OFL）。离线时会回退到系统字体。
+- 配音：**VOICEVOX:九州そら**、**VOICEVOX:冥鳴ひまり**、**VOICEVOX:春日部つむぎ**（按各角色的使用条款标注；游戏菜单里也有显示）。
 - 风格参考：用户提供的樱花小镇演示视频。

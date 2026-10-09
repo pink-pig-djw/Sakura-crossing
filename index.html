@@ -7,47 +7,53 @@
     <meta name="description" content="桜ヶ浜 — an explorable anime-style Japanese seaside town in spring." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Zen+Old+Mincho:wght@700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Zen+Old+Mincho:wght@700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=Noto+Sans+SC:wght@500;700;900&family=Noto+Serif+SC:wght@700;900&display=swap" />
   </head>
   <body>
     <div id="app">
-      <canvas id="scene" aria-label="桜ヶ浜の町"></canvas>
+      <canvas id="scene" aria-label="桜ヶ浜の町" data-i18n-label></canvas>
 
       <!-- title / loading -->
       <section id="title" class="screen">
         <div class="title-veil"></div>
         <div class="title-vertical" aria-hidden="true">
-          <span class="v-main">桜ヶ浜</span>
-          <span class="v-sub">春、海辺の町をあるく</span>
+          <span class="v-main" data-i18n>桜ヶ浜</span>
+          <span class="v-sub" data-i18n>春、海辺の町をあるく</span>
         </div>
         <div class="title-panel">
           <p class="eyebrow">SAKURA CROSSING</p>
-          <h1 class="title-h">桜ヶ浜<span>さくらがはま</span></h1>
-          <p class="lede">桜の坂道、小さな踏切、海まで続く町。<br />のんびり歩いて、季節の空気を感じてください。</p>
+          <h1 class="title-h"><b data-i18n>桜ヶ浜</b><span>さくらがはま</span></h1>
+          <p class="lede" data-i18n>桜の坂道、小さな踏切、海まで続く町。<br>のんびり歩いて、季節の空気を感じてください。</p>
           <div class="loader" id="loader">
             <div class="bar"><i id="loadbar"></i></div>
             <span id="loadtext">町をつくっています…</span>
           </div>
-          <button id="start" class="btn primary" type="button" hidden>散歩をはじめる</button>
+          <button id="start" class="btn primary" type="button" hidden data-i18n>散歩をはじめる</button>
+          <div class="lang-switch" role="group" aria-label="言語 / 语言">
+            <button type="button" data-lang="ja">日本語</button>
+            <button type="button" data-lang="zh">中文</button>
+          </div>
           <ul class="controls-hint" id="hint-desktop">
-            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 歩く</li>
-            <li><kbd>Shift</kbd> 走る</li>
-            <li><kbd>Space</kbd> ジャンプ</li>
-            <li><kbd>E</kbd> しらべる</li>
-            <li><kbd>M</kbd> 地図</li>
-            <li><kbd>T</kbd> 時間帯</li>
-            <li><kbd>Esc</kbd> メニュー</li>
+            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span data-i18n>歩く</span></li>
+            <li><kbd>Shift</kbd> <span data-i18n>走る</span></li>
+            <li><kbd>Space</kbd> <span data-i18n>ジャンプ</span></li>
+            <li><kbd>E</kbd> <span data-i18n>しらべる</span></li>
+            <li><kbd>M</kbd> <span data-i18n>地図</span></li>
+            <li><kbd>N</kbd> <span data-i18n>ミニマップ</span></li>
+            <li><kbd>T</kbd> <span data-i18n>時間帯</span></li>
+            <li><kbd>Esc</kbd> <span data-i18n>メニュー</span></li>
           </ul>
-          <p class="controls-hint touch-only">左下で移動・右側をドラッグで見回し</p>
+          <p class="controls-hint touch-only" data-i18n>左下で移動・右側をドラッグで見回し</p>
           <ul class="controls-hint pad-only" id="hint-pad">
-            <li><i class="pad-btn">L</i> 歩く</li>
-            <li><i class="pad-btn">R</i> 見回す</li>
-            <li><i class="pad-btn a">A</i> しらべる</li>
-            <li><i class="pad-btn x">X</i> ジャンプ</li>
-            <li><i class="pad-btn y">Y</i> 地図</li>
-            <li><i class="pad-btn wide">RT</i> 走る</li>
-            <li><i class="pad-btn wide">LB</i><i class="pad-btn wide">RB</i> 時間帯</li>
-            <li><i class="pad-btn">≡</i> メニュー</li>
+            <li><i class="pad-btn">L</i> <span data-i18n>歩く</span></li>
+            <li><i class="pad-btn">R</i> <span data-i18n>見回す</span></li>
+            <li><i class="pad-btn a">A</i> <span data-i18n>しらべる</span></li>
+            <li><i class="pad-btn x">X</i> <span data-i18n>ジャンプ</span></li>
+            <li><i class="pad-btn y">Y</i> <span data-i18n>地図</span></li>
+            <li><i class="pad-btn wide">RT</i> <span data-i18n>走る</span></li>
+            <li><i class="pad-btn wide">LB</i><i class="pad-btn wide">RB</i> <span data-i18n>時間帯</span></li>
+            <li><i class="pad-btn">⧉</i> <span data-i18n>ミニマップ</span></li>
+            <li><i class="pad-btn">≡</i> <span data-i18n>メニュー</span></li>
           </ul>
         </div>
       </section>
@@ -60,21 +66,23 @@
         </div>
         <div class="hud-right">
           <div class="clock-chip"><i id="clock-icon" class="sun"></i><span id="clock">10:30</span><span id="period">昼</span></div>
+          <canvas id="minimap" class="minimap" width="200" height="200" aria-hidden="true"></canvas>
           <div class="count-chip" id="counts"></div>
         </div>
         <div id="prompt" class="prompt" hidden><kbd>E</kbd><span id="prompt-text"></span></div>
         <div id="toast" class="toast" aria-live="polite"></div>
+        <div id="subtitle" class="subtitle" aria-live="polite" hidden><span class="sub-who" id="sub-who"></span><span class="sub-text" id="sub-text"></span></div>
         <div id="crosshair" class="crosshair"></div>
-        <button id="menu-btn" class="icon-btn" type="button" aria-label="メニュー">≡</button>
+        <button id="menu-btn" class="icon-btn" type="button" aria-label="メニュー" data-i18n-label>≡</button>
       </section>
 
       <!-- touch controls -->
       <section id="touch" hidden>
         <div id="stick-zone" class="stick-zone"><div id="stick" class="stick"><i></i></div></div>
         <div class="touch-buttons">
-          <button id="t-act" type="button" class="tbtn act">しらべる</button>
-          <button id="t-jump" type="button" class="tbtn">ジャンプ</button>
-          <button id="t-run" type="button" class="tbtn">走る</button>
+          <button id="t-act" type="button" class="tbtn act" data-i18n>しらべる</button>
+          <button id="t-jump" type="button" class="tbtn" data-i18n>ジャンプ</button>
+          <button id="t-run" type="button" class="tbtn" data-i18n>走る</button>
         </div>
       </section>
 
@@ -82,34 +90,45 @@
       <section id="menu" class="screen modal" hidden>
         <div class="panel">
           <header class="panel-head">
-            <h2>ひとやすみ</h2>
-            <button class="btn ghost" id="resume" type="button">散歩にもどる</button>
+            <h2 data-i18n>ひとやすみ</h2>
+            <button class="btn ghost" id="resume" type="button" data-i18n>散歩にもどる</button>
           </header>
           <div class="panel-grid">
             <div class="group">
-              <h3>時間帯</h3>
+              <h3 data-i18n>時間帯</h3>
               <div class="seg" id="tod-buttons"></div>
-              <label class="row"><input type="checkbox" id="flow" checked /> 時間を流す（1分 = 1時間）</label>
+              <label class="row"><input type="checkbox" id="flow" checked /> <span data-i18n>時間を流す（1分 = 1時間）</span></label>
             </div>
             <div class="group">
-              <h3>音</h3>
-              <label class="row slider">環境音<input type="range" id="vol-amb" min="0" max="100" value="70" /></label>
-              <label class="row slider">音楽<input type="range" id="vol-music" min="0" max="100" value="45" /></label>
+              <h3 data-i18n>音</h3>
+              <label class="row slider"><span data-i18n>環境音</span><input type="range" id="vol-amb" min="0" max="100" value="70" /></label>
+              <label class="row slider"><span data-i18n>音楽</span><input type="range" id="vol-music" min="0" max="100" value="45" /></label>
+              <label class="row slider"><span data-i18n>ボイス</span><input type="range" id="vol-voice" min="0" max="100" value="80" /></label>
+              <label class="row"><input type="checkbox" id="subs-toggle" checked /> <span data-i18n>字幕</span></label>
             </div>
             <div class="group">
-              <h3>操作・画質</h3>
-              <label class="row slider">視点感度<input type="range" id="sens" min="20" max="250" value="100" /></label>
+              <h3 data-i18n>操作・画質</h3>
+              <label class="row slider"><span data-i18n>視点感度</span><input type="range" id="sens" min="20" max="250" value="100" /></label>
               <div class="seg" id="quality-buttons">
-                <button type="button" data-q="low">軽量</button>
-                <button type="button" data-q="medium">標準</button>
-                <button type="button" data-q="high">高画質</button>
+                <button type="button" data-q="low" data-i18n>軽量</button>
+                <button type="button" data-q="medium" data-i18n>標準</button>
+                <button type="button" data-q="high" data-i18n>高画質</button>
               </div>
-              <label class="row"><input type="checkbox" id="outline-toggle" checked /> 輪郭線</label>
+              <label class="row"><input type="checkbox" id="outline-toggle" checked /> <span data-i18n>輪郭線</span></label>
+              <label class="row"><input type="checkbox" id="minimap-toggle" checked /> <span data-i18n>ミニマップ</span></label>
+            </div>
+            <div class="group">
+              <h3 data-i18n>言語</h3>
+              <div class="seg lang-switch" id="lang-buttons">
+                <button type="button" data-lang="ja">日本語</button>
+                <button type="button" data-lang="zh">中文</button>
+              </div>
+              <p class="credits"><span data-i18n>クレジット</span>: <span id="voice-credits"></span></p>
             </div>
             <div class="group notebook">
-              <h3>散歩手帳</h3>
+              <h3 data-i18n>散歩手帳</h3>
               <ul id="notebook"></ul>
-              <button class="btn ghost" id="open-map" type="button">地図をひらく</button>
+              <button class="btn ghost" id="open-map" type="button" data-i18n>地図をひらく</button>
             </div>
           </div>
         </div>
@@ -119,8 +138,8 @@
       <section id="map" class="screen modal" hidden>
         <div class="panel map-panel">
           <header class="panel-head">
-            <h2>桜ヶ浜 散歩マップ</h2>
-            <button class="btn ghost" id="close-map" type="button">とじる</button>
+            <h2 data-i18n>桜ヶ浜 散歩マップ</h2>
+            <button class="btn ghost" id="close-map" type="button" data-i18n>とじる</button>
           </header>
           <canvas id="map-canvas" width="1100" height="520"></canvas>
         </div>
@@ -129,10 +148,10 @@
       <!-- omikuji -->
       <section id="omikuji" class="screen modal" hidden>
         <div class="slip">
-          <p class="slip-head">汐見神社 おみくじ</p>
+          <p class="slip-head" data-i18n>汐見神社 おみくじ</p>
           <p class="slip-luck" id="luck">大吉</p>
           <p class="slip-text" id="luck-text"></p>
-          <button class="btn primary" id="close-omikuji" type="button">ありがとう</button>
+          <button class="btn primary" id="close-omikuji" type="button" data-i18n>ありがとう</button>
         </div>
       </section>
     </div>

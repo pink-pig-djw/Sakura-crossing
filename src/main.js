@@ -14,6 +14,10 @@ import { createPetals, createCats, createBirds, createShells, createSmallAnimati
 import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY } from './world/layout.js';
 import { walkState } from './world/commercial.js';
 import { UI } from './ui/ui.js';
+import { tr, tf, setLang } from './ui/i18n.js';
+import { VoiceSystem } from './systems/voice.js';
+import { TownVoices } from './systems/townVoices.js';
+import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
 const params = new URLSearchParams(location.search);
@@ -95,6 +99,8 @@ applyQuality(quality);
 // ---------------------------------------------------------------------------
 const ui = new UI();
 const audio = new AudioEngine();
+const voice = new VoiceSystem(audio, ui);
+document.getElementById('voice-credits').textContent = VOICE_CREDITS.join(' / ');
 const pad = new GamepadInput();
 const usingPad = () => pad.connected && performance.now() - pad.lastUsed < 6000;
 const state = {
@@ -125,6 +131,9 @@ const anims = createSmallAnimations(world, world.materials);
 const traffic = createTraffic(world, world.materials, 8);
 if (matchMedia('(prefers-reduced-motion: reduce)').matches) player.bobAmount = 0;
 const placesMax = new Set(AREAS.map((a) => a.name)).size;
+const town = new TownVoices(voice, world);
+ui.lots = world.lots;
+ui.minimap.build(world.landmarks, world.lots);
 
 // start position: on Sakura-zaka, looking down toward the crossing and the sea
 const START = { x: 30.6, z: -26, yaw: Math.PI, pitch: -0.03 };
@@ -226,11 +235,18 @@ function interact() {
   if (!it) return;
   switch (it.kind) {
     case 'vending': {
-      const d = DRINKS[Math.floor(Math.random() * DRINKS.length)];
+      const d = pick(DRINKS);
       state.drinks++;
       audio.sfx('vending');
       setTimeout(() => pad.rumble(0.35, 0.3, 140), 900);
-      ui.toast(`「${d}」を買った。ひんやりしておいしい。`);
+      // the roulette on the machine sometimes hits: one more drink
+      const lucky = Math.random() < 0.12;
+      ui.toast(tf('bought', { d }));
+      if (lucky) {
+        state.drinks++;
+        setTimeout(() => ui.toast(tf('lucky', { d: pick(DRINKS) })), 2600);
+      }
+      town.onInteract(it, { lucky });
       break;
     }
     case 'cat': {
@@ -240,7 +256,7 @@ function interact() {
       setTimeout(() => audio.sfx('purr'), 500);
       const first = !state.cats.has(c.name);
       state.cats.add(c.name);
-      ui.toast(first ? `${c.name}は気持ちよさそうに目を細めた。（ねこ ${state.cats.size}/${catSys.cats.length}）` : `${c.name}がごろごろ喉を鳴らしている。`);
+      ui.toast(first ? tf('catFirst', { c: c.name, n: state.cats.size, m: catSys.cats.length }) : tf('catAgain', { c: c.name }));
       break;
     }
     case 'shell':
@@ -248,7 +264,7 @@ function interact() {
       it.shell.mesh.visible = false;
       state.shells++;
       audio.sfx('pickup');
-      ui.toast(`きれいな貝がらを拾った。（${state.shells}/${shells.length}）`);
+      ui.toast(tf('shell', { n: state.shells, m: shells.length }));
       break;
     case 'bench':
       player.sit(it.sit);
@@ -264,17 +280,20 @@ function interact() {
       break;
     }
     case 'map':
+      town.onInteract(it);
       openMap();
       break;
     case 'sign':
       ui.toast(it.text);
       break;
     case 'shop':
-      ui.toast(it.shopKind === 'city' ? `${it.shop}。店内から明るい声が聞こえる。` : SHOP_LINES[it.shopKind] || 'のんびりした店先。');
+      ui.toast(it.shopKind === 'city' ? tf('cityShop', { s: it.shop }) : SHOP_LINES[it.shopKind] || 'のんびりした店先。');
       break;
     case 'konbini': {
       const lines = KONBINI_LINES[it.what] || KONBINI_LINES.shelf;
-      ui.toast(pick(lines));
+      const line = Math.floor(Math.random() * lines.length);
+      ui.toast(lines[line]);
+      town.onInteract(it, { line });
       audio.sfx(it.what === 'register' || it.what === 'drink' || it.what === 'onigiri' || it.what === 'sweets' ? 'register' : it.what === 'magazine' ? 'page' : 'ui');
       if (it.what === 'drink') state.drinks++;
       break;
@@ -282,29 +301,33 @@ function interact() {
     case 'cafe':
       ui.toast('桜ラテを注文した。ほんのり桜の香りがする。');
       audio.sfx('register');
+      town.onInteract(it);
       break;
     case 'book':
-      ui.toast(`${pick(BOOKS)}を手にとって、数ページめくった。`);
+      ui.toast(tf('book', { b: pick(BOOKS) }));
       audio.sfx('page');
       break;
     case 'library':
       ui.toast('「返却は2週間後です」——本を一冊借りた。');
       audio.sfx('beep');
+      town.onInteract(it);
       break;
     case 'mallshop':
-      ui.toast(`${it.shop}のショーウィンドウ。${it.sub}がきれいに並んでいる。`);
+      ui.toast(tf('mallShop', { s: it.shop, sub: it.sub }));
       break;
     case 'crepe':
       ui.toast('いちごクリームのクレープを買った。');
       audio.sfx('register');
+      town.onInteract(it);
       break;
     case 'gacha':
       audio.sfx('gacha');
-      setTimeout(() => ui.toast(`ガチャガチャ……「${pick(GACHA)}」が出た！`), 800);
+      setTimeout(() => ui.toast(tf('gacha', { g: pick(GACHA) })), 800);
       break;
     case 'ticket':
       audio.sfx('ticket');
       ui.toast('桜ヶ浜中央 → 汐見、180円のきっぷを買った。');
+      town.onInteract(it);
       break;
     case 'gate':
       audio.sfx('beep');
@@ -319,7 +342,23 @@ function interact() {
 // ---------------------------------------------------------------------------
 // modes
 // ---------------------------------------------------------------------------
-const volumes = { amb: 0.7, music: 0.45 };
+const volumes = { amb: 0.7, music: 0.45, voice: 0.8 };
+let minimapOn = true;
+try {
+  minimapOn = localStorage.getItem('sakura-minimap') !== '0';
+} catch {
+  /* storage unavailable */
+}
+ui.setMinimap(minimapOn);
+function toggleMinimap(v = !minimapOn) {
+  minimapOn = v;
+  ui.setMinimap(v);
+  try {
+    localStorage.setItem('sakura-minimap', v ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 function menuState() {
   return {
@@ -349,6 +388,7 @@ function startPlay() {
   if (state.mode !== 'title') return;
   audio.start();
   audio.setVolumes(volumes.amb, volumes.music);
+  voice.setVolume(volumes.voice);
   ui.enterGame();
   state.mode = 'play';
   player.enabled = true;
@@ -367,6 +407,7 @@ function startPlay() {
       : 'マウスで見回し、WASDで歩く。E でしらべる';
   setTimeout(() => ui.toast(hint), 1400);
   updateCounts();
+  town.onStart();
 }
 
 function openMenu() {
@@ -412,7 +453,7 @@ function cycleTime(dir) {
   });
   const next = PRESETS[(i + dir + PRESETS.length) % PRESETS.length];
   tod.setHour(next.hour);
-  ui.toast(`${next.label}になった`, 1.6);
+  ui.toast(tf('timeTo', { t: next.label }), 1.6);
 }
 
 // controller
@@ -436,6 +477,7 @@ pad.on('back', () => {
 });
 pad.on('jump', () => player.jump());
 pad.on('map', openMap);
+pad.on('minimap', () => toggleMinimap());
 pad.on('menu', openMenu);
 pad.on('time', cycleTime);
 pad.on('confirm', () => activateFocused(modalRoot()));
@@ -455,8 +497,14 @@ ui.on('time', (h) => {
 ui.on('flow', (v) => (tod.flowing = v));
 ui.on('volume', (k, v) => {
   volumes[k] = v;
-  audio.setVolumes(volumes.amb, volumes.music);
+  if (k === 'voice') voice.setVolume(v);
+  else audio.setVolumes(volumes.amb, volumes.music);
 });
+ui.on('subtitles', (v) => {
+  voice.subtitles = v;
+  if (!v) ui.hideSubtitle();
+});
+ui.on('minimap', (v) => toggleMinimap(v));
 ui.on('sens', (v) => (player.sensitivity = v));
 ui.on('outlines', (v) => (pipe.outlines = v));
 ui.on('quality', (q) => {
@@ -494,6 +542,7 @@ addEventListener('keydown', (e) => {
   if (state.mode !== 'play') return;
   if (e.code === 'KeyE' || e.code === 'Enter') interact();
   if (e.code === 'KeyM') openMap();
+  if (e.code === 'KeyN') toggleMinimap();
   if (e.code === 'KeyT') cycleTime(1);
   if (e.code === 'KeyH') document.getElementById('hud').classList.toggle('photo');
 });
@@ -541,6 +590,7 @@ let gust = 0, gustT = 4;
 let frames = 0;
 let lastTrainState = 'wait';
 let rumbleT = 0;
+let prevHour = tod.hour;
 const fwd = new THREE.Vector3();
 window.__info = { buildMs };
 
@@ -612,8 +662,11 @@ function frame() {
       state.lastArea = name;
     }
     ui.setCrosshair(player.pointerLocked);
+    ui.minimap.update(dt, { x: player.pos.x, z: player.pos.z, yaw: player.yaw });
   } else ui.setPrompt(null);
   ui.setClock(tod.label, tod.period.label, tod.hour);
+  const lastHour = prevHour;
+  prevHour = tod.hour;
   ui.update(dt);
 
   // audio
@@ -634,6 +687,21 @@ function frame() {
     const rz = Math.min(Math.max(cz, RIVER.zHead), 100), rx = Math.min(Math.max(cx, RIVER.x - RIVER.inner), RIVER.x + RIVER.inner);
     const river = { x: rx, y: 2, z: rz, d: Math.hypot(cx - rx, cz - rz), weir: WEIRS.some((w) => Math.abs(rz - w.z - 1) < 5) };
     for (const c of world.crosswalkSounds || []) c.walk = walkState(G.uTime.value, c.axis) === 'walk';
+    const room = state.mode === 'play' ? (world.indoorRects || []).find((r) => r.name && cx > r.x0 && cx < r.x1 && cz > r.z0 && cz < r.z1 && feet > r.y0 && feet < r.y1)?.name ?? null : null;
+    // voices read this frame's train / subway events before the soundscape consumes them
+    town.update(dt, {
+      play: state.mode === 'play',
+      x: cx,
+      y: camera.position.y,
+      z: cz,
+      under,
+      room,
+      hour: tod.hour,
+      dHour: tod.hour - lastHour,
+      train,
+      subway: world.subway,
+      crosswalks: world.crosswalkSounds,
+    });
     audio.update(dt, {
       x: cx,
       y: camera.position.y,
@@ -692,7 +760,7 @@ window.__setView = (cam, hour) => {
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, state, ui, startPlay, updateCrossings };
+window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, i18n: { tr, tf, setLang } };
 // debug: subway trains standing at the platform with doors open (?subway)
 if (params.has('subway') && world.subway) {
   for (const tr of world.subway.trains) {

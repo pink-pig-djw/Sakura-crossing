@@ -16,6 +16,12 @@
   color-scheme: light;
 }
 
+:root[lang='zh-CN'] {
+  --font-ui: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Zen Maru Gothic', system-ui, sans-serif;
+  --font-title: 'Noto Serif SC', 'Songti SC', 'SimSun', 'Zen Old Mincho', serif;
+  --font-label: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Zen Kaku Gothic New', sans-serif;
+}
+
 html,
 body {
   height: 100%;
@@ -157,6 +163,9 @@ kbd {
   font: 900 2.1rem/1.1 var(--font-title);
   letter-spacing: 0.08em;
   text-wrap: balance;
+}
+.title-h b {
+  font-weight: inherit;
 }
 .title-h span {
   margin-left: 0.6em;
@@ -600,6 +609,80 @@ kbd {
 
 #hud.photo {
   opacity: 0;
+}
+
+/* ---------- language switch ---------- */
+.title-panel .lang-switch {
+  display: flex;
+  gap: 0.4rem;
+  justify-self: start;
+}
+.lang-switch button {
+  font: 700 0.85rem var(--font-ui);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.35em 0.95em;
+  cursor: pointer;
+}
+.lang-switch button.on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.credits {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+/* ---------- minimap ---------- */
+.minimap {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  background: var(--paper-solid);
+  border: 3px solid rgba(255, 252, 246, 0.95);
+  box-shadow: var(--shadow);
+}
+@media (max-width: 560px), (max-height: 480px) {
+  .minimap {
+    width: 116px;
+    height: 116px;
+  }
+}
+
+/* ---------- voice subtitles ---------- */
+.subtitle {
+  position: absolute;
+  left: 50%;
+  bottom: max(calc(13vh + 58px), calc(env(safe-area-inset-bottom, 0px) + 148px));
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  max-width: min(90vw, 40rem);
+  padding: 0.45rem 1.1rem 0.55rem;
+  border-radius: 12px;
+  background: rgba(22, 28, 48, 0.62);
+  color: #fff;
+  text-align: center;
+  line-height: 1.55;
+  font-weight: 700;
+}
+.sub-who {
+  font: 700 0.7rem var(--font-label);
+  letter-spacing: 0.12em;
+  color: #ffc9d8;
+}
+.sub-who:empty {
+  display: none;
+}
+.sub-text {
+  font-size: 0.98rem;
+  text-wrap: balance;
 }
 
 /* ---------- controller ---------- */

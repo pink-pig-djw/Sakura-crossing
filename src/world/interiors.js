@@ -92,7 +92,7 @@ export function buildRoom(ctx, R) {
     }
   }
   ctx.colliders.addSurface(x0 - t, z0 - t, x1 + t, z1 + t, () => y, 1);
-  (ctx.indoorRects = ctx.indoorRects || []).push({ x0, x1, z0, z1, y0: y - 0.5, y1: y + h });
+  (ctx.indoorRects = ctx.indoorRects || []).push({ x0, x1, z0, z1, y0: y - 0.5, y1: y + h, name: R.name });
   // foundation
   let gmin = Infinity;
   for (const [x, z] of [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]) gmin = Math.min(gmin, groundH(x, z));
@@ -354,7 +354,7 @@ function buildKonbini(ctx, block, doors) {
   const K = { x0: 225.2, x1: 239.0, z0: 33.8, z1: 43.4 };
   const y = 3.32, h = 3.0;
   buildRoom(ctx, {
-    ...K, y, h, out: 0xf6f4ef, outPat: PAT.NONE, inC: 0xf7f6f2, floor: 0xe6e6e2, floorPat: PAT.TILE, ceil: 0xf6f6f4, parapet: 0.7,
+    name: 'konbini', ...K, y, h, out: 0xf6f4ef, outPat: PAT.NONE, inC: 0xf7f6f2, floor: 0xe6e6e2, floorPat: PAT.TILE, ceil: 0xf6f6f4, parapet: 0.7,
     open: {
       N: [{ a0: 225.6, a1: 234.4, yb: 0.12, yt: 2.5, kind: 'glass', pitch: 2.2 }, { a0: 234.6, a1: 236.6, yb: 0, yt: 2.3, kind: 'door' }, { a0: 236.8, a1: 238.6, yb: 0.12, yt: 2.5, kind: 'glass' }],
       E: [{ a0: 34.4, a1: 38.4, yb: 0.9, yt: 2.5, kind: 'glass' }],
@@ -501,7 +501,7 @@ function buildCafe(ctx, block, doors) {
   const y = 3.36, h = 3.1;
   const wood = 0x8a6448;
   buildRoom(ctx, {
-    ...C, y, h, out: 0xe9dcc4, outPat: PAT.SIDING, inC: 0xf3ead8, floor: 0x9a6e4a, floorPat: PAT.PLANKS, ceil: 0xe8dcc6, roof: false, sill: 0x7a5a40,
+    name: 'cafe', ...C, y, h, out: 0xe9dcc4, outPat: PAT.SIDING, inC: 0xf3ead8, floor: 0x9a6e4a, floorPat: PAT.PLANKS, ceil: 0xe8dcc6, roof: false, sill: 0x7a5a40,
     open: {
       W: [{ a0: 29.2, a1: 34.4, yb: 0.55, yt: 2.5, kind: 'glass', frame: wood, pitch: 1.3, transom: 1.5 }, { a0: 34.6, a1: 36.6, yb: 0, yt: 2.3, kind: 'door', frame: wood }, { a0: 36.8, a1: 42.0, yb: 0.55, yt: 2.5, kind: 'glass', frame: wood, pitch: 1.3, transom: 1.5 }],
       N: [{ a0: 203.0, a1: 210.8, yb: 0.7, yt: 2.5, kind: 'glass', frame: wood, pitch: 1.3 }],
@@ -670,7 +670,7 @@ function buildMall(ctx, block, doors) {
   const D = 3.2; // depth of the shop units along the walls (galleries stay ~3 m wide)
   const entZ = [-5.4, -2.8];
   buildRoom(ctx, {
-    ...M, y: y1, h: H, out: 0xf2eee6, outPat: PAT.SEAM, inC: 0xf6f3ec, floor: 0xe9e4da, floorPat: PAT.TILE, ceil: false, roof: false,
+    name: 'mall', ...M, y: y1, h: H, out: 0xf2eee6, outPat: PAT.SEAM, inC: 0xf6f3ec, floor: 0xe9e4da, floorPat: PAT.TILE, ceil: false, roof: false,
     open: {
       W: [{ a0: -6.4, a1: -4.4, yb: 0, yt: 2.6, kind: 'door' }, { a0: -3.8, a1: -1.8, yb: 0, yt: 2.6, kind: 'door' }, { a0: -1.6, a1: 9.6, yb: 0.1, yt: H - 0.6, kind: 'glass', pitch: 2.0, transom: 4.6 }],
       S: [{ a0: 268.0, a1: 283.0, yb: f1 + 0.9, yt: H - 0.8, kind: 'glass', pitch: 2.5 }],
@@ -951,7 +951,7 @@ function buildLibrary(ctx, block, doors) {
   const y = gmax + 0.2, h = 5.2;
   const doorZ = -74.6;
   buildRoom(ctx, {
-    ...L, y, h, out: 0xf2f0ea, outPat: PAT.NONE, inC: 0xf7f4ec, floor: 0xb08a5a, floorPat: PAT.PLANKS, ceil: 0xf3efe6, parapet: 0.6, roofC: 0xc9c5bb,
+    name: 'library', ...L, y, h, out: 0xf2f0ea, outPat: PAT.NONE, inC: 0xf7f4ec, floor: 0xb08a5a, floorPat: PAT.PLANKS, ceil: 0xf3efe6, parapet: 0.6, roofC: 0xc9c5bb,
     open: {
       E: [{ a0: doorZ - 1.0, a1: doorZ + 1.0, yb: 0, yt: 2.4, kind: 'door' }, { a0: -73.2, a1: -59.0, yb: 0.3, yt: h - 0.6, kind: 'glass', pitch: 1.6, transom: 2.6 }],
       S: [{ a0: 226.4, a1: 240.2, yb: 0.3, yt: h - 0.6, kind: 'glass', pitch: 1.6, transom: 2.6 }],

@@ -821,9 +821,8 @@ class SubwayTrain {
         this.timer -= dt;
         if (this.timer < 22 && this.timer > 7) this.open = Math.min(1, this.open + dt / 1.6);
         else this.open = Math.max(0, this.open - dt / 1.6);
-        if (Math.abs(this.timer - 21.5) < dt) this.events.push('doorsOpen');
-        if (Math.abs(this.timer - 9.5) < dt) this.events.push('melody');
-        if (Math.abs(this.timer - 7) < dt) this.events.push('doorsClose');
+        // each cue fires once, in the frame the countdown passes it
+        for (const [at, e] of [[21.5, 'doorsOpen'], [9.5, 'melody'], [7, 'doorsClose']]) if (this.timer + dt >= at && this.timer < at) this.events.push(e);
         if (this.timer <= 0) {
           this.state = 'depart';
           this.events.push('depart');
