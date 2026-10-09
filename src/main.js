@@ -1,0 +1,564 @@
+import './style.css';
+import * as THREE from 'three';
+import { SunLight } from 'three/addons/lights/SunLight.js';
+import { G } from './render/materials.js';
+import { createSky } from './render/sky.js';
+import { createClouds } from './render/clouds.js';
+import { Pipeline } from './render/pipeline.js';
+import { TimeOfDay, PRESETS } from './systems/timeofday.js';
+import { Player } from './systems/player.js';
+import { AudioEngine } from './systems/audio.js';
+import { buildWorld } from './world/world.js';
+import { updateCrossings } from './world/railway.js';
+import { createPetals, createCats, createBirds, createShells, createSmallAnimations } from './world/life.js';
+import { areaAt, AREAS, shoreZ, STATION } from './world/layout.js';
+import { UI } from './ui/ui.js';
+
+const params = new URLSearchParams(location.search);
+const debug = params.has('cam') || params.has('still');
+
+// ---------------------------------------------------------------------------
+// renderer / scene
+// ---------------------------------------------------------------------------
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.info.autoReset = false;
+
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const QUALITY = {
+  low: { ratio: 0.8, maxRatio: 1, msaa: 0, shadow: 1024, petals: 1800 },
+  medium: { ratio: 1, maxRatio: 1.25, msaa: 4, shadow: 2048, petals: 3800 },
+  high: { ratio: 1, maxRatio: 1.75, msaa: 4, shadow: 2048, petals: 5200 },
+};
+let quality = isTouch ? 'low' : 'medium';
+try {
+  const saved = localStorage.getItem('sakura-quality');
+  if (saved && QUALITY[saved]) quality = saved;
+} catch {
+  /* storage unavailable */
+}
+if (QUALITY[params.get('q')]) quality = params.get('q');
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 5000);
+camera.rotation.order = 'YXZ';
+
+const sun = new SunLight(0xffffff, 1);
+sun.castShadow = true;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 220;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.04;
+sun.shadow.radius = 1.5;
+scene.add(sun);
+
+const tod = new TimeOfDay(sun);
+tod.setHour(params.has('t') ? parseFloat(params.get('t')) : 10.4);
+scene.add(createSky());
+const clouds = createClouds();
+scene.add(clouds);
+
+const pipe = new Pipeline(renderer, { msaa: QUALITY[quality].msaa });
+let petals = null;
+
+function applyQuality(q) {
+  quality = q;
+  const Q = QUALITY[q];
+  const ratio = Math.min(devicePixelRatio * Q.ratio, Q.maxRatio);
+  renderer.setPixelRatio(ratio);
+  renderer.setSize(innerWidth, innerHeight, false);
+  pipe.msaa = Q.msaa;
+  pipe.width = 0;
+  pipe.setSize(innerWidth, innerHeight, ratio);
+  if (sun.shadow.mapSize.x !== Q.shadow) {
+    sun.shadow.mapSize.set(Q.shadow, Q.shadow);
+    if (sun.shadow.map) {
+      sun.shadow.map.dispose();
+      sun.shadow.map = null;
+    }
+  }
+  if (petals) petals.geometry.instanceCount = Math.min(Q.petals, petals.userData.max);
+  try {
+    localStorage.setItem('sakura-quality', q);
+  } catch {
+    /* storage unavailable */
+  }
+}
+applyQuality(quality);
+
+// ---------------------------------------------------------------------------
+// UI + build world
+// ---------------------------------------------------------------------------
+const ui = new UI();
+const audio = new AudioEngine();
+const state = {
+  mode: 'loading', // loading | title | play | menu | map | omikuji
+  visited: new Set(),
+  cats: new Set(),
+  shells: 0,
+  drinks: 0,
+  luck: null,
+  trains: 0,
+  lastArea: null,
+};
+
+ui.setProgress(0.02, '町をつくっています');
+const t0 = performance.now();
+const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l) });
+const buildMs = Math.round(performance.now() - t0);
+const player = new Player(camera, world.colliders, canvas);
+petals = createPetals(world.petalEmitters, QUALITY.high.petals);
+petals.userData.max = QUALITY.high.petals;
+petals.geometry.instanceCount = QUALITY[quality].petals;
+scene.add(petals);
+const catSys = createCats(world, world.materials, 7);
+const birds = createBirds(world.materials);
+scene.add(birds);
+const shells = createShells(world, world.materials);
+const anims = createSmallAnimations(world, world.materials);
+const placesMax = new Set(AREAS.map((a) => a.name)).size;
+
+// start position: on Sakura-zaka, looking down toward the crossing and the sea
+const START = { x: 30.6, z: -26, yaw: Math.PI, pitch: -0.03 };
+player.place(START.x, START.z, START.yaw, START.pitch);
+
+// keep the walk going across live updates of the published page
+const hot = window.claude?.hot;
+hot?.snapshot?.(() => ({ x: player.pos.x, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, hour: tod.hour }));
+const restore = hot?.data;
+if (restore && typeof restore.x === 'number') {
+  player.place(restore.x, restore.z, restore.yaw, restore.pitch);
+  if (typeof restore.hour === 'number') tod.setHour(restore.hour);
+}
+
+ui.ready();
+state.mode = 'title';
+
+// ---------------------------------------------------------------------------
+// interactions
+// ---------------------------------------------------------------------------
+const DRINKS = ['ラムネ', '麦茶', 'ほうじ茶', 'さくらソーダ', 'いちごミルク', 'コーンポタージュ', 'おしるこ', '緑茶', 'カフェオレ', 'みかんジュース'];
+const FORTUNES = [
+  ['大吉', '願いごと　思うままに叶う。\n待ち人　春風とともに来る。'],
+  ['中吉', '旅立ち　海の見える道が吉。\n失せ物　桜の木の下にあり。'],
+  ['小吉', '学問　こつこつと実を結ぶ。\n恋愛　焦らず待つがよし。'],
+  ['吉', '健康　よく歩き、よく眠れ。\n商い　ゆっくりと上向く。'],
+  ['末吉', '今は種をまく時。\n花は遅れて咲くもの。'],
+];
+const SHOP_LINES = {
+  wagashi: '店先に桜もちが並んでいる。甘い香りがする。',
+  cafe: 'コーヒーのいい匂い。窓際の席が空いている。',
+  yorozuya: '「いらっしゃい」と奥からおばあさんの声がした。',
+  bakery: '焼きたてのメロンパンが並んでいる。',
+  florist: 'チューリップとフリージアのバケツが並ぶ。',
+  fish: '今朝とれたシラスが店頭に並んでいる。',
+  books: '店先のワゴンに古い文庫本が並んでいる。',
+  grocer: '春キャベツと新玉ねぎが安い。',
+  ramen: '湯気の向こうからスープの香りがする。',
+  dagashi: '色とりどりの駄菓子。くじ引きもある。',
+  barber: 'サインポールがくるくる回っている。',
+  cleaning: '「本日仕上がり」の札がかかっている。',
+  liquor: '地酒の一升瓶がずらりと並ぶ。',
+  pharmacy: 'カエルの人形が店先でこちらを見ている。',
+  watch: '古い柱時計がゆっくり時を刻んでいる。',
+  tofu: '水槽の中で豆腐が静かに冷えている。',
+  stationery: 'ノートと色鉛筆。少しだけ文化祭の匂い。',
+  closed: '「貸店舗」の貼り紙。シャッターに花びらが一枚。',
+};
+
+let focus = null;
+function findInteractable() {
+  let best = null, bd = 1e9;
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  for (const it of world.interactables) {
+    if (it.kind === 'shell' && it.shell.taken) continue;
+    const dx = it.x - player.pos.x, dz = it.z - player.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > it.r + 0.6) continue;
+    const facing = d < 0.8 ? 1 : (dx * fx + dz * fz) / d;
+    if (facing < 0.25) continue;
+    const score = d - facing;
+    if (score < bd) {
+      bd = score;
+      best = it;
+    }
+  }
+  return best;
+}
+
+function updateCounts() {
+  ui.setCounts({ shells: state.shells, shellsMax: shells.length, cats: state.cats.size, catsMax: catSys.cats.length });
+}
+
+function interact() {
+  if (state.mode !== 'play') return;
+  if (player.sitting) {
+    player.stand();
+    return;
+  }
+  const it = focus;
+  if (!it) return;
+  switch (it.kind) {
+    case 'vending': {
+      const d = DRINKS[Math.floor(Math.random() * DRINKS.length)];
+      state.drinks++;
+      audio.sfx('vending');
+      ui.toast(`「${d}」を買った。ひんやりしておいしい。`);
+      break;
+    }
+    case 'cat': {
+      const c = it.cat;
+      c.petted = 3;
+      audio.sfx('meow');
+      setTimeout(() => audio.sfx('purr'), 500);
+      const first = !state.cats.has(c.name);
+      state.cats.add(c.name);
+      ui.toast(first ? `${c.name}は気持ちよさそうに目を細めた。（ねこ ${state.cats.size}/${catSys.cats.length}）` : `${c.name}がごろごろ喉を鳴らしている。`);
+      break;
+    }
+    case 'shell':
+      it.shell.taken = true;
+      it.shell.mesh.visible = false;
+      state.shells++;
+      audio.sfx('pickup');
+      ui.toast(`きれいな貝がらを拾った。（${state.shells}/${shells.length}）`);
+      break;
+    case 'bench':
+      player.sit(it.sit);
+      audio.sfx('sit');
+      ui.toast('ひと休み。移動するか E で立ち上がる。', 2.6);
+      break;
+    case 'shrine': {
+      audio.sfx('suzu');
+      setTimeout(() => audio.sfx('clap'), 700);
+      const f = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
+      state.luck = f[0];
+      setTimeout(() => openOmikuji(f), 1300);
+      break;
+    }
+    case 'map':
+      openMap();
+      break;
+    case 'sign':
+      ui.toast(it.text);
+      break;
+    case 'shop':
+      ui.toast(SHOP_LINES[it.shopKind] || 'のんびりした店先。');
+      break;
+    default:
+      break;
+  }
+  updateCounts();
+}
+
+// ---------------------------------------------------------------------------
+// modes
+// ---------------------------------------------------------------------------
+const volumes = { amb: 0.7, music: 0.45 };
+
+function menuState() {
+  return {
+    hour: tod.hour,
+    flowing: tod.flowing,
+    quality,
+    visited: state.visited.size,
+    placesMax,
+    cats: state.cats.size,
+    catsMax: catSys.cats.length,
+    shells: state.shells,
+    shellsMax: shells.length,
+    drinks: state.drinks,
+    luck: state.luck,
+    trains: state.trains,
+  };
+}
+
+function lockPointer() {
+  if (!isTouch) player.requestLock();
+}
+function releasePointer() {
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+function startPlay() {
+  if (state.mode !== 'title') return;
+  audio.start();
+  audio.setVolumes(volumes.amb, volumes.music);
+  ui.enterGame();
+  state.mode = 'play';
+  player.enabled = true;
+  player.applyCamera();
+  lockPointer();
+  const a = areaAt(player.pos.x, player.pos.z);
+  if (a) {
+    state.lastArea = a.name;
+    state.visited.add(a.name);
+    ui.showArea(a);
+  }
+  setTimeout(() => ui.toast(isTouch ? '左下のスティックで歩く・右側をなぞって見回す' : 'マウスで見回し、WASDで歩く。E でしらべる'), 1400);
+  updateCounts();
+}
+
+function openMenu() {
+  if (state.mode !== 'play') return;
+  state.mode = 'menu';
+  player.enabled = false;
+  releasePointer();
+  ui.openMenu(menuState());
+}
+function backToPlay() {
+  ui.closeMenu();
+  ui.closeMap();
+  ui.closeOmikuji();
+  state.mode = 'play';
+  player.enabled = true;
+  lockPointer();
+}
+function openMap() {
+  if (state.mode !== 'play' && state.mode !== 'menu') return;
+  state.mode = 'map';
+  player.enabled = false;
+  releasePointer();
+  ui.closeMenu();
+  ui.openMap({ x: player.pos.x, z: player.pos.z, yaw: player.yaw }, world.landmarks);
+}
+function openOmikuji(f) {
+  state.mode = 'omikuji';
+  player.enabled = false;
+  releasePointer();
+  ui.openOmikuji(f[0], f[1]);
+}
+
+ui.on('start', startPlay);
+ui.on('resume', backToPlay);
+ui.on('menu', () => (state.mode === 'menu' ? backToPlay() : openMenu()));
+ui.on('map', openMap);
+ui.on('closeMap', backToPlay);
+ui.on('closeOmikuji', backToPlay);
+ui.on('time', (h) => {
+  tod.setHour(h);
+  ui.syncMenu(menuState());
+});
+ui.on('flow', (v) => (tod.flowing = v));
+ui.on('volume', (k, v) => {
+  volumes[k] = v;
+  audio.setVolumes(volumes.amb, volumes.music);
+});
+ui.on('sens', (v) => (player.sensitivity = v));
+ui.on('outlines', (v) => (pipe.outlines = v));
+ui.on('quality', (q) => {
+  applyQuality(q);
+  ui.syncMenu(menuState());
+});
+ui.on('stick', (x, y) => player.setTouchMove(x, y));
+ui.on('look', (dx, dy) => {
+  if (state.mode === 'play') player.addLook(dx, dy);
+});
+ui.on('interact', interact);
+ui.on('jump', () => player.jump());
+ui.on('runToggle', (v) => (player.run = v));
+
+canvas.addEventListener('click', () => {
+  if (state.mode === 'play' && !player.pointerLocked) lockPointer();
+});
+
+addEventListener('keydown', (e) => {
+  if (state.mode === 'title' && (e.code === 'Enter' || e.code === 'Space')) {
+    e.preventDefault();
+    startPlay();
+    return;
+  }
+  if (e.code === 'Escape') {
+    if (state.mode === 'map' || state.mode === 'omikuji' || state.mode === 'menu') backToPlay();
+    else if (state.mode === 'play' && !player.pointerLocked) openMenu();
+    return;
+  }
+  if (state.mode === 'map' && e.code === 'KeyM') {
+    backToPlay();
+    return;
+  }
+  if (state.mode !== 'play') return;
+  if (e.code === 'KeyE' || e.code === 'Enter') interact();
+  if (e.code === 'KeyM') openMap();
+  if (e.code === 'KeyT') {
+    const idx = PRESETS.findIndex((p) => p.hour > tod.hour + 0.05);
+    const next = PRESETS[idx === -1 ? 0 : idx];
+    tod.setHour(next.hour);
+    ui.toast(`${next.label}になった`, 1.6);
+  }
+  if (e.code === 'KeyH') document.getElementById('hud').classList.toggle('photo');
+});
+
+// Esc (or the browser) released pointer lock while walking: show the menu
+let hadLock = false;
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) hadLock = true;
+  else if (hadLock && state.mode === 'play') openMenu();
+});
+
+function onResize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  applyQuality(quality);
+  world.wireMaterial?.resolution.set(innerWidth, innerHeight);
+}
+addEventListener('resize', onResize);
+world.wireMaterial?.resolution.set(innerWidth, innerHeight);
+
+player.onStep = (surface, running) => audio.step(surface, running);
+player.onLand = () => audio.step('hard', true);
+
+// ---------------------------------------------------------------------------
+// title attract camera: a slow glide down Sakura-zaka toward the sea
+// ---------------------------------------------------------------------------
+function attract(t) {
+  const u = (t * 0.011) % 1;
+  const z = -72 + u * 96;
+  const x = 30.4 + Math.sin(t * 0.05) * 1.0;
+  const g = world.colliders.groundAt(x, z);
+  camera.position.set(x, g + 1.9 + Math.sin(t * 0.1) * 0.25, z);
+  camera.rotation.set(-0.015 + Math.sin(t * 0.07) * 0.02, Math.PI + Math.sin(t * 0.04) * 0.1, 0, 'YXZ');
+}
+
+// ---------------------------------------------------------------------------
+// main loop
+// ---------------------------------------------------------------------------
+let lastNow = performance.now();
+let areaCheck = 0;
+let gust = 0, gustT = 4;
+let frames = 0;
+let lastTrainState = 'wait';
+const fwd = new THREE.Vector3();
+window.__info = { buildMs };
+
+function frame() {
+  const now = performance.now();
+  const dt = Math.min((now - lastNow) / 1000, 0.1);
+  lastNow = now;
+  const t = (G.uTime.value += dt);
+
+  if (state.mode === 'title') {
+    tod.update(dt * 0.25);
+    if (!debug) attract(t);
+  } else if (state.mode !== 'loading') {
+    if (state.mode === 'play') tod.update(dt);
+    player.update(state.mode === 'play' ? dt : 0);
+  }
+
+  // town life
+  const train = world.train;
+  train.update(dt, state.mode === 'play' ? player.pos : null);
+  if (lastTrainState === 'depart' && train.state === 'wait') state.trains++;
+  lastTrainState = train.state;
+  updateCrossings(world.crossings, train, dt, t);
+  for (const u of world.updaters) u(t, dt);
+  catSys.update(t, dt, player.pos);
+  birds.userData.update(t);
+  anims.update(t, tod.hour);
+  clouds.userData.update(camera, t);
+  G.uTide.value = 0.06 * Math.sin(t * 0.42) + 0.025 * Math.sin(t * 1.13);
+  gustT -= dt;
+  if (gustT <= 0) {
+    gust = Math.random() < 0.35 ? 1 : 0;
+    gustT = gust ? 3 + Math.random() * 3 : 6 + Math.random() * 10;
+  }
+  const gu = petals.material.uniforms.uGust;
+  gu.value += (gust - gu.value) * Math.min(1, dt * 0.8);
+
+  if (state.mode === 'play') {
+    focus = findInteractable();
+    ui.setPrompt(player.sitting ? '立ち上がる' : focus ? focus.label : null);
+    areaCheck -= dt;
+    if (areaCheck <= 0) {
+      areaCheck = 0.4;
+      const a = areaAt(player.pos.x, player.pos.z);
+      const name = a ? a.name : null;
+      if (name && name !== state.lastArea) {
+        ui.showArea(a);
+        state.visited.add(name);
+      }
+      state.lastArea = name;
+    }
+    ui.setCrosshair(player.pointerLocked);
+  } else ui.setPrompt(null);
+  ui.setClock(tod.label, tod.period.label, tod.hour);
+  ui.update(dt);
+
+  // audio
+  if (audio.started) {
+    player.forward(fwd);
+    if (state.mode === 'title') fwd.set(0, 0, 1);
+    let chime = null, cd = 30;
+    for (const s of world.soundSpots) {
+      const d = Math.hypot(s.x - camera.position.x, s.z - camera.position.z);
+      if (d < cd) {
+        cd = d;
+        chime = s;
+      }
+    }
+    audio.update(dt, {
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+      fx: fwd.x,
+      fz: fwd.z,
+      shoreZ: shoreZ(camera.position.x),
+      night: G.uNight.value,
+      inTown: camera.position.z < 60,
+      crossings: world.crossings,
+      train,
+      chime,
+      station: { x: (STATION.platX0 + STATION.platX1) / 2, z: STATION.platZ0 },
+    });
+  }
+
+  // render
+  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value);
+  renderer.info.reset();
+  pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
+  frames++;
+  if (frames === 3) {
+    window.__info.calls = renderer.info.render.calls;
+    window.__info.tris = renderer.info.render.triangles;
+    window.__ready = true;
+    if (params.has('still')) return;
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------------------
+// debug hooks for automated screenshots (?cam=x,y,z,yawDeg,pitchDeg&still)
+// ---------------------------------------------------------------------------
+function setCam(str) {
+  const [x, y, z, yaw, pitch] = str.split(',').map(Number);
+  const g = world.colliders.groundAt(x, z);
+  camera.position.set(x, y + g, z);
+  camera.rotation.set(THREE.MathUtils.degToRad(pitch || 0), THREE.MathUtils.degToRad(yaw || 0), 0, 'YXZ');
+}
+if (params.get('cam')) setCam(params.get('cam'));
+window.__setView = (cam, hour) => {
+  document.getElementById('title').hidden = true;
+  setCam(cam);
+  if (hour !== undefined && !Number.isNaN(hour)) tod.setHour(hour);
+  tod.update(0);
+  clouds.userData.update(camera, G.uTime.value);
+  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value);
+  renderer.info.reset();
+  pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
+  pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
+  return true;
+};
+window.__game = { world, player, tod, state, ui, startPlay };
+// debug: place the train (?train=x[,dir]) for screenshots
+if (params.get('train')) {
+  const [tx, td] = params.get('train').split(',').map(Number);
+  const tr = world.train;
+  tr.dir = td || -1;
+  tr.state = 'depart';
+  tr.v = 0.001;
+  tr.head = tx;
+  tr.place();
+}
+frame();
