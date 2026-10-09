@@ -652,7 +652,7 @@ function frame() {
   world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
-  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head: camera.position } : null);
+  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head: camera.position, sitting: player.sitting } : null, tod.hour);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);

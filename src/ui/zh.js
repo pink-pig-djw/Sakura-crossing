@@ -254,8 +254,8 @@ export const ZH = {
   '町の放送': '町内广播',
   '信号機': '信号灯',
   // residents
-  '春香': '春香',
-  '春香に話しかける': '和春香聊聊',
+  '芽衣': '芽衣',
+  '芽衣に話しかける': '和芽衣聊聊',
 };
 
 // Templated strings with values ({x}); each entry is [japanese, chinese].

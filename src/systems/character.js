@@ -3,10 +3,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { createCharacterMaterial } from '../render/materials.js';
 
-// A VRM character in the town's style, driven by retargeted motion capture.
+// A VRM character in the town's style, driven by retargeted motion capture
+// (tools/anim/mixamo.mjs).
 //
 // Layers, applied every frame on the normalized humanoid rig:
-//   1. AnimationMixer: mocap clips (idle pose, walk cycle, bow, wave, nod, guide) with
+//   1. AnimationMixer: motion clips (idles, the walk cycle, gestures, sitting down) with
 //      cross-fades
 //   2. procedural: breathing, head/neck turning toward a look target (eyes follow through
 //      the VRM look-at), blinking and expressions
@@ -27,36 +28,24 @@ export async function loadAsset(path) {
 
 const decode = (b64, Type) => new Type(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer);
 
-// ideal T-pose bone axis of each retargeted bone (must match tools/anim/retarget.mjs)
-const AXIS = {
-  hips: [0, 1, 0], spine: [0, 1, 0], chest: [0, 1, 0], neck: [0, 1, 0], head: [0, 1, 0],
-  leftShoulder: [1, 0, 0], leftUpperArm: [1, 0, 0], leftLowerArm: [1, 0, 0], leftHand: [1, 0, 0],
-  rightShoulder: [-1, 0, 0], rightUpperArm: [-1, 0, 0], rightLowerArm: [-1, 0, 0], rightHand: [-1, 0, 0],
-  leftUpperLeg: [0, -1, 0], leftLowerLeg: [0, -1, 0], leftFoot: [0, 0, 1], leftToes: [0, 0, 1],
-  rightUpperLeg: [0, -1, 0], rightLowerLeg: [0, -1, 0], rightFoot: [0, 0, 1], rightToes: [0, 0, 1],
-};
 const CHILD = {
-  hips: 'spine', spine: 'chest', chest: 'neck', neck: 'head',
+  hips: 'spine', spine: 'chest', chest: 'upperChest', upperChest: 'neck', neck: 'head',
   leftShoulder: 'leftUpperArm', leftUpperArm: 'leftLowerArm', leftLowerArm: 'leftHand', leftHand: 'leftMiddleProximal',
   rightShoulder: 'rightUpperArm', rightUpperArm: 'rightLowerArm', rightLowerArm: 'rightHand', rightHand: 'rightMiddleProximal',
   leftUpperLeg: 'leftLowerLeg', leftLowerLeg: 'leftFoot', leftFoot: 'leftToes',
   rightUpperLeg: 'rightLowerLeg', rightLowerLeg: 'rightFoot', rightFoot: 'rightToes',
 };
-// relaxed hands: [bone, curl (rad)] — fingers bend toward the palm
-const FINGERS = [
-  ['IndexProximal', 0.22], ['IndexIntermediate', 0.32], ['IndexDistal', 0.22],
-  ['MiddleProximal', 0.28], ['MiddleIntermediate', 0.4], ['MiddleDistal', 0.26],
-  ['RingProximal', 0.34], ['RingIntermediate', 0.45], ['RingDistal', 0.28],
-  ['LittleProximal', 0.4], ['LittleIntermediate', 0.5], ['LittleDistal', 0.3],
-];
-
-// The capture actor's arms clear a wider body than a slim anime figure's: bring hanging
-// arms in (rotation about the torso's forward axis on the local rotation, scaled by how far
-// the arm hangs down, so raised arms are left alone)
-const ADDUCT = { leftUpperArm: -0.3, rightUpperArm: 0.3, leftLowerArm: -0.14, rightLowerArm: 0.14, leftHand: -0.18, rightHand: 0.18 };
+for (const s of ['left', 'right']) {
+  for (const f of ['Index', 'Middle', 'Ring', 'Little']) {
+    CHILD[`${s}${f}Proximal`] = `${s}${f}Intermediate`;
+    CHILD[`${s}${f}Intermediate`] = `${s}${f}Distal`;
+  }
+  CHILD[`${s}ThumbMetacarpal`] = `${s}ThumbProximal`;
+  CHILD[`${s}ThumbProximal`] = `${s}ThumbDistal`;
+}
 
 // bones the procedural layers touch (breathing, looking, ground fitting)
-const PROCEDURAL = ['hips', 'chest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot'];
+const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot'];
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -65,8 +54,9 @@ function materialFor(m) {
   const name = m.name || '';
   const map = m.map || m.uniforms?.map?.value || null;
   const shade = m.shadeColorFactor ? m.shadeColorFactor.clone() : new THREE.Color(0xb9b4d8);
-  const base = { map, name: 'char:' + name, side: THREE.DoubleSide };
-  if (/EYE|FaceMouth|FaceEyeline|FaceBrow/.test(name)) {
+  // cut-out (MASK) and blended (BLEND) parts as the model sets them up
+  const base = { map, name: 'char:' + name, side: THREE.DoubleSide, alphaTest: m.alphaTest || 0, transparent: !!m.transparent };
+  if (/EYE|FaceMouth|FaceEyeline|FaceEyelash|FaceBrow/.test(name)) {
     // eyes, lashes, brows and mouth: flat, no ink lines, no cast shadows on them
     return createCharacterMaterial({ ...base, unlit: /Highlight/.test(name) ? 1 : 0.7, outline: 0, selfShadow: 0, soft: 0.3 });
   }
@@ -91,6 +81,12 @@ export class Character {
       o.castShadow = true;
       o.receiveShadow = true;
       o.frustumCulled = false;
+      // the town draws ink lines in post: drop MToon's inverted-hull outline pass
+      if (Array.isArray(o.material) && o.material.some((m) => m.isOutline)) {
+        o.material = o.material.find((m) => !m.isOutline);
+        o.geometry.clearGroups();
+      }
+      if (o.material.transparent) o.castShadow = false;
       o.material = Array.isArray(o.material) ? o.material.map(materialFor) : materialFor(o.material);
     });
     const H = vrm.humanoid;
@@ -121,26 +117,19 @@ export class Character {
     this.rest = rest;
     this.hipsHeight = rest.hips.y;
     this.ankleHeight = (rest.leftFoot.y + rest.rightFoot.y) / 2;
-    // per-bone correction: the model's own rest bone direction -> the ideal axis
+    // per-bone correction: the model's own rest bone direction -> the motion file's ideal
+    // T-pose bone axis
+    const AXIS = motions.axes;
     this.D = {};
     for (const b of Object.keys(AXIS)) {
-      const c = CHILD[b] && (rest[CHILD[b]] ? CHILD[b] : b === 'chest' && rest.upperChest ? 'upperChest' : null);
-      const ideal = new THREE.Vector3(...AXIS[b]);
-      if (!rest[b] || !c) {
-        this.D[b] = new THREE.Quaternion();
-        continue;
-      }
-      const dir = rest[c].clone().sub(rest[b]).normalize();
-      this.D[b] = new THREE.Quaternion().setFromUnitVectors(dir, ideal);
-    }
-    this.Dinv = Object.fromEntries(Object.entries(this.D).map(([b, q]) => [b, q.clone().invert()]));
-    // relaxed fingers and thumbs (never animated by the clips)
-    for (const side of ['left', 'right']) {
-      const s = side === 'left' ? -1 : 1;
-      for (const [f, a] of FINGERS) this.node(side + f)?.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), s * a);
-      this.node(side + 'ThumbMetacarpal')?.quaternion.setFromEuler(new THREE.Euler(0, -s * 0.35, s * 0.1));
-      this.node(side + 'ThumbProximal')?.quaternion.setFromEuler(new THREE.Euler(0, -s * 0.25, 0));
-      this.node(side + 'ThumbDistal')?.quaternion.setFromEuler(new THREE.Euler(0, -s * 0.2, 0));
+      this.D[b] = new THREE.Quaternion();
+      if (!rest[b]) continue;
+      const c = CHILD[b] && (rest[CHILD[b]] ? CHILD[b] : b === 'chest' && rest.neck ? 'neck' : null);
+      let dir;
+      if (c) dir = rest[c].clone().sub(rest[b]);
+      else if (/Distal$/.test(b) && this.parentOf[b]) dir = rest[b].clone().sub(rest[this.parentOf[b]]); // finger tips: along the last joint
+      else continue;
+      this.D[b].setFromUnitVectors(dir.normalize(), new THREE.Vector3(...AXIS[b]));
     }
 
     // clips
@@ -149,16 +138,14 @@ export class Character {
     this.info = {};
     for (const [name, c] of Object.entries(motions.clips)) {
       this.clips[name] = this._buildClip(name, c, motions);
-      this.info[name] = { speed: c.speed * (this.hipsHeight / c.hipsHeight), loop: c.loop };
+      // reps: a short cycle (a wave of the hand) played a few times as a one-shot
+      this.info[name] = { speed: c.speed * (this.hipsHeight / c.hipsHeight), loop: c.loop && !c.reps, reps: c.reps || 1 };
     }
-    // idle: the actor standing at ease before a take (breathing is added on top)
-    this.clips.idle = this._poseClip('idle', this.clips.stand, 0);
-    this.info.idle = { speed: 0, loop: true };
     this.actions = {};
     for (const [n, clip] of Object.entries(this.clips)) {
       const a = this.mixer.clipAction(clip);
       if (!this.info[n].loop) {
-        a.setLoop(THREE.LoopOnce, 1);
+        a.setLoop(this.info[n].reps > 1 ? THREE.LoopRepeat : THREE.LoopOnce, this.info[n].reps);
         a.clampWhenFinished = true;
       }
       this.actions[n] = a;
@@ -178,10 +165,26 @@ export class Character {
     this.blinkT = 2 + Math.random() * 3;
     this.blink = 0;
     this.blinkPhase = -1;
-    this.mood = { happy: 0, relaxed: 0.25 };
-    this.moodTarget = { happy: 0, relaxed: 0.25 };
+    this.mood = { happy: 0, relaxed: 0.25, sad: 0, surprised: 0 };
+    this.moodTarget = { ...this.mood };
     this.mouth = 0;
     this.ground = opts.ground || (() => 0);
+    // sitting on something higher than the clip's seat: { lift } (m), the hips rise by up to
+    // that much as they come down, the feet stay on the ground
+    this.seat = null;
+    const sit = motions.clips.sit, sd = motions.clips.sitDown;
+    this.sitHips = sit ? (decode(sit.hips, Int16Array)[1] / 10000) * (this.hipsHeight / sit.hipsHeight) : 0;
+    // skirt spring chains (VRoid names): seated, the front and sides drape forward over the lap
+    // instead of being shoved aside by the thighs
+    this.skirt = [...(vrm.springBoneManager?.joints ?? [])]
+      .filter((j) => /_Skirt(Front|Side)/.test(j.bone?.name || '') && !/Coat/.test(j.bone.name))
+      .map((j) => ({ j, front: /Front/.test(j.bone.name), power: j.settings.gravityPower, stiff: j.settings.stiffness, dir: j.settings.gravityDir.clone() }));
+    this.seatedness = 0;
+    // how far back sitting down takes the hips (the clip faces +Z)
+    if (sd) {
+      const h = decode(sd.hips, Int16Array), n = sd.frames;
+      this.sitBack = ((h[2] - h[(n - 1) * 3 + 2]) / 10000) * (this.hipsHeight / sd.hipsHeight);
+    }
   }
 
   // world rotations of the clip -> local rotations of this model's normalized bones
@@ -204,21 +207,15 @@ export class Character {
         const i = idx[b];
         if (i !== undefined) {
           const o = (f * nb + i) * 4;
-          W[b] = (W[b] || new THREE.Quaternion()).set(rot[o] / 32767, rot[o + 1] / 32767, rot[o + 2] / 32767, rot[o + 3] / 32767).normalize().multiply(this.D[b]);
+          W[b] = (W[b] || new THREE.Quaternion()).set(rot[o] / 32767, rot[o + 1] / 32767, rot[o + 2] / 32767, rot[o + 3] / 32767).normalize().multiply(this.D[b] || _q3.identity());
         } else {
-          // bones the capture lacks (upper chest, fingers ...) follow their parent
+          // bones the clips lack (eyes, jaw ...) follow their parent
           const p = this.parentOf[b];
           W[b] = (W[b] || new THREE.Quaternion()).copy(p ? W[p] : _q.identity());
         }
         if (!values[b]) continue;
         const p = this.parentOf[b];
         const local = _q2.copy(p ? W[p] : _q.identity()).invert().multiply(W[b]);
-        if (ADDUCT[b]) {
-          // how far this bone hangs below horizontal, in the character's frame
-          const dir = _v.set(...AXIS[b]).applyQuaternion(_q3.copy(W[b]).multiply(this.Dinv[b]));
-          const hang = THREE.MathUtils.clamp(-dir.y, 0, 1);
-          local.premultiply(_q3.setFromAxisAngle(_v.set(0, 0, 1), ADDUCT[b] * hang));
-        }
         local.toArray(values[b], k * 4);
       }
       hipsPos[k * 3] = (pos[f * 3] / 10000) * scale;
@@ -228,16 +225,6 @@ export class Character {
     const tracks = Object.entries(values).map(([b, v]) => new THREE.QuaternionKeyframeTrack(`N_${b}.quaternion`, times, v));
     tracks.push(new THREE.VectorKeyframeTrack('N_hips.position', times, hipsPos));
     return new THREE.AnimationClip(name, times[n - 1], tracks);
-  }
-
-  // a one-frame looping clip holding the pose of `clip` at time t
-  _poseClip(name, clip, t) {
-    const tracks = clip.tracks.map((tr) => {
-      const interp = tr.createInterpolant();
-      const v = interp.evaluate(t).slice();
-      return new tr.constructor(tr.name, [0, 1], [...v, ...v]);
-    });
-    return new THREE.AnimationClip(name, 1, tracks);
   }
 
   play(name, fade = 0.35, timeScale = 1) {
@@ -278,9 +265,8 @@ export class Character {
     this.vrm.springBoneManager?.reset();
   }
 
-  setMood(happy, relaxed = 0.25) {
-    this.moodTarget.happy = happy;
-    this.moodTarget.relaxed = relaxed;
+  setMood(happy, relaxed = 0.25, sad = 0, surprised = 0) {
+    Object.assign(this.moodTarget, { happy, relaxed, sad, surprised });
   }
 
   update(dt) {
@@ -302,7 +288,7 @@ export class Character {
 
     // breathing: the upper chest rises a touch, shoulders follow
     const br = Math.sin(this.t * (Math.PI * 2) / 3.6);
-    n('upperChest')?.quaternion.setFromAxisAngle(_v.set(1, 0, 0), -0.018 * br);
+    n('upperChest')?.quaternion.multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), -0.018 * br));
     for (const s of ['left', 'right']) {
       const sh = n(s + 'Shoulder');
       if (sh) sh.quaternion.multiply(_q.setFromAxisAngle(_v.set(0, 0, 1), (s === 'left' ? 1 : -1) * 0.012 * (br * 0.5 + 0.5)));
@@ -349,16 +335,38 @@ export class Character {
         this.blink = p < 0.06 ? p / 0.06 : p < 0.1 ? 1 : Math.max(0, 1 - (p - 0.1) / 0.12);
         if (p > 0.22) this.blinkPhase = -1;
       }
-      for (const k of ['happy', 'relaxed']) this.mood[k] += (this.moodTarget[k] - this.mood[k]) * Math.min(1, dt * 4);
-      em.setValue('happy', this.mood.happy);
-      em.setValue('relaxed', this.mood.relaxed * (1 - this.mood.happy));
-      // happy eyes are already closed into arcs: blink less over them
-      em.setValue('blink', this.blink * (1 - this.mood.happy * 0.8));
-      em.setValue('aa', this.mouth);
+      const M = this.mood;
+      for (const k in M) M[k] += (this.moodTarget[k] - M[k]) * Math.min(1, dt * (k === 'surprised' ? 9 : 4));
+      em.setValue('happy', M.happy * (1 - M.surprised));
+      em.setValue('relaxed', M.relaxed * (1 - M.happy) * (1 - M.sad) * (1 - M.surprised));
+      em.setValue('sad', M.sad * (1 - M.happy));
+      em.setValue('surprised', M.surprised);
+      // happy eyes are already closed into arcs, wide eyes stay open: blink less
+      em.setValue('blink', this.blink * (1 - M.happy * 0.8) * (1 - M.surprised));
+      // speech: mostly "a", drifting toward "o" and "e" so the mouth does not just flap
+      const m = this.mouth, v = Math.sin(this.t * 5.3) * 0.5 + 0.5, w = Math.sin(this.t * 3.1 + 1) * 0.5 + 0.5;
+      em.setValue('aa', m * (0.75 - 0.3 * v));
+      em.setValue('oh', m * 0.45 * v);
+      em.setValue('ee', m * 0.3 * w * (1 - v));
     }
 
     this._fitGround();
+    this._drapeSkirt();
     this.vrm.update(dt);
+  }
+
+  _drapeSkirt() {
+    if (!this.skirt.length || !this.sitHips) return;
+    const k = THREE.MathUtils.clamp(((this.hipsHeight - this._hipsY) / (this.hipsHeight - this.sitHips) - 0.25) / 0.6, 0, 1);
+    if (k < 0.01 && this.seatedness < 0.01) return;
+    this.seatedness = k;
+    const fwd = _v.set(0, 0, 1).applyQuaternion(this.root.quaternion);
+    for (const s of this.skirt) {
+      const st = s.j.settings;
+      st.gravityDir.copy(s.dir).lerp(_v2.copy(fwd).multiplyScalar(s.front ? 1 : 0.6).add(_v3.set(0, -0.35, 0)).normalize(), k).normalize();
+      st.gravityPower = s.power + (s.front ? 2.4 : 0.9) * k;
+      st.stiffness = s.stiff * (1 - 0.8 * k);
+    }
   }
 
   // Settle the hips and IK each leg so the feet meet the terrain under them.
@@ -372,12 +380,17 @@ export class Character {
       return { s, d: this.ground(_v.x, _v.z) - g0 };
     });
     const drop = Math.min(0, legs[0].d, legs[1].d);
-    if (Math.abs(legs[0].d) < 0.008 && Math.abs(legs[1].d) < 0.008) return;
-    n('hips').position.y += drop;
+    // on a seat: raise the hips in proportion to how far down toward the clip's seat they are
+    const hips = n('hips');
+    this._hipsY = hips.position.y;
+    let raise = 0;
+    if (this.seat && this.sitHips) raise = this.seat.lift * THREE.MathUtils.clamp((this.hipsHeight - hips.position.y) / (this.hipsHeight - this.sitHips), 0, 1);
+    if (Math.abs(legs[0].d) < 0.008 && Math.abs(legs[1].d) < 0.008 && raise < 0.004) return;
+    hips.position.y += drop + raise;
     this.root.updateMatrixWorld(true);
     for (const leg of legs) {
-      const lift = leg.d - drop;
-      if (lift > 0.004) this._ikLeg(leg.s, lift);
+      const lift = leg.d - drop - raise;
+      if (Math.abs(lift) > 0.004) this._ikLeg(leg.s, lift);
     }
   }
 

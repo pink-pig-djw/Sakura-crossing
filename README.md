@@ -73,24 +73,29 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 - **ひだまり公園**、**汐の湯**（钱汤和烟囱）、**汐見神社**（石阶、鸟居、拝殿、狛犬、绘马、俯瞰小镇的长椅）。
 - 7 只可以摸的猫、8 枚散落在沙滩上的贝壳、能买到 10 种饮料的自动贩卖机（偶尔会中奖再来一瓶）、5 种签运的御神签。
 
-## 镇上的人：春香
+## 镇上的人：芽衣
 
-桜坂东侧的人行道上，有一位每天散步的居民「春香」（目前是一个原型角色）：
+桜坂东侧的人行道上，有一位居民「芽衣」——桜ヶ浜高校二年级的学生，从早上 6:30 到傍晚 19:00 都在坡道上：
 
-- **动作来自真人动作捕捉**：走路、鞠躬、挥手、点头、指路都来自万代南梦宫研究所公开的动作捕捉数据（女性风格），用 `tools/anim/retarget.mjs` 重定向到 VRM 人物的骨骼上。动捕骨骼的关节坐标轴和 VRM 不同，所以每块骨骼先在一帧自然站姿上做校准，再逐帧换算；走路剪成一个无缝的步态循环，移动速度和脚步严格匹配，不会「滑步」。
-- **叠加的细节**：呼吸起伏、头和眼睛转向你（VRM 视线）、随机眨眼（偶尔连眨两下）、开心时的表情、说话时按语音音量动嘴、头发和衣服的物理摆动（VRM spring bone），以及在坡道上用双骨骼 IK 让两只脚各自踩在地面上。
-- **行为**：在人行道上来回散步，经过行道树时会往路边让一让；你靠近时停下来看着你、转身面对你，走到两三米内会鞠躬说「あ、こんにちは。」；按 E 和她聊天（点头、或者转身为你指向海边）；你离开时挥手说「またね」。配音为 VOICEVOX:四国めたん。
-- **画风统一**：人物不用模型自带的 MToon 着色，而是用小镇同一套卡通光照（硬明暗交界、按材质的阴影色、细轮廓光、大气透视、描边），所以早晨、傍晚、夜里都和场景一致。
+- **她的一天**：沿着樱花树下的人行道来回散步（经过行道树时往路边让一让）；走到路的尽头会停下来做点事——看手机（手里会出现一部粉色手机）、伸懒腰、早上打哈欠、抬头看樱花、发呆；有时走到矮墙前的**长椅**坐一会儿再起身继续走。天黑后她回家了，第二天早上再出现（都发生在你看不见的时候）。
+- **和你的互动**：你靠近时她停下、转身看着你；第一次见面会**鞠躬**说「あ、こんにちは。」，之后再见面改成挥手「あ、また会いましたね。」；按 E 聊天，8 个话题轮流出现，每个都有对应的动作和表情——害羞地自我介绍、抬头看樱花、开心地讲摄影社、**转身为你指向海边**、发愁下周的数学考试、推荐神社和澡堂；你跑着撞到她会吓一跳；离开时挥手说「またね」。她坐在长椅上时也能聊天，你还可以坐到她旁边。
+- **动作**：来自 Mixamo 动作库（X Bot 骨骼），用 `tools/anim/mixamo.mjs` 重定向到 VRM 骨骼上（含手指）：每块骨骼在 Mixamo 的 T-pose 上校准一次，再逐帧换算。原地走路的速度由「着地脚向后滑的速度」算出，人物移动和脚步严格同步，不会滑步。库里没有的动作是合成的：日式**鞠躬**（双手在身前交叠）、**指路**（食指伸出、其余手指握起）、**被吓一跳**。蹲姿类的片段（指向、说话、惊讶等）和裙装不搭，没有使用；坐姿统一调整为**并膝、双手放在腿上**，坐下时裙摆的物理也会改为向前搭在腿上。
+- **叠加的细节**：头和眼睛转向你（VRM 视线）、随机眨眼、开心 / 放松 / 难过 / 惊讶的表情、说话时按语音音量在「あ・お・え」之间变化口型、头发和衣服的物理摆动（VRM spring bone）、在坡道上用双骨骼 IK 让两只脚各自踩在地面上。配音为 VOICEVOX:四国めたん。
+- **画风统一**：人物不用模型自带的 MToon 着色，而是用小镇同一套卡通光照（硬明暗交界、按材质的阴影色、细轮廓光、大气透视、描边）；睫毛、眉毛、虹膜等半透明部分按模型的设置混合绘制。
 
 素材与许可：
 
 | 素材 | 来源 | 许可 |
 | --- | --- | --- |
-| 人物模型 | pixiv Inc. 的 VRM 1.0 示例模型 `VRM1_Constraint_Twist_Sample`（来自 [three-vrm](https://github.com/pixiv/three-vrm) 仓库），用 `tools/chars/optimize_vrm.py` 去掉法线贴图、缩略图和未用表情后约 3 MB | VRM Public License 1.0（允许商用、修改、再分发） |
-| 动作数据 | [Bandai-Namco-Research-Motiondataset](https://github.com/BandaiNamcoResearchInc/Bandai-Namco-Research-Motiondataset) dataset-1 | **CC BY-NC 4.0（仅限非商业用途，需署名）** |
+| 人物模型 | 「春野 芽衣」，作者 Nanami Chiaki（VRoid 制作的 VRM 1.0），用 `tools/chars/optimize_vrm.py` 只保留颜色贴图和用到的表情后约 3.7 MB | VRM Public License 1.0：仅限个人非营利使用，**需署名**，允许修改后再分发；「作为化身使用」仅限作者本人 |
+| 动作数据 | [Mixamo](https://www.mixamo.com/)（Adobe）的动画，转换后的数据在 `public/chars/motions.json`；原始 FBX 不放进仓库 | Mixamo 官方 FAQ：可在个人 / 商业 / 非营利项目（包括游戏）中免版税使用；原始动画文件不单独再分发 |
 | 配音 | VOICEVOX:四国めたん | 按角色使用条款标注 |
 
-> 如果将来要商用，需要把动作数据换成允许商用的来源（例如自己录制或购买的动捕数据），人物模型本身可以继续用。
+重新生成动作数据：
+
+```
+node tools/anim/mixamo.mjs <MixamoLibrary 文件夹> public/chars/motions.json
+```
 
 ## 小地图与语言
 
@@ -149,11 +154,11 @@ src/
                        河流 (river.js)、商业区 (commercial.js)、地铁 (subway.js)、室内 (interiors.js)、
                        树与绿化 (trees.js / greenery.js / grass.js)、碰撞 (collision.js)、猫与鸟
   systems/             第一人称控制、手柄、昼夜、音频；配音播放 (voice.js) 与触发 (townVoices.js)；VRM 人物 (character.js)
-  world/residents.js   居民「春香」的行为
+  world/residents.js   居民「芽衣」的一天和互动
   ui/                  界面、地图与小地图 (ui.js)、语言切换 (i18n.js) 与中文文本 (zh.js)
 public/voice/          VOICEVOX 生成的配音（MP3）
 public/chars/          人物模型（VRM）和重定向后的动作数据
-tools/anim/            动捕 BVH → VRM 的重定向工具
+tools/anim/            Mixamo FBX → VRM 的动作重定向工具
 tools/chars/           VRM 模型瘦身脚本
 tools/voice/           配音台词表与生成脚本
 tools/deploy-pages.sh  发布到 GitHub Pages
@@ -164,6 +169,6 @@ tools/deploy-pages.sh  发布到 GitHub Pages
 - [three.js](https://threejs.org/)（MIT）
 - 字体来自 Google Fonts：Zen Maru Gothic、Zen Old Mincho、Zen Kaku Gothic New、Yuji Syuku、Dela Gothic One、Noto Sans SC、Noto Serif SC（SIL OFL）。离线时会回退到系统字体。
 - 配音：**VOICEVOX:九州そら**、**VOICEVOX:冥鳴ひまり**、**VOICEVOX:春日部つむぎ**、**VOICEVOX:四国めたん**（按各角色的使用条款标注；游戏菜单里也有显示）。
-- 人物：pixiv Inc. 的 VRM 示例模型（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
-- 动作：Bandai Namco Research Inc. 的 Bandai-Namco-Research-Motiondataset（CC BY-NC 4.0）。
+- 人物：「春野 芽衣」© Nanami Chiaki（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
+- 动作：[Mixamo](https://www.mixamo.com/)（Adobe）。
 - 风格参考：用户提供的樱花小镇演示视频。

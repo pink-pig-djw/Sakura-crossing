@@ -301,7 +301,11 @@ export function createWindowMaterial() {
         litCol *= 0.8 + 0.2 * sin(uv.x * 18.0 + seed * 20.0);
         col = mix(col, litCol * 1.6, lit);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        #ifdef BLEND
+          gl_FragColor = vec4(col, tx.a);
+        #else
+          gl_FragColor = vec4(col, uOutline);
+        #endif
       }
     `,
   });
@@ -355,7 +359,11 @@ export function createGroundMaterial(groundMap, mapRect) {
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        #ifdef BLEND
+          gl_FragColor = vec4(col, tx.a);
+        #else
+          gl_FragColor = vec4(col, uOutline);
+        #endif
       }
     `,
   });
@@ -502,7 +510,11 @@ export function createRoadMaterial() {
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        #ifdef BLEND
+          gl_FragColor = vec4(col, tx.a);
+        #else
+          gl_FragColor = vec4(col, uOutline);
+        #endif
       }
     `,
   });
@@ -659,7 +671,11 @@ export function createInteriorMaterial(opts = {}) {
         col *= mix(vec3(1.0), vec3(0.86, 0.88, 0.95), smoothstep(-0.6, -0.95, N.y));
         col = mix(col, albedo * 1.25, clamp(emis, 0.0, 1.0));
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        #ifdef BLEND
+          gl_FragColor = vec4(col, tx.a);
+        #else
+          gl_FragColor = vec4(col, uOutline);
+        #endif
       }
     `,
   });
@@ -900,7 +916,11 @@ export function createGrassMaterial(tex, opts = {}) {
         vec3 albedo = vColor * mix(0.62, 1.12, t.r);
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        #ifdef BLEND
+          gl_FragColor = vec4(col, tx.a);
+        #else
+          gl_FragColor = vec4(col, uOutline);
+        #endif
       }
     `,
   });
@@ -957,12 +977,29 @@ export function createCharacterMaterial(opts = {}) {
   uniforms.uWrap.value = opts.wrap ?? 0.0;
   const defines = {};
   if (opts.map) defines.USE_TEXMAP = '';
-  if (opts.alphaTest) defines.ALPHA_TEST = opts.alphaTest.toFixed(3);
+  // transparent parts (lashes, brows, irises): blended over what is behind, keeping its
+  // outline weight in the alpha channel
+  const blend = opts.transparent
+    ? {
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.AddEquation,
+        blendSrc: THREE.SrcAlphaFactor,
+        blendDst: THREE.OneMinusSrcAlphaFactor,
+        blendSrcAlpha: THREE.ZeroFactor,
+        blendDstAlpha: THREE.OneFactor,
+      }
+    : {};
+  if (opts.transparent) defines.BLEND = '';
+  const cut = opts.alphaTest || (opts.transparent ? 0.02 : 0);
+  if (cut) defines.ALPHA_TEST = cut.toFixed(3);
   return new THREE.ShaderMaterial({
     name: opts.name || 'character',
     lights: true,
     defines,
     uniforms,
+    ...blend,
     side: opts.side ?? THREE.FrontSide,
     vertexShader: /* glsl */ `
       #include <common>
@@ -1004,8 +1041,9 @@ export function createCharacterMaterial(opts = {}) {
       #endif
       void main() {
         vec3 albedo = uBase;
+        vec4 tx = vec4(1.0);
         #ifdef USE_TEXMAP
-          vec4 tx = texture2D(map, vUv);
+          tx = texture2D(map, vUv);
           #ifdef ALPHA_TEST
             if (tx.a < ALPHA_TEST) discard;
           #endif
@@ -1031,7 +1069,11 @@ export function createCharacterMaterial(opts = {}) {
         // eyes / highlights read clearly in any light
         col = mix(col, albedo * (0.75 + 0.35 * (1.0 - uNight)), uUnlit);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        #ifdef BLEND
+          gl_FragColor = vec4(col, tx.a);
+        #else
+          gl_FragColor = vec4(col, uOutline);
+        #endif
       }
     `,
   });

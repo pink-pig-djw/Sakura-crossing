@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Slim a VRoid-made VRM 1.0 model for the web.
 
-The town renders characters with its own toon shader, so normal / specular maps and the
-thumbnail are not needed; the face keeps only the morph targets that the VRM expressions
-use (and only their positions). Colour textures are capped at 1024 px.
+The town renders characters with its own toon shader from the colour texture alone, so
+every other image (normal, emissive, matcap, outline-width maps, the thumbnail) is
+blanked; the face keeps only the morph targets that the VRM expressions use (and only
+their positions). Colour textures are capped at 1024 px, opaque ones stored as JPEG.
 
   python3 tools/chars/optimize_vrm.py in.vrm out.vrm
 """
@@ -14,7 +15,6 @@ import sys
 
 from PIL import Image
 
-UNUSED_IMAGE_HINTS = ('_nml', '_spe', 'Thumbnail', '_outline')
 MAX_TEX = 1024
 
 
@@ -45,6 +45,11 @@ def view_bytes(j, bin_, i):
 
 def encode_image(img):
     out = io.BytesIO()
+    if img.mode == 'RGBA' and img.getextrema()[3][0] == 255:
+        img = img.convert('RGB')  # alpha channel unused
+    if img.mode == 'RGB' and max(img.size) > 64:
+        img.save(out, 'JPEG', quality=92, subsampling=0, optimize=True)
+        return out.getvalue(), 'image/jpeg'
     img.save(out, 'PNG', optimize=True)
     return out.getvalue(), 'image/png'
 
@@ -85,12 +90,17 @@ def main(src, dst):
         b['index'] = remap_by_mesh[j['nodes'][b['node']]['mesh']][b['index']]
 
     # --- images ---------------------------------------------------------------------------
+    colour = set()
+    for m in j['materials']:
+        t = m.get('pbrMetallicRoughness', {}).get('baseColorTexture')
+        if t:
+            colour.add(j['textures'][t['index']]['source'])
     new_images = []
-    for im in j['images']:
+    for i, im in enumerate(j['images']):
         data = view_bytes(j, bin_, im['bufferView'])
         img = Image.open(io.BytesIO(data))
-        if any(h in im.get('name', '') for h in UNUSED_IMAGE_HINTS):
-            img = Image.new('RGB', (4, 4), (128, 128, 255) if '_nml' in im['name'] else (0, 0, 0))
+        if i not in colour:
+            img = Image.new('RGB', (4, 4), (0, 0, 0))
         else:
             img = img.convert('RGBA' if 'A' in img.getbands() else 'RGB')
             s = MAX_TEX / max(img.size)

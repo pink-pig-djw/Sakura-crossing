@@ -9,6 +9,7 @@ import { roadSurfaceY } from './roads.js';
 import { Kit, signOnFace } from './kit.js';
 import { FONTS, fitText, roundRect } from '../render/atlas.js';
 import { G } from '../render/materials.js';
+import { benchAt } from './coast.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -459,6 +460,12 @@ export function buildStreetProps(ctx) {
   for (const z of [-60, 0, 35]) signPost(ctx, sakura.c - half - 0.3, z, Math.PI, speedSign(ctx), 0.6, 0.6, 2.7);
   // pedestrian crossing signs near crosswalks
   for (const z of [13.2, -21.8]) signPost(ctx, sakura.c + half + 0.3, z - 2.5, 0, pedSign(ctx), 0.6, 0.6, 2.9);
+  // a bench under the cherry trees at the back of the east sidewalk, against a garden wall,
+  // facing the street (the resident 芽衣 rests here on her walks)
+  const bx = sakura.c + half + 0.32, bz = -19.2;
+  const by = Math.min(terrainH(bx, bz - 0.75), terrainH(bx, bz + 0.75));
+  benchAt(ctx, ctx.builders.get('toon', bx, bz), bx, by, bz, Math.PI / 2, 0x9a7454, '桜の下のベンチに座る');
+  ctx.spots = { ...ctx.spots, sakuraBench: { x: bx, y: by, z: bz, ry: Math.PI / 2, it: ctx.interactables[ctx.interactables.length - 1] } };
 }
 
 // Night light pools on the ground (additive decals) + lamp registry
