@@ -40,6 +40,8 @@ export class Player {
     this.pointerLocked = false;
     this.speed = 0;
     this.skipMoves = 0;
+    this.moveAvg = 0; // recent mouse motion per event (spike filter)
+    this.lastBig = false;
     this._bindEvents();
   }
 
@@ -61,7 +63,10 @@ export class Player {
       if (e.code === 'Space' && this.enabled) e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
+    addEventListener('blur', () => {
+      this.keys.clear();
+      this.dragging = false;
+    });
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.dom;
       this.skipMoves = 2; // browsers can report a large bogus delta right after locking
@@ -72,12 +77,22 @@ export class Player {
         this.skipMoves--;
         return;
       }
-      if (this.pointerLocked || this.dragging) {
-        const dx = THREE.MathUtils.clamp(e.movementX, -160, 160);
-        const dy = THREE.MathUtils.clamp(e.movementY, -160, 160);
-        this.lookDelta.x += dx;
-        this.lookDelta.y += dy;
+      // drag-to-look ends when the button is no longer held (released outside the window)
+      if (this.dragging && !(e.buttons & 1)) this.dragging = false;
+      if (!this.pointerLocked && !this.dragging) return;
+      // Browsers occasionally report one huge bogus jump under pointer lock; a lone event far
+      // above the recent motion is dropped (a real flick ramps up and its next event passes).
+      const m = Math.hypot(e.movementX, e.movementY);
+      const big = m > this.moveAvg * 4 + 50;
+      this.moveAvg += (Math.min(m, 150) - this.moveAvg) * 0.3;
+      if (big && !this.lastBig) {
+        this.lastBig = true;
+        return;
       }
+      this.lastBig = big;
+      // and a cap on any single step keeps fast swings controllable
+      this.lookDelta.x += THREE.MathUtils.clamp(e.movementX, -110, 110);
+      this.lookDelta.y += THREE.MathUtils.clamp(e.movementY, -110, 110);
     });
     this.dom.addEventListener('mousedown', (e) => {
       if (!this.enabled || e.button !== 0) return;
@@ -86,12 +101,22 @@ export class Player {
     addEventListener('mouseup', () => (this.dragging = false));
   }
 
+  // Raw mouse motion (no OS pointer acceleration) where supported, so a quick turn of the
+  // wrist doesn't swing the view much further than a slow one; plain lock elsewhere.
   requestLock() {
+    const plain = () => {
+      try {
+        const p = this.dom.requestPointerLock?.();
+        if (p && p.catch) p.catch(() => {});
+      } catch {
+        /* pointer lock not available: drag-to-look still works */
+      }
+    };
     try {
-      const p = this.dom.requestPointerLock?.();
-      if (p && p.catch) p.catch(() => {});
+      const p = this.dom.requestPointerLock?.({ unadjustedMovement: true });
+      if (p && p.catch) p.catch((err) => (err?.name === 'NotSupportedError' ? plain() : null));
     } catch {
-      /* pointer lock not available: drag-to-look still works */
+      plain();
     }
   }
 
@@ -122,7 +147,7 @@ export class Player {
 
   update(dt) {
     // look
-    const k = 0.0022 * this.sensitivity;
+    const k = 0.0017 * this.sensitivity;
     this.yaw -= this.lookDelta.x * k;
     this.pitch -= this.lookDelta.y * k * (this.invertY ? -1 : 1);
     // controller look (rates in rad/s at full tilt)

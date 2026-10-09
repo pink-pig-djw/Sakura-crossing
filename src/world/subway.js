@@ -346,7 +346,9 @@ function buildHall(ctx) {
     ib(ctx, 252, z).box(252, yCeil2 - 0.55, z, 4.5, 0.9, 0.04, { color: 0x1b1d22 });
   }
   const plat = hangingSign(ctx, 'plat', [{ text: '1番線 はなみだい・港町 方面', sub: 'Line 1 for Hanamidai', badge: '1', badgeBg: LINE, badgeFg: '#fff' }, { text: '2番線 しおみ・岬 方面', sub: 'Line 2 for Shiomi', badge: '2', badgeBg: LINE, badgeFg: '#fff' }]);
-  for (const z of [-26, 0]) {
+  // one in each half of the platform, clear of the stairs and escalator (z -30 .. -20.5)
+  // and of the columns (z -40, -10, -2, 6, 13)
+  for (const z of [-34.5, 0]) {
     for (const f of [-1, 1]) isignAt(ctx, 252, yCeil2 - 1.3, z + f * 0.03, 5.6, 1.05, [0, f], plat, 1.2);
   }
   // walk surfaces and walls (underground only)
