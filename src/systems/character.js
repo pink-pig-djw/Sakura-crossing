@@ -183,6 +183,8 @@ export class Character {
     this.blinkT = 2 + Math.random() * 3;
     this.blink = 0;
     this.blinkPhase = -1;
+    this.eyesClosed = 0; // set by the owner (0..1): eyes shut, e.g. while praying
+    this.shut = 0;
     this.mood = { happy: 0, relaxed: 0.25, sad: 0, surprised: 0 };
     this.openSmile = !!(vrm.expressionManager?.getExpression('smile') && vrm.expressionManager.getExpression('worried'));
     this.moodTarget = { ...this.mood };
@@ -405,19 +407,21 @@ export class Character {
         this.blink = p < 0.06 ? p / 0.06 : p < 0.1 ? 1 : Math.max(0, 1 - (p - 0.1) / 0.12);
         if (p > 0.22) this.blinkPhase = -1;
       }
+      this.shut += (this.eyesClosed - this.shut) * Math.min(1, dt * 6);
+      const blink = 1 - (1 - this.blink) * (1 - this.shut);
       const M = this.mood;
       for (const k in M) M[k] += (this.moodTarget[k] - M[k]) * Math.min(1, dt * (k === 'surprised' ? 9 : 4));
       if (this.openSmile) {
         // a smile and a worried look that keep the eyes open (see tools/chars/optimize_vrm.py)
         em.setValue('smile', Math.min(1, M.happy + M.relaxed * 0.5) * (1 - M.sad) * (1 - M.surprised));
         em.setValue('worried', M.sad * (1 - M.surprised));
-        em.setValue('blink', this.blink * (1 - M.surprised));
+        em.setValue('blink', blink * (1 - M.surprised));
       } else {
         em.setValue('happy', M.happy * (1 - M.surprised));
         em.setValue('relaxed', M.relaxed * (1 - M.happy) * (1 - M.sad) * (1 - M.surprised));
         em.setValue('sad', M.sad * (1 - M.happy));
         // happy eyes are already closed into arcs, wide eyes stay open: blink less
-        em.setValue('blink', this.blink * (1 - M.happy * 0.8) * (1 - M.surprised));
+        em.setValue('blink', blink * (1 - M.happy * 0.8) * (1 - M.surprised));
       }
       em.setValue('surprised', M.surprised);
       // speech: mostly "a", drifting toward "o" and "e" so the mouth does not just flap

@@ -5,9 +5,11 @@ import { VOICE_LINES } from '../systems/voiceLines.js';
 
 // 芽衣 (Mei), a second-year at 桜ヶ浜高校, out on 桜坂 from early morning until dusk.
 //
-// Her day: she strolls up and down the east sidewalk under the cherry trees; at the ends of
-// her walk she stops for a while (checks her phone, stretches, yawns in the early morning,
-// looks up at the blossoms) and now and then sits on the bench by the garden wall.
+// Her day: she strolls up and down the east sidewalk under the cherry trees, sometimes
+// reading her phone as she goes; at the ends of her walk she stops for a while (checks her
+// phone, shades her eyes to look out to sea, looks back, shifts her weight, stretches, yawns
+// in the early morning, looks up at the blossoms) and now and then sits on the bench by the
+// garden wall, swinging her feet.
 // With you: she notices you, turns, looks at you and bows the first time you meet (later
 // she raises a hand), chats when you talk to her (with gestures: glancing away shyly,
 // pointing the way to the sea, slumping at the thought of a math test, nodding along, a hand
@@ -31,10 +33,14 @@ const TALK = [
 ];
 
 // what she does when she stops at the end of her walk: [action, weight(hour)]
+// seaward: she stopped facing down the slope, toward the sea
 const AMBIENT = [
-  ['idle', () => 3],
+  ['idle', () => 2.5],
   ['phone', () => 3],
   ['blossoms', () => 2],
+  ['lookFar', (h, seaward) => (seaward ? 5 : 0)], // a hand shading her eyes, looking out to sea
+  ['lookBehind', () => 1],
+  ['sway', () => 1.5],
   ['stretch', (h) => (h < 11 ? 2 : 0.6)],
   ['yawn', (h) => (h < 9.5 ? 2.5 : 0.3)],
   ['bored', (h) => (h > 15 ? 1.5 : 0.6)],
@@ -43,8 +49,11 @@ const AMBIENT = [
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3(), _e = new THREE.Vector3();
 const _m = new THREE.Matrix4();
+// the phone held in one hand: its middle this far from the wrist along the fingers, toward the
+// thumb and off the palm, its long side turned this far (rad) from the fingers toward the thumb
+const PALM = { fingers: 0.055, thumb: 0.035, out: 0.025, lean: 1.15 };
 
-// a phone in a pink case, held in both hands while texting
+// a phone in a pink case, held while she texts or reads (see updatePhone)
 function makePhone() {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.01, 0.148), createCharacterMaterial({ name: 'char:phone', color: 0xf3b9c9, shadeMix: 0.5, outline: 0.6 }));
@@ -71,7 +80,7 @@ export class Resident {
     this.interact = { kind: 'resident', label: '芽衣に話しかける', x: 0, z: 0, y: 0, r: 2.0, resident: this };
     world.interactables.push(this.interact);
     this.walkRate = 1; // the clip is a stroll
-    this.walkSpeed = ch.info.walk.speed * this.walkRate;
+    this.setWalk('walk');
     this.phone = makePhone();
     this.meter = { node: null, until: 0 };
     this.buf = new Float32Array(512);
@@ -89,6 +98,12 @@ export class Resident {
     this.spawn(0);
   }
 
+  // her walk: 'walk', or 'walkText' (looking at her phone as she goes)
+  setWalk(clip) {
+    this.walkClip = clip;
+    this.walkSpeed = this.ch.info[clip].speed * this.walkRate;
+  }
+
   // at one end of her walk, setting off along it
   spawn(end) {
     const p = this.path;
@@ -98,6 +113,7 @@ export class Resident {
     this.heading = Math.atan2(p[this.wp][0] - this.x, p[this.wp][1] - this.z);
     this.state = 'walk';
     this.leaveBench();
+    this.setWalk('walk');
     this.ch.play('walk', 0, this.walkRate);
     this.place();
   }
@@ -185,7 +201,8 @@ export class Resident {
   }
 
   pickAmbient(hour) {
-    const w = AMBIENT.map(([, f]) => f(hour));
+    const seaward = Math.cos(this.heading) > 0.7;
+    const w = AMBIENT.map(([, f]) => f(hour, seaward));
     let r = Math.random() * w.reduce((a, b) => a + b, 0);
     for (let i = 0; i < w.length; i++) if ((r -= w[i]) <= 0) return AMBIENT[i][0];
     return 'idle';
@@ -261,7 +278,8 @@ export class Resident {
       if (this.lastD !== null) this.vP += ((this.lastD - dP) / Math.max(dt, 1e-3) - this.vP) * Math.min(1, dt * 10);
       this.lastD = dP;
     }
-    const near = !this.ignore && dP < 8 && (Math.abs(rel) < 1.7 || dP < 3.2);
+    const reading = this.state === 'walk' && this.walkClip === 'walkText';
+    const near = !this.ignore && (reading ? dP < 2.6 : dP < 8 && (Math.abs(rel) < 1.7 || dP < 3.2));
     if (dP > 14) {
       this.greeted = false;
       this.waved = false;
@@ -291,6 +309,8 @@ export class Resident {
     switch (this.state) {
       case 'walk': {
         if (near) {
+          // (she puts her phone away)
+          this.setWalk('walk');
           this.state = 'attend';
           this.attendT = 0;
           ch.play('idle', 0.5);
@@ -306,6 +326,7 @@ export class Resident {
           if (Math.hypot(s.x - this.x, s.z - this.z) < 2) {
             this.benchCool = 90;
             if (Math.random() < 0.6 && this.benchFree(player)) {
+              this.setWalk('walk');
               this.state = 'toBench';
               break;
             }
@@ -328,7 +349,7 @@ export class Resident {
         }
         const err = this.turnToward(Math.atan2(dx, dz), 1.8, dt);
         const v = this.walkSpeed * Math.max(0.15, Math.cos(Math.min(err, 1.5)));
-        ch.play('walk', 0.45, this.walkRate * (v / this.walkSpeed));
+        ch.play(this.walkClip, 0.45, this.walkRate * (v / this.walkSpeed));
         this.x += Math.sin(this.heading) * v * dt;
         this.z += Math.cos(this.heading) * v * dt;
         break;
@@ -350,7 +371,11 @@ export class Resident {
           const [tx, tz] = this.path[this.wp];
           const err = this.turnToward(Math.atan2(tx - this.x, tz - this.z), 2.2, dt);
           ch.play(err > 0.3 ? 'walk' : 'idle', 0.4, 0.6);
-          if (err < 0.3) this.state = 'walk';
+          if (err < 0.3) {
+            this.state = 'walk';
+            // now and then she reads her phone as she walks on
+            this.setWalk(Math.random() < 0.3 ? 'walkText' : 'walk');
+          }
         }
         break;
       }
@@ -389,6 +414,13 @@ export class Resident {
       }
       case 'sit': {
         this.timer -= dt;
+        // now and then she swings her feet
+        this.fidgetT = (this.fidgetT ?? 4) - dt;
+        if (this.fidgetT <= 0) {
+          const fidget = ch.currentName !== 'sitFidget' && Math.random() < 0.6;
+          ch.play(fidget ? 'sitFidget' : 'sit', 0.5);
+          this.fidgetT = fidget ? 3 + Math.random() * 3 : 4 + Math.random() * 5;
+        }
         // looks at you while you are around, says hello, and goodbye when you go
         if (player && dP < 6 && !this.greeted) {
           this.greeted = this.met = true;
@@ -419,6 +451,7 @@ export class Resident {
         if (ch.remaining() < 0.3) {
           // the clip ends standing about where she started: back on the path
           this.leaveBench();
+          this.setWalk('walk');
           ch.play('walk', 0.4, this.walkRate);
           this.state = 'walk';
         }
@@ -502,10 +535,11 @@ export class Resident {
     this.updatePhone();
   }
 
-  // the phone sits between her palms while she texts (once both hands are up)
+  // the phone sits between her palms while she texts (once both hands are up), or in the palm
+  // of the one hand that faces up (she reads it holding it in one hand as she walks)
   updatePhone() {
     const ch = this.ch;
-    let on = ch.currentName === 'phone' && ch.remaining() > 0.4;
+    let on = (ch.currentName === 'phone' && ch.remaining() > 0.4) || ch.currentName === 'walkText';
     if (on) {
       const L = ch.node('leftHand'), R = ch.node('rightHand');
       L.getWorldPosition(_a);
@@ -514,8 +548,8 @@ export class Resident {
       const fr = _d.set(-1, 0, 0).transformDirection(R.matrixWorld);
       _a.addScaledVector(fl, 0.065);
       _b.addScaledVector(fr, 0.065);
-      on = _a.distanceTo(_b) < 0.2 && fl.y > -0.55 && fr.y > -0.55;
-      if (on) {
+      const both = _a.distanceTo(_b) < 0.2 && fl.y > -0.55 && fr.y > -0.55;
+      if (both) {
         const across = _e.copy(_a).sub(_b).normalize();
         const fwd = fl.add(fr).normalize();
         fwd.addScaledVector(across, -fwd.dot(across)).normalize();
@@ -526,6 +560,26 @@ export class Resident {
         }
         _m.makeBasis(across, up, fwd);
         _m.setPosition(_a.add(_b).multiplyScalar(0.5).addScaledVector(up, 0.012));
+      } else {
+        // the palm (the hand's -Y) facing up the most
+        let hand = null, side = 0, best = 0.35;
+        for (const [h, sx] of [[L, 1], [R, -1]]) {
+          const n = _c.set(0, -1, 0).transformDirection(h.matrixWorld).y;
+          if (n > best) [hand, side, best] = [h, sx, n];
+        }
+        on = !!hand;
+        if (on) {
+          // held upright: its long side leans from the fingers toward the thumb (the hand's +Z)
+          const up = _c.set(0, -1, 0).transformDirection(hand.matrixWorld);
+          const fingers = _d.set(side, 0, 0).transformDirection(hand.matrixWorld);
+          const thumb = _b.set(0, 0, 1).transformDirection(hand.matrixWorld);
+          hand.getWorldPosition(_a).addScaledVector(fingers, PALM.fingers).addScaledVector(thumb, PALM.thumb).addScaledVector(up, PALM.out);
+          const fwd = fingers.multiplyScalar(Math.cos(PALM.lean)).addScaledVector(thumb, Math.sin(PALM.lean)).normalize();
+          _m.makeBasis(_e.crossVectors(up, fwd).normalize(), up, fwd);
+          _m.setPosition(_a);
+        }
+      }
+      if (on) {
         this.phone.matrix.copy(_m);
         this.phone.matrixWorldNeedsUpdate = true;
       }

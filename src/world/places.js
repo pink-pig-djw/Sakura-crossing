@@ -951,7 +951,7 @@ export function buildShrine(ctx) {
   t.rod(V(hx - 1.6, hy + 3.0, hz + 2.85), V(hx + 1.6, hy + 3.0, hz + 2.85), 0.11, 0.11, 8, 0xd8c890);
   for (let i = 0; i < 4; i++) t.box(hx - 1.2 + i * 0.8, hy + 2.7, hz + 2.9, 0.12, 0.45, 0.02, { color: 0xffffff });
   ctx.colliders.addBox(hx, hz, 4.5, 3.5);
-  ctx.interactables.push({ kind: 'shrine', x: hx, z: hz + 4.6, r: 1.8, label: 'お参りする' });
+  ctx.interactables.push({ kind: 'shrine', x: hx, z: hz + 4.6, r: 1.8, label: 'お参りする', hall: { x: hx, z: hz } });
   // komainu
   for (const e of [-1, 1]) {
     const kx = hx + e * 3.2, kz = hz + 7.5;

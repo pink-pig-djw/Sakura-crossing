@@ -14,6 +14,9 @@ export const OUTFITS = [
   { file: 'chars/nanami3.vrm', name: '制服' },
 ];
 
+// gestures she does with her eyes shut: from, to (s)
+const EYES_SHUT = { pray: [0.9, 2.7] };
+
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 
@@ -63,14 +66,22 @@ export class Avatar {
     this.fresh = true;
   }
 
+  // a gesture of her own (praying at the shrine), turned toward `heading`; walking off ends it
+  perform(clip, heading) {
+    if (!this.ch?.clips[clip]) return 0;
+    this.act = { clip, heading, t: 0 };
+    return this.ch.clips[clip].duration;
+  }
+
   // world position of her head (for others to look at)
   head(out = new THREE.Vector3()) {
     return this.ch.node('head').getWorldPosition(out);
   }
 
-  // active: third person in play; visible: drawn (not when the camera is pulled in against
-  // her); look: a point to turn her head to, or null
-  update(dt, { active, visible, look }) {
+  // active: third person (in play, or behind a menu); visible: drawn (not when the camera is
+  // pulled in against her); still: the walker is paused (menus); look: a point to turn her
+  // head to, or null
+  update(dt, { active, visible, look, still = false }) {
     const ch = this.ch, p = this.player;
     if (!ch) return;
     ch.root.visible = active && visible;
@@ -100,7 +111,22 @@ export class Avatar {
         this.seat = null;
         ch.seat = null;
       }
-      const sp = Math.hypot(p.vel.x, p.vel.z);
+      const sp = still ? 0 : Math.hypot(p.vel.x, p.vel.z);
+      // a gesture of her own, until it ends or she moves off
+      if (this.act && (sp > 0.3 || !p.onGround)) this.act = null;
+      if (this.act) {
+        const a = this.act;
+        if (a.t === 0) ch.play(a.clip, 0.3);
+        a.t += dt;
+        this.heading = wrap(this.heading + wrap(a.heading - this.heading) * Math.min(1, dt * 8));
+        if (a.t > ch.clips[a.clip].duration - 0.3) {
+          this.act = null;
+          this.gait = '';
+        }
+      }
+      // eyes shut for the prayer itself
+      const shut = this.act && EYES_SHUT[this.act.clip];
+      ch.eyesClosed = shut && this.act.t > shut[0] && this.act.t < shut[1] ? 1 : 0;
       // she faces the way she goes
       if (sp > 0.25) {
         const d = wrap(Math.atan2(p.vel.x, p.vel.z) - this.heading);
@@ -112,13 +138,16 @@ export class Avatar {
       this.airT = p.onGround ? 0 : this.airT + dt;
       ch.noFit = this.airT > 0;
       let gait;
-      if (this.jumping && this.airT < 0.85) gait = 'jump';
+      if (this.act) gait = 'act';
+      else if (this.jumping && this.airT < 0.85) gait = 'jump';
       else if (this.airT > (this.jumping ? 0 : 0.3)) gait = 'fall';
       else if (sp < 0.2) gait = 'idle';
       else if (this.gait === 'run' ? sp > 2.6 : sp > 3.2) gait = 'run';
       else gait = 'walk';
       const fade = gait === 'fall' || gait === 'jump' ? 0.12 : this.gait === 'fall' || this.gait === 'jump' ? 0.12 : 0.3;
-      if (gait === 'jump') {
+      if (gait === 'act') {
+        // the gesture plays itself
+      } else if (gait === 'jump') {
         if (this.gait !== 'jump') ch.play('jump', fade, 0.92);
       } else if (gait === 'walk') ch.play('walk', fade, THREE.MathUtils.clamp(sp / ch.info.walk.speed, 0.5, 1.6));
       else if (gait === 'run') ch.play('run', fade, THREE.MathUtils.clamp(sp / ch.info.run.speed, 0.6, 1.3));
@@ -138,7 +167,7 @@ export class Avatar {
     }
     _w.set(target.x - x, 0, target.z - z);
     const ahead = Math.cos(wrap(Math.atan2(_w.x, _w.z) - this.heading));
-    ch.lookAt(ahead > -0.2 ? target : null, look ? 1 : 0.7);
+    ch.lookAt(this.act ? null : ahead > -0.2 ? target : null, look ? 1 : 0.7);
     ch.update(dt);
     if (this.fresh) {
       // just changed clothes: hair and skirt start at rest

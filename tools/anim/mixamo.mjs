@@ -254,6 +254,26 @@ function levelHead(frames) {
   for (const f of frames) f.rot[h].premultiply(fix);
 }
 
+// The take leans back and looks up as it prays; at a Japanese shrine you bow your head
+// instead. As far as the take leans back (its upper chest, against its first frame), the upper
+// body tips forward to `chest` degrees instead, and the neck and head drop a further `head`.
+function bowInstead(frames, [chest, head]) {
+  const pitch = (q) => Math.asin(-new THREE.Vector3(0, 0, 1).applyQuaternion(q).y);
+  const p0 = pitch(frames[0].rot[BONE.upperChest]);
+  const back = frames.map((f) => Math.min(0, pitch(f.rot[BONE.upperChest]) - p0));
+  const most = Math.min(...back);
+  if (most > -1e-3) return;
+  const upper = MAP.map(([, b], i) => (b === 'hips' || /UpperLeg|LowerLeg|Foot|Toes/.test(b) ? -1 : i)).filter((i) => i >= 0);
+  const R = new THREE.Quaternion(), rad = THREE.MathUtils.degToRad;
+  frames.forEach((f, k) => {
+    const w = back[k] / most;
+    R.setFromAxisAngle(X, -back[k] + w * rad(chest));
+    for (const i of upper) f.rot[i].premultiply(R);
+    f.rot[BONE.neck].premultiply(R.setFromAxisAngle(X, w * rad(head) * 0.4));
+    f.rot[BONE.head].premultiply(R.setFromAxisAngle(X, w * rad(head)));
+  });
+}
+
 function pack(frames, o) {
   const nb = MAP.length, nf = frames.length;
   const rot = new Int16Array(nf * nb * 4);
@@ -288,13 +308,15 @@ function pack(frames, o) {
 // reps: a short cycle played that many times as a one-shot
 // range: [from, to] seconds of the take
 // level: the take holds the head tipped back: level it
+// bow: [chest, head] degrees: bow where the take leans back (see bowInstead)
 // root: keep the hips' travel (sitting down / standing up move onto and off the seat)
 // after: start where that clip ends
+// seat: sit at the height that clip sits at (seated clips are captured on different chairs)
 // knees: sitting, knees brought together this far apart
 // airborne: a jump: the hips keep only their height over the lower foot
 // legs: blend the legs this far toward the standing pose
 export const CLIPS = {
-  idle: { file: '01_Idle/Breathing Idle.fbx', loop: true },
+  idle: { file: '15_NPC_Idle/Idle - Female.fbx', loop: true },
   happy: { file: '01_Idle/Happy Idle.fbx', loop: true, level: true },
   walk: { file: '09_Female_Locomotion/Female Walk.fbx', loop: true, walk: true, level: true },
   run: { file: '02_Locomotion/Running.fbx', loop: true, walk: true },
@@ -304,6 +326,11 @@ export const CLIPS = {
   yawn: { file: '01_Idle/Yawn.fbx' },
   phone: { file: '08_Daily/Texting While Standing.fbx', range: [0, 9] },
   bored: { file: '01_Idle/Bored.fbx' },
+  lookFar: { file: '15_NPC_Idle/Looking Far - Shading Eyes.fbx' }, // a hand shading her eyes: the sea
+  lookBehind: { file: '15_NPC_Idle/Looking Behind.fbx' },
+  sway: { file: '15_NPC_Idle/Weight Shift Side To Side.fbx' },
+  walkText: { file: '20_Movement_Plus/Texting And Walking - Female.fbx', loop: true, walk: true },
+  pray: { file: '13_Japanese/Praying.fbx', bow: [10, 16] }, // at the shrine
   // greetings and goodbyes
   bow: { file: '13_Japanese/Quick Formal Bow.fbx' },
   greet: { file: '13_Japanese/Standing Greeting.fbx', range: [1.0, 4.6], level: true }, // a hand raised: hi!
@@ -318,6 +345,7 @@ export const CLIPS = {
   sitDown: { file: '05_Interact/Stand To Sit.fbx', root: true, knees: 0.11 },
   sit: { file: '05_Interact/Sitting Idle.fbx', loop: true, after: 'sitDown', knees: 0.11 },
   standUp: { file: '05_Interact/Sit To Stand.fbx', root: true, after: 'sitDown', knees: 0.11 },
+  sitFidget: { file: '16_Sitting/Sitting Fidgeting Feet.fbx', loop: true, after: 'sitDown', seat: 'sit', knees: 0.11 }, // swinging her feet
 };
 
 function convert(dir, only) {
@@ -334,7 +362,7 @@ function convert(dir, only) {
     clips: {},
   };
   let standFrame = null;
-  const ends = {};
+  const ends = {}, starts = {};
   for (const [name, c] of Object.entries(CLIPS)) {
     if (only && !only.includes(name) && name !== 'idle') continue;
     const fbx = loadFBX(path.join(dir, c.file));
@@ -352,6 +380,7 @@ function convert(dir, only) {
       }
     }
     if (c.level) levelHead(frames);
+    if (c.bow) bowInstead(frames, c.bow);
     const N = frames.length;
     let speed = 0;
     if (c.walk) speed = inPlaceSpeed(frames, fps);
@@ -372,6 +401,10 @@ function convert(dir, only) {
         f.hips.z += end.z - f0.z;
       });
     }
+    if (c.seat) {
+      const dy = starts[c.seat].y - frames[0].hips.y;
+      frames.forEach((f) => (f.hips.y += dy));
+    }
     let seam = 0;
     if (c.loop) {
       // close the cycle: spread any end/start mismatch over the loop, then drop the last key
@@ -388,6 +421,7 @@ function convert(dir, only) {
     }
     if (name === 'idle') standFrame = frames[0];
     ends[name] = frames[frames.length - 1].hips.clone();
+    starts[name] = frames[0].hips.clone();
     out.clips[name] = pack(frames, { ...c, speed, hipsHeight });
     console.log(name.padEnd(10), String(frames.length).padStart(4), 'frames', (frames.length / fps).toFixed(2).padStart(6), 's', c.loop ? `loop seam ${THREE.MathUtils.radToDeg(seam).toFixed(1)}°` : '', speed ? `speed ${speed.toFixed(2)} m/s` : '');
   }

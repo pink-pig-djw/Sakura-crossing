@@ -307,7 +307,9 @@ function interact() {
       setTimeout(() => audio.sfx('clap'), 700);
       const f = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
       state.luck = f[0];
-      setTimeout(() => openOmikuji(f), 1300);
+      // in third person she faces the hall, puts her hands together and prays before the fortune comes
+      const pray = player.view === 'third' && avatar ? avatar.perform('pray', Math.atan2(it.hall.x - player.pos.x, it.hall.z - player.pos.z)) : 0;
+      setTimeout(() => openOmikuji(f), pray ? pray * 1000 - 300 : 1300);
       break;
     }
     case 'map':
@@ -709,9 +711,10 @@ function frame() {
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
   // the protagonist: shown in third person unless the camera is pulled in against her
-  const tpOn = !!avatar && state.mode === 'play' && player.view === 'third';
+  // (she stays on screen behind menus, the map and the fortune slip)
+  const tpOn = !!avatar && state.mode !== 'title' && state.mode !== 'loading' && player.view === 'third';
   const tpShown = tpOn && player.boomNow > 0.75;
-  avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus) });
+  avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
   residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
   birds.userData.update(t);
