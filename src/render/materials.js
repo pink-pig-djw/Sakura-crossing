@@ -973,6 +973,7 @@ export function createCharacterMaterial(opts = {}) {
     uSelfShadow: { value: opts.selfShadow ?? 1 },
     uTint: { value: opts.tint || new THREE.Color(1, 1, 1) },
     uShadeFloor: { value: opts.shadeFloor ?? 0.5 },
+    uHeadCenter: { value: new THREE.Vector3() },
   });
   uniforms.uOutline.value = opts.outline ?? 1;
   uniforms.uSoft.value = opts.soft ?? 0.04;
@@ -995,6 +996,7 @@ export function createCharacterMaterial(opts = {}) {
     : {};
   if (opts.transparent) defines.BLEND = '';
   if (opts.tint) defines.TINT = '';
+  if (opts.faceSphere) defines.FACE_SPHERE = opts.faceSphere.toFixed(3);
   const cut = opts.alphaTest || (opts.transparent ? 0.02 : 0);
   if (cut) defines.ALPHA_TEST = cut.toFixed(3);
   return new THREE.ShaderMaterial({
@@ -1041,6 +1043,7 @@ export function createCharacterMaterial(opts = {}) {
       uniform float uSelfShadow;
       uniform vec3 uTint;
       uniform float uShadeFloor;
+      uniform vec3 uHeadCenter;
       #ifdef USE_TEXMAP
         uniform sampler2D map;
       #endif
@@ -1061,6 +1064,11 @@ export function createCharacterMaterial(opts = {}) {
         #endif
         vec3 N = normalize(vNormalW);
         if (!gl_FrontFacing) N = -N;
+        #ifdef FACE_SPHERE
+          // the face is lit as the round head it stands for: the jaw and cheek polygons do not
+          // cut the light and shade into odd shapes
+          N = normalize(mix(N, normalize(vWorldPos - uHeadCenter), FACE_SPHERE));
+        #endif
         vec3 V = normalize(cameraPosition - vWorldPos);
         float sh = mix(1.0, getShadowMask(), uSelfShadow);
         float ndl = dot(N, uSunDir);

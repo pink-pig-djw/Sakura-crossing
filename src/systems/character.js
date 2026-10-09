@@ -71,7 +71,8 @@ function materialFor(m) {
     return createCharacterMaterial({ ...base, unlit: /Highlight/.test(name) ? 1 : 0.7, outline: 0, selfShadow: 0, soft: 0.3 });
   }
   // skin: a light, warm shadow side (it must not go dark in the shade)
-  if (/Face_00_SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.85, soft: 0.22, wrap: 0.12, selfShadow: 0.55, outline: 0.5, rim: 0.12, shadeFloor: 0.84 });
+  // the face: shaded as a sphere around the head (see uHeadCenter), a faint shadow side
+  if (/Face_00_SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.85, soft: 0.25, wrap: 0.12, selfShadow: 0.35, outline: 0.5, rim: 0.12, shadeFloor: 0.9, faceSphere: 0.85 });
   if (/SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.8, soft: 0.08, wrap: 0.04, shadeFloor: 0.8 });
   if (/HAIR/.test(name)) return createCharacterMaterial({ ...base, shade: new THREE.Color(0.78, 0.74, 0.9), shadeMix: 0.5, soft: 0.05, rim: 0.3 });
   return createCharacterMaterial({ ...base, shade, shadeMix: 0.55, soft: 0.05 });
@@ -99,6 +100,11 @@ export class Character {
       }
       if (o.material.transparent) o.castShadow = false;
       o.material = Array.isArray(o.material) ? o.material.map(materialFor) : materialFor(o.material);
+    });
+    // face materials follow the head's centre (sphere-shaded face)
+    this.faceMats = [];
+    vrm.scene.traverse((o) => {
+      if (o.isMesh) for (const m of [o.material].flat()) if (m.defines?.FACE_SPHERE) this.faceMats.push(m);
     });
     const H = vrm.humanoid;
     this.node = (b) => H.getNormalizedBoneNode(b);
@@ -424,6 +430,13 @@ export class Character {
     this._fitGround();
     this._drapeSkirt();
     this.vrm.update(dt);
+    if (this.faceMats.length) {
+      // the middle of the head: a little above and behind the head bone
+      const head = n('head');
+      head.updateWorldMatrix(true, false);
+      _v.set(0, 0.075, -0.015).applyMatrix4(head.matrixWorld);
+      for (const m of this.faceMats) m.uniforms.uHeadCenter.value.copy(_v);
+    }
   }
 
   _drapeSkirt() {
