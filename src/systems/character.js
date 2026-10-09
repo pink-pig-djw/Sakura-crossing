@@ -17,16 +17,21 @@ import { createCharacterMaterial } from '../render/materials.js';
 
 const BASE = import.meta.env?.BASE_URL ?? './';
 
-// file from the page's folder, or embedded (single-file builds: window.__ASSETS)
+const fromBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+
+// file from the page's folder, or embedded (single-file builds: window.__ASSETS), or as
+// base64 text next to the page (hosts that do not serve .vrm: window.__ASSET_TEXT maps the
+// path to the text file)
 export async function loadAsset(path) {
   const inline = window.__ASSETS?.[path];
-  if (inline) return Uint8Array.from(atob(inline), (c) => c.charCodeAt(0)).buffer;
-  const r = await fetch(`${BASE}${path}`);
+  if (inline) return fromBase64(inline);
+  const text = window.__ASSET_TEXT?.[path];
+  const r = await fetch(`${BASE}${text || path}`);
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
-  return r.arrayBuffer();
+  return text ? fromBase64((await r.text()).trim()) : r.arrayBuffer();
 }
 
-const decode = (b64, Type) => new Type(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer);
+const decode = (b64, Type) => new Type(fromBase64(b64));
 
 const CHILD = {
   hips: 'spine', spine: 'chest', chest: 'upperChest', upperChest: 'neck', neck: 'head',
