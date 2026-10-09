@@ -665,7 +665,8 @@ function mallShopSign(ctx, s) {
 function buildMall(ctx, block, doors) {
   const M = { x0: 264.4, x1: 286.6, z0: -9.2, z1: 14.2 };
   const y1 = 5.0, f1 = 4.6, y2 = y1 + f1, f2 = 4.2, H = f1 + f2;
-  const A = { x0: 270.0, x1: 281.0, z0: -3.5, z1: 8.5 }; // atrium void
+  const A = { x0: 270.5, x1: 280.5, z0: -3.0, z1: 8.0 }; // atrium void
+  const D = 3.2; // depth of the shop units along the walls (galleries stay ~3 m wide)
   const entZ = [-5.4, -2.8];
   buildRoom(ctx, {
     ...M, y: y1, h: H, out: 0xf2eee6, outPat: PAT.SEAM, inC: 0xf6f3ec, floor: 0xe9e4da, floorPat: PAT.TILE, ceil: false, roof: false,
@@ -708,7 +709,7 @@ function buildMall(ctx, block, doors) {
   const eb = IB(275.5, 2.5);
   for (const [a, b, c, d] of [[A.x0, A.z0 - 0.02, A.x1, A.z0], [A.x0, A.z1, A.x1, A.z1 + 0.02]]) eb.boxMM(a, y2 - 0.5, b, c, y2, d, { color: 0xe2ddd2 });
   for (const [a, b, c, d] of [[A.x0 - 0.02, A.z0, A.x0, A.z1], [A.x1, A.z0, A.x1 + 0.02, A.z1]]) eb.boxMM(a, y2 - 0.5, b, c, y2, d, { color: 0xe2ddd2 });
-  const ST = { x0: 277.8, x1: 281.0, z0: -3.5, z1: 6.5 }; // stairs+escalator from 1F (south) up to the gallery (north)
+  const ST = { x0: 277.3, x1: 280.5, z0: -3.0, z1: 7.0 }; // stairs+escalator from 1F (south) up to the gallery (north)
   const rails = [[A.x0, A.z0, A.x0, A.z1], [A.x0, A.z1, A.x1, A.z1], [A.x1, A.z1, A.x1, A.z0], [A.x0, A.z0, ST.x0, A.z0]];
   for (const [a, b, c, d] of rails) {
     ctx.builders.get('glass', (a + c) / 2, (b + d) / 2).quad(V(a, y2, b), V(c, y2, d), V(c, y2 + 1.05, d), V(a, y2 + 1.05, b), 0xffffff, 0, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
@@ -754,9 +755,11 @@ function buildMall(ctx, block, doors) {
   }
   // shop fronts on both floors (fake interiors behind lit glass) with signs
   const fronts = [];
-  const rowN = (yy) => [[266.0, 271.4], [271.8, 277.2], [277.6, 283.0]].map(([a, b]) => ({ axis: 'x', c: M.z0 + 4.2, a0: a, a1: b, dir: 1, y: yy }));
-  const rowS = (yy) => [[266.0, 271.4], [271.8, 277.2], [277.6, 283.0]].map(([a, b]) => ({ axis: 'x', c: M.z1 - 4.2, a0: a, a1: b, dir: -1, y: yy }));
-  const rowE = (yy) => [[-4.6, 0.0], [0.4, 5.0], [5.4, 9.8]].map(([a, b]) => ({ axis: 'z', c: M.x1 - 4.2, a0: a, a1: b, dir: -1, y: yy }));
+  // the north/south rows start east of the entrance hall so both doors open onto a clear floor
+  const RX0 = 268.4;
+  const rowN = (yy) => [[RX0, 273.0], [273.4, 278.0], [278.4, M.x1 - D]].map(([a, b]) => ({ axis: 'x', c: M.z0 + D, a0: a, a1: b, dir: 1, y: yy }));
+  const rowS = (yy) => [[RX0, 273.0], [273.4, 278.0], [278.4, M.x1 - D]].map(([a, b]) => ({ axis: 'x', c: M.z1 - D, a0: a, a1: b, dir: -1, y: yy }));
+  const rowE = (yy) => [[M.z0 + D + 0.2, -0.6], [-0.2, 5.0], [5.4, M.z1 - D - 0.2]].map(([a, b]) => ({ axis: 'z', c: M.x1 - D, a0: a, a1: b, dir: -1, y: yy }));
   fronts.push(...rowN(y1), ...rowS(y1), ...rowE(y1), ...rowN(y2), ...rowS(y2), ...rowE(y2));
   let si = 0;
   for (const f of fronts) {
@@ -765,10 +768,10 @@ function buildMall(ctx, block, doors) {
     const b = IB(f.axis === 'x' ? (f.a0 + f.a1) / 2 : f.c, f.axis === 'x' ? f.c : (f.a0 + f.a1) / 2);
     // shop box behind the front (dark interior block keeps the gallery tidy)
     if (f.axis === 'x') {
-      const zIn = f.c - f.dir * 4.15;
+      const zIn = f.c - f.dir * (D - 0.05);
       b.boxMM(f.a0 - 0.2, f.y, Math.min(f.c, zIn), f.a1 + 0.2, f.y + fh - (f.y === y1 ? 0.5 : 0), Math.max(f.c, zIn), { color: 0xeae6dc, skip: f.dir > 0 ? 'Z' : 'z' });
     } else {
-      const xIn = f.c - f.dir * 4.15;
+      const xIn = f.c - f.dir * (D - 0.05);
       b.boxMM(Math.min(f.c, xIn), f.y, f.a0 - 0.2, Math.max(f.c, xIn), f.y + fh - (f.y === y1 ? 0.5 : 0), f.a1 + 0.2, { color: 0xeae6dc, skip: f.dir > 0 ? 'X' : 'x' });
     }
     // glazing with a lit fake interior
@@ -789,13 +792,17 @@ function buildMall(ctx, block, doors) {
     const ix = f.axis === 'x' ? (f.a0 + f.a1) / 2 : f.c + f.dir * 1.0, iz = f.axis === 'x' ? f.c + f.dir * 1.0 : (f.a0 + f.a1) / 2;
     ctx.interactables.push({ kind: 'mallshop', x: ix, z: iz, y: f.y, r: 1.8, label: `${s[0]}をのぞく`, shop: s[0], sub: s[1] });
   }
-  // corner fillers between the shop rows (walls)
+  // the exposed west ends of the north/south shop rows
+  for (const [za, zb] of [[M.z0, M.z0 + D], [M.z1 - D, M.z1]]) {
+    const col = ctx.colliders.addSegment(RX0 - 0.2, za, RX0 - 0.2, zb, 0.12, y2 + f2);
+    if (col) col.yBottom = y1 - 0.5;
+  }
   // sakura tree in a round planter under the skylight, with benches
-  const tx = 274.0, tz = 2.5;
+  const tx = 273.9, tz = 2.5;
   const pb = IB(tx, tz);
   pb.cyl(tx, y1, tz, 2.3, 2.3, 0.55, 20, 0xc9c1b2, PAT.STONE);
   pb.cyl(tx, y1 + 0.55, tz, 2.1, 2.1, 0.02, 20, 0x6a5038);
-  ctx.trees.push({ kind: 'sakura', x: tx, z: tz, y: y1 + 0.55, seed: 2626, scale: 0.62 });
+  ctx.trees.push({ kind: 'sakura', x: tx, z: tz, y: y1 + 0.55, seed: 2626, scale: 0.52, compact: true });
   ctx.colliders.addCircle(tx, tz, 2.35, y1 + 0.6, y1 - 1);
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
@@ -871,11 +878,12 @@ function buildMall(ctx, block, doors) {
     c.font = `500 ${h * 0.045}px ${FONTS.gothic}`;
     c.fillText('営業時間 10:00〜21:00', 10, h * 0.8);
   });
-  const gb = IB(267.0, -5.0);
-  gb.boxMM(266.9, y1, -6.2, 267.1, y1 + 1.9, -4.8, { color: 0xd8d4cc });
-  vsign(ctx, 'z', 267.11, -6.15, -4.85, y1 + 0.2, y1 + 1.85, 1, guide, 0.6);
-  ctx.colliders.addBox(267.0, -5.5, 0.15, 0.7, 0, y1 + 1.9, y1 - 1);
-  ctx.interactables.push({ kind: 'sign', x: 268.0, z: -5.5, y: y1, r: 1.4, label: 'フロアガイドを見る', text: '1F ファッション・雑貨・クレープ / 2F フードコート・本・おもちゃ。屋上はないけれど、天窓から空が見える。' });
+  // in the pocket beside the entrance, facing the doors
+  const gb = IB(266.0, -7.4);
+  gb.boxMM(265.3, y1, -7.5, 266.7, y1 + 1.9, -7.3, { color: 0xd8d4cc });
+  vsign(ctx, 'x', -7.29, 265.35, 266.65, y1 + 0.2, y1 + 1.85, 1, guide, 0.6);
+  ctx.colliders.addBox(266.0, -7.4, 0.7, 0.15, 0, y1 + 1.9, y1 - 1);
+  ctx.interactables.push({ kind: 'sign', x: 266.0, z: -6.3, y: y1, r: 1.4, label: 'フロアガイドを見る', text: '1F ファッション・雑貨・クレープ / 2F フードコート・本・おもちゃ。屋上はないけれど、天窓から空が見える。' });
   // lights: 1F under the gallery, 2F ceiling
   ceilingLights(ctx, M.x0 + 0.5, M.z0 + 0.5, M.x1 - 0.5, A.z0 - 0.3, y2 - 0.5, 3.2);
   ceilingLights(ctx, M.x0 + 0.5, A.z1 + 0.3, M.x1 - 0.5, M.z1 - 0.5, y2 - 0.5, 3.2);

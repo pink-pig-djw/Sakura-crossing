@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel } from '../world/layout.js';
+import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel, SEAWALL_Z } from '../world/layout.js';
 
 // First-person walker: keyboard + mouse (pointer lock or drag), touch joystick.
 // Feet position is kept on the walkable height field; colliders push back.
@@ -235,6 +235,8 @@ export class Player {
     if (outsideDist(x, z) > 18 && g > terrainH(x, z) - 0.01 && g > 22) return false;
     // deep sea (the subway lies below sea level, so only out past the shoreline)
     if (g < -0.65 && z > shoreZ(x) - 4) return false;
+    // no wading up the walled river: only the stones, stairs and the open mouth on the beach
+    if (z < SEAWALL_Z + 1.4 && inRiver(x, z) && g < riverLevel(z) - 0.02) return false;
     return true;
   }
 

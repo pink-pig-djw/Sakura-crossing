@@ -175,7 +175,8 @@ export function buildCoast(ctx) {
     if (nearRiver((x + x1) / 2, 3)) continue;
     B(x, 70).boxMM(x, COAST.y - 0.2, PROM.z0 - 0.12, x1, wallTop + 0.01, PROM.z0 + 0.02, { color: 0xc9c5bb, pattern: PAT.CONCRETE });
   }
-  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0, RW1]]);
+  // the parapet runs on over the river's wall tops up to the bridge railings
+  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0 + RIVER.wall, RW1 - RIVER.wall]]);
   const inGap = (x) => gaps.some(([a, b]) => x > a && x < b);
   let x = X0;
   while (x < X1) {

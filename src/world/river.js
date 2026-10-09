@@ -22,7 +22,7 @@ const ZH = RIVER.zHead;
 const bank = (z) => groundH(WW - 1, z);
 // top of the revetment: the bank, or the promenade along the sea wall
 const wallTop = (z) => (z < PROM.z0 ? bank(z) : PROM.y);
-export const STAIRS = { top: STEPPING_Z - 7.6, bottom: STEPPING_Z - 1.0, w: 1.6 };
+export const STAIRS = { top: STEPPING_Z - 7.6, bottom: STEPPING_Z - 1.0, w: 1.6, land: 1.6 };
 
 function deckTop(br, z) {
   if (br.kind === 'prom') return PROM.y;
@@ -73,6 +73,10 @@ function buildWalls(ctx) {
     const b = ctx.builders.get('toon', xf, Z_END);
     const top = wallTop(Z_END), bot = riverBed(xf, Z_END) - 0.8;
     b.quadOut(V(xo, bot, Z_END), V(xf, bot, Z_END), V(xf, top + 0.04, Z_END), V(xo, top + 0.04, Z_END), V((xo + xf) / 2, top, Z_END - 2), 0x9d978b, PAT.STONE);
+    // the coping is walkable at path height (the terrain beneath is carved into the channel)
+    const xa = Math.min(xo, xf), xb = Math.max(xo, xf);
+    ctx.colliders.addSurface(xa, ZH, xb, PROM.z0, (x, z) => groundH(x, z), 0);
+    ctx.colliders.addSurface(xa, PROM.z0, xb, SEAWALL_Z + 0.6, () => PROM.y, 0);
     // colliders: walkers in the channel cannot climb into the wall
     for (let z = ZH; z < Z_END - 0.01; z += 4) {
       const z1 = Math.min(Z_END, z + 4);
@@ -180,23 +184,28 @@ function buildStepping(ctx) {
     const b = ctx.builders.get('toon', x, z);
     b.cyl(x, riverBed(x, z) - 0.3, z, r * 1.06, r, top - riverBed(x, z) + 0.3, 9, 0x8f8a80, PAT.ROCK, { top: 0xcac4b6, phase: rng.range(0, 1) });
   }
+  // one continuous footing across the small gaps between stones (walkers may not wade)
   ctx.colliders.addSurface(XW, zS - 1, XE, zS + 1, (x, z) => {
-    for (const s of stones) if ((x - s.x) ** 2 + (z - s.z) ** 2 < (s.r + 0.05) ** 2) return s.top;
-    return -99;
+    let best = -99;
+    for (const s of stones) {
+      const d = Math.hypot(x - s.x, z - s.z) - s.r;
+      if (d < 0.25) best = Math.max(best, s.top - Math.max(0, d) * 0.3);
+    }
+    return best;
   }, 0);
   ctx.landmarks.push({ id: 'stepping', name: '飛び石', x: RX, z: zS });
 
   // stairs along the walls: top landing at the path, steps down toward the stones
   for (const side of [-1, 1]) {
     const x0 = side < 0 ? XW : XE - STAIRS.w, x1 = x0 + STAIRS.w;
-    const zt = STAIRS.top, zb = STAIRS.bottom;
+    const zt = STAIRS.top, zb = STAIRS.bottom, zl = zt - STAIRS.land;
     const yTop = bank(zt);
     const yBot = lvl + 0.1;
     const steps = Math.round((yTop - yBot) / 0.17);
     const run = (zb - zt) / steps;
     const b = ctx.builders.get('toon', (x0 + x1) / 2, (zt + zb) / 2);
     const base = Math.min(riverBed(x0, zb), riverBed(x1, zb)) - 0.4;
-    b.boxMM(x0, base, zt - 1.0, x1, yTop + 0.02, zt, { color: 0xc6c2b8, pattern: PAT.CONCRETE });
+    b.boxMM(x0, base, zl, x1, yTop + 0.02, zt, { color: 0xc6c2b8, pattern: PAT.CONCRETE });
     for (let i = 0; i < steps; i++) {
       const top = yTop - (i + 1) * ((yTop - yBot) / steps);
       b.boxMM(x0, base, zt + i * run, x1, top + 0.001, zt + (i + 1) * run, { color: 0xc6c2b8, pattern: PAT.CONCRETE });
@@ -206,13 +215,13 @@ function buildStepping(ctx) {
     const xp = side < 0 ? x1 - 0.06 : x0 + 0.06;
     const stepTop = (z) => (z <= zt ? yTop : z >= zb ? yBot : yTop - (Math.min(steps - 1, Math.floor((z - zt) / run)) + 1) * ((yTop - yBot) / steps));
     const d = ctx.builders.get('detail', xp, zt);
-    for (let z = zt - 0.9; z <= zb + 0.01; z += 1.25) d.box(xp, stepTop(z) + 0.5, z, 0.06, 1.0, 0.06, { color: 0x7d858c });
+    for (let z = zl + 0.1; z <= zb + 0.01; z += 1.25) d.box(xp, stepTop(z) + 0.5, z, 0.06, 1.0, 0.06, { color: 0x7d858c });
     d.box(xp, stepTop(zb) + 0.5, zb, 0.06, 1.0, 0.06, { color: 0x7d858c });
-    d.rod(V(xp, yTop + 1.0, zt - 0.9), V(xp, yTop + 1.0, zt), 0.035, 0.035, 6, 0x7d858c);
+    d.rod(V(xp, yTop + 1.0, zl + 0.1), V(xp, yTop + 1.0, zt), 0.035, 0.035, 6, 0x7d858c);
     d.rod(V(xp, yTop + 1.0, zt), V(xp, yBot + 1.0, zb), 0.035, 0.035, 6, 0x7d858c);
     d.rod(V(xp, yTop + 0.55, zt), V(xp, yBot + 0.55, zb), 0.025, 0.025, 5, 0x7d858c);
-    ctx.colliders.addSegment(xp, zt - 1.0, xp, zb, 0.25, 99);
-    ctx.colliders.addSurface(x0, zt - 1.0, x1, zb + 1.4, (x, z) => {
+    ctx.colliders.addSegment(xp, zl, xp, zb, 0.25, 99);
+    ctx.colliders.addSurface(x0, zl, x1, zb + 1.4, (x, z) => {
       if (z <= zt) return yTop;
       if (z >= zb) return yBot;
       const i = Math.min(steps - 1, Math.floor((z - zt) / run));
@@ -240,10 +249,10 @@ function buildStepping(ctx) {
       c.fill();
     });
     const kit = new Kit(ctx, sx, zt);
-    kit.t.cyl(sx, yTop, zt - 1.6, 0.04, 0.04, 1.3, 6, 0x8a8f94);
-    signOnFace(kit, { o: V(sx + 0.3, yTop, zt - 1.67), r: V(-1, 0, 0), n: V(0, 0, -1), len: 0.6 }, 0.3, 0.95, 0.48, 0.6, 0.0, uv, 0, 0xdedad0);
-    ctx.colliders.addCircle(sx, zt - 1.6, 0.08);
-    ctx.interactables.push({ kind: 'sign', x: side < 0 ? WW + 1 : WE - 1, z: zt - 0.5, r: 1.6, label: '飛び石の案内を見る', text: '飛び石で向こう岸へ渡れる。水はすこし冷たそう。' });
+    kit.t.cyl(sx, yTop, zl - 0.6, 0.04, 0.04, 1.3, 6, 0x8a8f94);
+    signOnFace(kit, { o: V(sx + 0.3, yTop, zl - 0.67), r: V(-1, 0, 0), n: V(0, 0, -1), len: 0.6 }, 0.3, 0.95, 0.48, 0.6, 0.0, uv, 0, 0xdedad0);
+    ctx.colliders.addCircle(sx, zl - 0.6, 0.08);
+    ctx.interactables.push({ kind: 'sign', x: side < 0 ? WW + 1 : WE - 1, z: zl + 0.5, r: 1.6, label: '飛び石の案内を見る', text: '飛び石で向こう岸へ渡れる。水はすこし冷たそう。' });
   }
   ctx.catSpots.push({ x: stones[4].x, z: stones[4].z, y: stones[4].top, kind: 'stone', ry: 0.8 });
 }
@@ -403,35 +412,43 @@ function railBridge(ctx, br) {
 // ---------------------------------------------------------------------------
 function buildRailings(ctx) {
   const gaps = BRIDGES.map((b) => [b.z0 - 0.02, b.id === 'coast' ? SEAWALL_Z + 2 : b.z1 + 0.02]);
-  gaps.push([STAIRS.top - 1.0, STAIRS.top]);
+  gaps.push([STAIRS.top - STAIRS.land, STAIRS.top]);
   const blocked = (z) => gaps.some(([a, b]) => z > a && z < b);
   for (const side of [-1, 1]) {
     const xr = side < 0 ? XW - 0.15 : XE + 0.15;
-    let run = null;
-    const flush = (zEnd) => {
-      if (run && zEnd - run > 0.3) {
-        const ya = wallTop(run), yb = wallTop(zEnd);
-        ctx.colliders.addSegment(xr, run, xr, zEnd, 0.22, Math.max(ya, yb) + 1.1).yBottom = Math.min(ya, yb) - 0.8;
+    // a run's collider ends where its drawn rail ends (the last sample before a gap)
+    let run = null, last = null;
+    const flush = () => {
+      if (run !== null && last - run > 0.3) {
+        const ya = wallTop(run), yb = wallTop(last);
+        ctx.colliders.addSegment(xr, run, xr, last, 0.22, Math.max(ya, yb) + 1.1).yBottom = Math.min(ya, yb) - 0.8;
       }
       run = null;
     };
+    const post = (z) => ctx.builders.get('detail', xr, z).box(xr, wallTop(z) + 0.55, z, 0.08, 1.1, 0.08, { color: 0x4f4a44 });
     for (let z = ZH + 0.2; z < SEAWALL_Z; z += 0.5) {
       if (blocked(z)) {
-        flush(z);
+        if (run !== null) post(last); // end post at the gap
+        flush();
         continue;
       }
-      if (run === null) run = z;
+      if (run === null) {
+        run = z;
+        post(z);
+      }
+      last = z;
       const y = wallTop(z);
       const d = ctx.builders.get('detail', xr, z);
       const zi = Math.round(z * 2);
-      if (zi % 4 === 0) d.box(xr, y + 0.55, z, 0.08, 1.1, 0.08, { color: 0x4f4a44 });
+      if (zi % 4 === 0) post(z);
       const z1 = Math.min(z + 0.5, SEAWALL_Z);
       if (!blocked(z1 - 0.01)) {
         d.rod(V(xr, y + 1.08, z), V(xr, wallTop(z1) + 1.08, z1), 0.045, 0.045, 5, 0x5a534b);
         d.rod(V(xr, y + 0.6, z), V(xr, wallTop(z1) + 0.6, z1), 0.03, 0.03, 4, 0x5a534b);
+        last = z1;
       }
     }
-    flush(SEAWALL_Z);
+    flush();
   }
 }
 
@@ -449,11 +466,11 @@ function buildPaths(ctx) {
     let k = 0;
     for (let z = ZH + 5; z < 44; z += rng.range(8.2, 9.4)) {
       if (nearBridge(z, 3.2)) continue;
-      if (z > STAIRS.top - 2.5 && z < STAIRS.top + 0.8) continue;
+      if (z > STAIRS.top - STAIRS.land - 1.5 && z < STAIRS.top + 0.8) continue;
       ctx.trees.push({ kind: 'sakura', x: xt, z, y: bank(z), seed: rng.int(1, 1e9), scale: rng.range(0.92, 1.1), lean: -side * 0.32 });
       // lantern between this tree and the next
       const zl = z + 4.4;
-      if (!nearBridge(zl, 1.5) && !(zl > STAIRS.top - 1.5 && zl < STAIRS.top + 0.5) && zl < 46) lanterns.push({ x: xl, z: zl, y: bank(zl), pink: (k++ + (side > 0 ? 1 : 0)) % 2 === 0 });
+      if (!nearBridge(zl, 1.5) && !(zl > STAIRS.top - STAIRS.land - 0.5 && zl < STAIRS.top + 0.5) && zl < 46) lanterns.push({ x: xl, z: zl, y: bank(zl), pink: (k++ + (side > 0 ? 1 : 0)) % 2 === 0 });
     }
     // benches facing the river
     for (let z = ZH + 14; z < 40; z += rng.range(22, 30)) {

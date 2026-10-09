@@ -260,7 +260,9 @@ export function buildTrees(ctx, specs) {
         const tw = branchPath(mid, V(Math.cos(a + 0.8), 0.6, Math.sin(a + 0.8)), R * 0.4, 0.3, rng, 3);
         tb.tube(tw, tw.map((_, k) => rb * 0.45 * (1 - k * 0.25) + 0.01), 4, 0x76625c, PAT.BARK);
       }
-      canopy(fol.get('blossom', sp.x, sp.z), cc, R, R * 0.58, SAKURA_COLS, rng, { cardSize: big ? [1.3, 2.0] : [0.9, 1.3], puffs: big ? 20 : 8, cardsPer: big ? 7 : 5, puffScale: big ? 1 : 0.65, flatBottom: -0.25 });
+      // compact trees (indoors) shrink their blossom clumps with the tree so the crown fits
+      const cs = sp.compact ? s : 1;
+      canopy(fol.get('blossom', sp.x, sp.z), cc, R, R * 0.58, SAKURA_COLS, rng, { cardSize: big ? [1.3 * cs, 2.0 * cs] : [0.9 * cs, 1.3 * cs], puffs: big ? 20 : 8, cardsPer: big ? 7 : 5, puffScale: (big ? 1 : 0.65) * cs, flatBottom: -0.25 });
       ctx.colliders.addCircle(sp.x, sp.z, r0 + 0.12);
       ctx.ground.petals(sp.x, sp.z, R * 1.15, big ? 0.55 : 0.35);
       if (sp.z > -135 && sp.x > -245 && sp.x < 325) emitters.push({ x: cc.x, y: cc.y, z: cc.z, r: R, ground: y0, big });
