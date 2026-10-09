@@ -22,7 +22,7 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const X = V(1, 0, 0), Y = V(0, 1, 0), Z = V(0, 0, 1);
 
 // [Mixamo joint, VRM bone, ideal axis A, reference R, child joint giving the bone axis]
-// The trunk, neck and head carry no axis: their rotations are taken relative to the rest
+// The trunk, neck, head and feet carry no axis: their rotations are taken relative to the rest
 // T-pose instead, so the model keeps its own posture (the X Bot's bones there do not run
 // straight up when it stands and looks ahead: its head-top end sits 19° forward of the head).
 function buildMap() {
@@ -38,7 +38,9 @@ function buildMap() {
       [`${S}Shoulder`, `${s}Shoulder`, out, Z, `${S}Arm`], [`${S}Arm`, `${s}UpperArm`, out, Z, `${S}ForeArm`],
       [`${S}ForeArm`, `${s}LowerArm`, out, Z, `${S}Hand`], [`${S}Hand`, `${s}Hand`, out, Z, `${S}HandMiddle1`],
       [`${S}UpLeg`, `${s}UpperLeg`, down, Z, `${S}Leg`], [`${S}Leg`, `${s}LowerLeg`, down, Z, `${S}Foot`],
-      [`${S}Foot`, `${s}Foot`, Z, Y, `${S}ToeBase`], [`${S}ToeBase`, `${s}Toes`, Z, Y, `${S}Toe_End`],
+      // feet: relative to the rest pose too (a T-posed X Bot's foot points 39° down, a VRoid
+      // one's 29°: matching directions would dig her toes into the ground)
+      [`${S}Foot`, `${s}Foot`, null, null], [`${S}ToeBase`, `${s}Toes`, null, null],
     );
     for (const [F, f] of [['Index', 'Index'], ['Middle', 'Middle'], ['Ring', 'Ring'], ['Pinky', 'Little']]) {
       for (let i = 1; i <= 3; i++) m.push([`${S}Hand${F}${i}`, `${s}${f}${seg[i - 1]}`, out, Z, `${S}Hand${F}${i + 1}`]);
@@ -326,10 +328,15 @@ function pack(frames, o) {
 // root: keep the hips' travel (sitting down / standing up move onto and off the seat)
 // after: start where that clip ends
 // knees: sitting, knees brought together this far apart
+// airborne: a jump: the hips keep only their height over the lower foot
+// legs: blend the legs this far toward the standing pose
 export const CLIPS = {
   idle: { file: '01_Idle/Breathing Idle.fbx', loop: true },
   happy: { file: '01_Idle/Happy Idle.fbx', loop: true, level: true },
   walk: { file: '02_Locomotion/Walking.fbx', loop: true, walk: true },
+  run: { file: '02_Locomotion/Running.fbx', loop: true, walk: true },
+  fall: { file: '03_Jump_Climb/Falling Idle.fbx', loop: true },
+  jump: { file: '03_Jump_Climb/Jumping.fbx', range: [0.5, 1.15], airborne: true, legs: 0.55 }, // in the air
   stretch: { file: '08_Daily/Arm Stretching.fbx' },
   yawn: { file: '01_Idle/Yawn.fbx' },
   phone: { file: '08_Daily/Texting While Standing.fbx', range: [0, 9] },
@@ -366,6 +373,16 @@ function convert(dir, only) {
     let frames = sample(fbx, Q, fps);
     if (c.range) frames = frames.slice(Math.round(c.range[0] * fps), Math.round(c.range[1] * fps) + 1);
     if (c.knees) kneesTogether(frames, c.knees);
+    // in the air the game lifts the body: keep only the hips' height over the lower foot
+    if (c.airborne) for (const f of frames) f.hips.y -= Math.min(f.toes[0].y, f.toes[1].y);
+    // legs: tone down the legs toward standing (a skirt does not forgive a high tuck)
+    if (c.legs) {
+      const legs = MAP.map(([, b], i) => (/UpperLeg|LowerLeg|Foot|Toes/.test(b) ? i : -1)).filter((i) => i >= 0);
+      for (const f of frames) {
+        for (const i of legs) f.rot[i].slerp(standFrame.rot[i], c.legs);
+        f.hips.y += (standFrame.hips.y - f.hips.y) * c.legs;
+      }
+    }
     if (c.level) levelHead(frames);
     const N = frames.length;
     let speed = 0;

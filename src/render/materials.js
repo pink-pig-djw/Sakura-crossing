@@ -972,6 +972,7 @@ export function createCharacterMaterial(opts = {}) {
     uUnlit: { value: opts.unlit ?? 0 },
     uSelfShadow: { value: opts.selfShadow ?? 1 },
     uTint: { value: opts.tint || new THREE.Color(1, 1, 1) },
+    uShadeFloor: { value: opts.shadeFloor ?? 0.5 },
   });
   uniforms.uOutline.value = opts.outline ?? 1;
   uniforms.uSoft.value = opts.soft ?? 0.04;
@@ -1039,6 +1040,7 @@ export function createCharacterMaterial(opts = {}) {
       uniform float uUnlit;
       uniform float uSelfShadow;
       uniform vec3 uTint;
+      uniform float uShadeFloor;
       #ifdef USE_TEXMAP
         uniform sampler2D map;
       #endif
@@ -1068,7 +1070,11 @@ export function createCharacterMaterial(opts = {}) {
         float ambLum = dot(amb, vec3(0.299, 0.587, 0.114));
         vec3 shadeCol = mix(amb, uShade * ambLum * 1.25, uShadeMix) * 0.85;
         // model textures are painted at full brightness: keep the lit side below white
-        vec3 col = albedo * mix(shadeCol, (amb + uSunColor) * 0.8, L);
+        vec3 litCol = (amb + uSunColor) * 0.8;
+        // the shadow side never sinks below a share of the lit side, tinted by the shade
+        // colour: skin stays light and warm in the shade of trees and buildings
+        shadeCol = max(shadeCol, litCol * mix(vec3(1.0), uShade, 0.45) * uShadeFloor);
+        vec3 col = albedo * mix(shadeCol, litCol, L);
         float band = L * (1.0 - L) * 4.0;
         col += albedo * band * uSunColor * vec3(0.16, 0.06, 0.02);
         // thin rim of sky light on the silhouette, stronger on the lit side

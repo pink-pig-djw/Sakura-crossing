@@ -127,6 +127,7 @@ export class GamepadInput {
         else if (i === BTN.X) this.emit('jump');
         else if (i === BTN.Y) this.emit('map');
         else if (i === BTN.VIEW) this.emit('minimap');
+        else if (i === BTN.RS) this.emit('view');
         else if (i === BTN.MENU) this.emit('menu');
         else if (i === BTN.LB) this.emit('time', -1);
         else if (i === BTN.RB) this.emit('time', 1);

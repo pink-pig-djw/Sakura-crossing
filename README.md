@@ -31,9 +31,11 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 | `E` | 调查：自动贩卖机买饮料、摸猫、捡贝壳、坐长椅、神社参拜抽签、看地图 |
 | `M` | 散步地图 |
 | `N` | 显示 / 隐藏右上角小地图 |
+| `V` | 切换第三人称 / 第一人称视角 |
+| 鼠标滚轮 | 第三人称时调整镜头远近 |
 | `T` | 切换时间段（朝 / 昼 / 夕 / 夜） |
 | `H` | 隐藏界面（拍照模式） |
-| `Esc` | 菜单：时间、音量（环境音 / 音乐 / 语音）、字幕、画质、轮廓线、小地图、语言、散步手帐 |
+| `Esc` | 菜单：时间、音量（环境音 / 音乐 / 语音）、字幕、画质、轮廓线、小地图、视角、主角的服装、语言、散步手帐 |
 
 手机上：左下摇杆移动，右侧滑动转视角，右下按钮调查 / 跳跃 / 奔跑。
 
@@ -44,7 +46,7 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 | 按键 | 动作 |
 | --- | --- |
 | 左摇杆 | 行走（按下左摇杆切换奔跑） |
-| 右摇杆 | 视角 |
+| 右摇杆 | 视角（按下右摇杆切换第三人称 / 第一人称） |
 | `A` | 调查 / 确认 |
 | `B` | 返回 / 从长椅起身 |
 | `X` | 跳跃 |
@@ -73,6 +75,16 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 - **ひだまり公園**、**汐の湯**（钱汤和烟囱）、**汐見神社**（石阶、鸟居、拝殿、狛犬、绘马、俯瞰小镇的长椅）。
 - 7 只可以摸的猫、8 枚散落在沙滩上的贝壳、能买到 10 种饮料的自动贩卖机（偶尔会中奖再来一瓶）、5 种签运的御神签。
 
+## 主角：桜井ななみ（第三人称）
+
+默认用第三人称视角，镜头在主角「桜井ななみ」身后（`V` 键、手柄按下右摇杆或菜单里可以切回第一人称）：
+
+- **跟着你走**：她朝移动方向转身；站着时待机，走路和奔跑的动作按实际速度播放（脚步和地面严格同步，脚步声也跟着她的步幅）；跳起来时是腾空的动作，从高处落下时是下落的动作；在长椅和座位上会坐下（并膝、手放在腿上），镜头转到她斜前方。
+- **头会转向**：她会看向你镜头所看的方向，靠近可以调查的东西或芽衣时会看向它们。
+- **三套服装**：连衣裙、连帽衫、校服，在菜单「ななみの服装」里随时更换（每套第一次穿时才加载，之后切换是即时的），选择会被记住。
+- **镜头**：鼠标滚轮调整远近；碰到墙、柱子、房间的天花板、上一层的地板（地铁站、商场二楼）时自动拉近，离开后缓缓退回；镜头贴近到会穿进人物时，人物暂时隐藏。
+- **皮肤在阴影里不会发黑**：人物的阴影面有一个下限（不低于受光面的约八成），并带一点皮肤自身的暖色，所以在树荫、楼影里也是明亮的动画肤色。
+
 ## 镇上的人：芽衣
 
 桜坂东侧的人行道上，有一位居民「芽衣」——桜ヶ浜高校二年级的学生，从早上 6:30 到傍晚 19:00 都在坡道上：
@@ -88,6 +100,7 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 | 素材 | 来源 | 许可 |
 | --- | --- | --- |
 | 人物模型 | 「春野 芽衣」，作者 Nanami Chiaki（VRoid 制作的 VRM 1.0），用 `tools/chars/optimize_vrm.py` 只保留颜色贴图和用到的表情后约 3.7 MB | VRM Public License 1.0：仅限个人非营利使用，**需署名**，允许修改后再分发；「作为化身使用」仅限作者本人 |
+| 主角模型 | 「Sakurai Nanami」三套服装，作者 Nanami Chiaki（VRoid 制作的 VRM 1.0），各约 4.2～4.7 MB | VRM Public License 1.0：允许个人营利使用，**需署名**，允许修改后再分发；「作为化身使用」需另行授权 |
 | 动作数据 | [Mixamo](https://www.mixamo.com/)（Adobe）的动画，转换后的数据在 `public/chars/motions.json`；原始 FBX 不放进仓库 | Mixamo 官方 FAQ：可在个人 / 商业 / 非营利项目（包括游戏）中免版税使用；原始动画文件不单独再分发 |
 | 配音 | VOICEVOX:四国めたん | 按角色使用条款标注 |
 
@@ -153,7 +166,8 @@ src/
   world/               地形与布局、道路、房屋、商店街/车站/公园/神社、铁路与电车、海岸、
                        河流 (river.js)、商业区 (commercial.js)、地铁 (subway.js)、室内 (interiors.js)、
                        树与绿化 (trees.js / greenery.js / grass.js)、碰撞 (collision.js)、猫与鸟
-  systems/             第一人称控制、手柄、昼夜、音频；配音播放 (voice.js) 与触发 (townVoices.js)；VRM 人物 (character.js)
+  systems/             行走与镜头（第三 / 第一人称，player.js）、主角 (avatar.js)、手柄、昼夜、音频；
+                       配音播放 (voice.js) 与触发 (townVoices.js)；VRM 人物 (character.js)
   world/residents.js   居民「芽衣」的一天和互动
   ui/                  界面、地图与小地图 (ui.js)、语言切换 (i18n.js) 与中文文本 (zh.js)
 public/voice/          VOICEVOX 生成的配音（MP3）
@@ -169,6 +183,6 @@ tools/deploy-pages.sh  发布到 GitHub Pages
 - [three.js](https://threejs.org/)（MIT）
 - 字体来自 Google Fonts：Zen Maru Gothic、Zen Old Mincho、Zen Kaku Gothic New、Yuji Syuku、Dela Gothic One、Noto Sans SC、Noto Serif SC（SIL OFL）。离线时会回退到系统字体。
 - 配音：**VOICEVOX:九州そら**、**VOICEVOX:冥鳴ひまり**、**VOICEVOX:春日部つむぎ**、**VOICEVOX:四国めたん**（按各角色的使用条款标注；游戏菜单里也有显示）。
-- 人物：「春野 芽衣」© Nanami Chiaki（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
+- 人物：主角「Sakurai Nanami」与「春野 芽衣」© Nanami Chiaki（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
 - 动作：[Mixamo](https://www.mixamo.com/)（Adobe）。
 - 风格参考：用户提供的樱花小镇演示视频。

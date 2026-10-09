@@ -40,6 +40,7 @@
             <li><kbd>E</kbd> <span data-i18n>しらべる</span></li>
             <li><kbd>M</kbd> <span data-i18n>地図</span></li>
             <li><kbd>N</kbd> <span data-i18n>ミニマップ</span></li>
+            <li><kbd>V</kbd> <span data-i18n>視点切替</span></li>
             <li><kbd>T</kbd> <span data-i18n>時間帯</span></li>
             <li><kbd>Esc</kbd> <span data-i18n>メニュー</span></li>
           </ul>
@@ -53,6 +54,7 @@
             <li><i class="pad-btn wide">RT</i> <span data-i18n>走る</span></li>
             <li><i class="pad-btn wide">LB</i><i class="pad-btn wide">RB</i> <span data-i18n>時間帯</span></li>
             <li><i class="pad-btn">⧉</i> <span data-i18n>ミニマップ</span></li>
+            <li><i class="pad-btn">R</i><span data-i18n>押し込み</span> <span data-i18n>視点切替</span></li>
             <li><i class="pad-btn">≡</i> <span data-i18n>メニュー</span></li>
           </ul>
         </div>
@@ -116,6 +118,15 @@
               </div>
               <label class="row"><input type="checkbox" id="outline-toggle" checked /> <span data-i18n>輪郭線</span></label>
               <label class="row"><input type="checkbox" id="minimap-toggle" checked /> <span data-i18n>ミニマップ</span></label>
+              <label class="row"><input type="checkbox" id="view-toggle" checked /> <span data-i18n>三人称視点</span></label>
+            </div>
+            <div class="group">
+              <h3 data-i18n>ななみの服装</h3>
+              <div class="seg" id="outfit-buttons">
+                <button type="button" data-outfit="0" data-i18n>ワンピース</button>
+                <button type="button" data-outfit="1" data-i18n>パーカー</button>
+                <button type="button" data-outfit="2" data-i18n>制服</button>
+              </div>
             </div>
             <div class="group">
               <h3 data-i18n>言語</h3>
@@ -123,7 +134,7 @@
                 <button type="button" data-lang="ja">日本語</button>
                 <button type="button" data-lang="zh">中文</button>
               </div>
-              <p class="credits"><span data-i18n>クレジット</span>: <span id="voice-credits"></span><br />芽衣: 春野 芽衣 (© Nanami Chiaki, VRM Public License 1.0)<br />Motion: Mixamo (Adobe)</p>
+              <p class="credits"><span data-i18n>クレジット</span>: <span id="voice-credits"></span><br />主人公: Sakurai Nanami / 芽衣: 春野 芽衣 (© Nanami Chiaki, VRM Public License 1.0)<br />Motion: Mixamo (Adobe)</p>
             </div>
             <div class="group notebook">
               <h3 data-i18n>散歩手帳</h3>

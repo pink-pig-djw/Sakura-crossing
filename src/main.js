@@ -19,6 +19,7 @@ import { tr, tf, setLang } from './ui/i18n.js';
 import { VoiceSystem } from './systems/voice.js';
 import { TownVoices } from './systems/townVoices.js';
 import { createResidents } from './world/residents.js';
+import { createAvatar } from './systems/avatar.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
@@ -125,6 +126,7 @@ const t0 = performance.now();
 const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l) });
 const buildMs = Math.round(performance.now() - t0);
 const player = new Player(camera, world.colliders, canvas);
+player.indoors = world.indoorRects || [];
 petals = createPetals(world.petalEmitters, QUALITY.high.petals);
 petals.userData.max = QUALITY.high.petals;
 petals.geometry.instanceCount = QUALITY[quality].petals;
@@ -146,6 +148,21 @@ createResidents(world, scene, { voice })
     window.__residents = r;
   })
   .catch((e) => console.warn('resident not loaded:', e));
+// the protagonist (third person), in the outfit picked last time
+let avatar = null;
+let outfit = 0;
+try {
+  outfit = Math.max(0, Math.min(2, +(localStorage.getItem('sakura-outfit') || 0) | 0));
+} catch {
+  /* storage unavailable */
+}
+ui.setOutfit(outfit);
+createAvatar(world, scene, player, outfit)
+  .then((a) => {
+    avatar = a;
+    window.__avatar = a;
+  })
+  .catch((e) => console.warn('protagonist not loaded:', e));
 ui.lots = world.lots;
 ui.minimap.build(world.landmarks, world.lots);
 
@@ -367,6 +384,24 @@ try {
   /* storage unavailable */
 }
 ui.setMinimap(minimapOn);
+// view: third person (default) or first person
+let viewMode = 'third';
+try {
+  if (localStorage.getItem('sakura-view') === 'first') viewMode = 'first';
+} catch {
+  /* storage unavailable */
+}
+player.setView(viewMode);
+ui.setView(viewMode);
+function toggleView(v = player.view === 'third' ? 'first' : 'third') {
+  player.setView(v);
+  ui.setView(v);
+  try {
+    localStorage.setItem('sakura-view', v);
+  } catch {
+    /* storage unavailable */
+  }
+}
 function toggleMinimap(v = !minimapOn) {
   minimapOn = v;
   ui.setMinimap(v);
@@ -495,6 +530,7 @@ pad.on('back', () => {
 pad.on('jump', () => player.jump());
 pad.on('map', openMap);
 pad.on('minimap', () => toggleMinimap());
+pad.on('view', () => toggleView());
 pad.on('menu', openMenu);
 pad.on('time', cycleTime);
 pad.on('confirm', () => activateFocused(modalRoot()));
@@ -522,6 +558,17 @@ ui.on('subtitles', (v) => {
   if (!v) ui.hideSubtitle();
 });
 ui.on('minimap', (v) => toggleMinimap(v));
+ui.on('view', (third) => toggleView(third ? 'third' : 'first'));
+ui.on('outfit', (i) => {
+  outfit = i;
+  ui.setOutfit(i);
+  avatar?.setOutfit(i).catch((e) => console.warn('outfit not loaded:', e));
+  try {
+    localStorage.setItem('sakura-outfit', String(i));
+  } catch {
+    /* storage unavailable */
+  }
+});
 ui.on('sens', (v) => (player.sensitivity = v));
 ui.on('outlines', (v) => (pipe.outlines = v));
 ui.on('quality', (q) => {
@@ -560,6 +607,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' || e.code === 'Enter') interact();
   if (e.code === 'KeyM') openMap();
   if (e.code === 'KeyN') toggleMinimap();
+  if (e.code === 'KeyV') toggleView();
   if (e.code === 'KeyT') cycleTime(1);
   if (e.code === 'KeyH') document.getElementById('hud').classList.toggle('photo');
 });
@@ -609,6 +657,14 @@ let lastTrainState = 'wait';
 let rumbleT = 0;
 let prevHour = tod.hour;
 const fwd = new THREE.Vector3();
+const headPos = new THREE.Vector3(), focusAt = new THREE.Vector3();
+// where the protagonist looks: what she is about to use (a person's face, a thing at chest height)
+function focusPoint(it) {
+  if (!it || state.mode !== 'play') return null;
+  if (it.kind === 'resident') return it.resident.ch.node('head').getWorldPosition(focusAt);
+  const y = it.y ?? (it.sit ? it.sit.y - 0.45 : world.colliders.groundAt(it.x, it.z, player.pos.y + 0.3));
+  return focusAt.set(it.x, y + 1.0, it.z);
+}
 window.__info = { buildMs };
 
 function frame() {
@@ -652,7 +708,12 @@ function frame() {
   world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
-  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head: camera.position, sitting: player.sitting } : null, tod.hour);
+  // the protagonist: shown in third person unless the camera is pulled in against her
+  const tpOn = !!avatar && state.mode === 'play' && player.view === 'third';
+  const tpShown = tpOn && player.boomNow > 0.75;
+  avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus) });
+  const head = tpShown ? avatar.head(headPos) : camera.position;
+  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);
@@ -679,7 +740,7 @@ function frame() {
       }
       state.lastArea = name;
     }
-    ui.setCrosshair(player.pointerLocked);
+    ui.setCrosshair(player.pointerLocked && player.view === 'first');
     ui.minimap.update(dt, { x: player.pos.x, z: player.pos.z, yaw: player.yaw });
   } else ui.setPrompt(null);
   ui.setClock(tod.label, tod.period.label, tod.hour);
@@ -767,7 +828,7 @@ function setCam(str) {
 if (params.get('cam')) setCam(params.get('cam'));
 window.__setView = (cam, hour) => {
   document.getElementById('title').hidden = true;
-  setCam(cam);
+  if (cam) setCam(cam); // null: keep the camera where the game put it
   if (hour !== undefined && !Number.isNaN(hour)) tod.setHour(hour);
   tod.update(0);
   clouds.userData.update(camera, G.uTime.value);

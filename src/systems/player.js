@@ -1,12 +1,18 @@
 import * as THREE from 'three';
 import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel, SEAWALL_Z } from '../world/layout.js';
 
-// First-person walker: keyboard + mouse (pointer lock or drag), touch joystick.
+// The walker: keyboard + mouse (pointer lock or drag), touch joystick, gamepad.
 // Feet position is kept on the walkable height field; colliders push back.
+// Two views: third person (the camera on a boom behind the protagonist, pulled in by walls,
+// ceilings and floors above; the mouse wheel sets its length) and first person.
 
 const EYE = 1.58;
 const RADIUS = 0.32;
 const STEP = 0.55;
+// third person: walking and running pace (the protagonist's own stride), boom pivot height
+const TP_WALK = 1.9, TP_RUN = 5.0;
+const PIVOT = 1.32, PIVOT_SIT = 1.0;
+const BOOM_MIN = 1.4, BOOM_MAX = 6;
 
 export class Player {
   constructor(camera, colliders, dom) {
@@ -42,6 +48,11 @@ export class Player {
     this.skipMoves = 0;
     this.moveAvg = 0; // recent mouse motion per event (spike filter)
     this.lastBig = false;
+    this.view = 'third';
+    this.boom = 2.7; // wanted camera distance (third person)
+    this.boomNow = 2.7; // after collisions
+    this.indoors = []; // rooms: { x0, x1, z0, z1, y0, y1 } (y1: ceiling)
+    this._dt = 0;
     this._bindEvents();
   }
 
@@ -99,6 +110,22 @@ export class Player {
       if (!this.pointerLocked) this.dragging = true;
     });
     addEventListener('mouseup', () => (this.dragging = false));
+    this.dom.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.enabled || this.view !== 'third') return;
+        e.preventDefault();
+        this.boom = THREE.MathUtils.clamp(this.boom * Math.exp(e.deltaY * 0.0012), BOOM_MIN, BOOM_MAX);
+      },
+      { passive: false },
+    );
+  }
+
+  setView(v) {
+    this.view = v;
+    // looking up from below the boom is not much use: keep the pitch in a friendly range
+    if (v === 'third') this.pitch = THREE.MathUtils.clamp(this.pitch, -0.9, 0.5);
+    this.applyCamera();
   }
 
   // Raw mouse motion (no OS pointer acceleration) where supported, so a quick turn of the
@@ -132,8 +159,10 @@ export class Player {
   sit(spot) {
     this.sitting = spot;
     this.vy = 0;
-    this.yaw = spot.yaw;
-    this.pitch = -0.05;
+    // first person: looking out the way the seat faces; third person: the camera swings round
+    // in front of her (benches often stand against a wall)
+    this.yaw = this.view === 'third' ? spot.yaw + Math.PI - 0.6 : spot.yaw;
+    this.pitch = this.view === 'third' ? -0.18 : -0.05;
   }
 
   stand() {
@@ -146,6 +175,7 @@ export class Player {
   }
 
   update(dt) {
+    this._dt = dt;
     // look
     const k = 0.0017 * this.sensitivity;
     this.yaw -= this.lookDelta.x * k;
@@ -155,7 +185,7 @@ export class Player {
       this.yaw -= this.padLook.x * 2.7 * this.sensitivity * dt;
       this.pitch -= this.padLook.y * 1.9 * this.sensitivity * dt * (this.invertY ? -1 : 1);
     }
-    this.pitch = THREE.MathUtils.clamp(this.pitch, -1.45, 1.45);
+    this.pitch = this.view === 'third' ? THREE.MathUtils.clamp(this.pitch, -1.1, 0.6) : THREE.MathUtils.clamp(this.pitch, -1.45, 1.45);
     this.lookDelta.set(0, 0);
     if (!this.enabled) {
       this.applyCamera();
@@ -187,7 +217,8 @@ export class Player {
       }
     }
     const running = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
-    const maxSpeed = running ? 6.2 : 3.1;
+    this.running = running;
+    const maxSpeed = this.view === 'third' ? (running ? TP_RUN : TP_WALK) : running ? 6.2 : 3.1;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
     const wantX = (fx * iz + rx * ix) * maxSpeed;
@@ -246,7 +277,8 @@ export class Player {
     if (this.onGround && this.speed > 0.4) {
       this.bob += dt * this.speed * 2.1;
       this.stepDist += this.speed * dt;
-      const stride = running ? 1.7 : 1.25;
+      const tp = this.view === 'third' && this.strides;
+      const stride = tp ? (running ? this.strides.run : this.strides.walk) : running ? 1.7 : 1.25;
       if (this.stepDist > stride) {
         this.stepDist = 0;
         if (this.onStep) this.onStep(this.surface(), running);
@@ -280,9 +312,50 @@ export class Player {
   }
 
   applyCamera() {
+    if (this.view === 'third') {
+      this._thirdPerson();
+      return;
+    }
     const c = this.camera;
     const bob = this.onGround && !this.sitting ? Math.sin(this.bob) * 0.035 * this.bobAmount * Math.min(1, this.speed / 3) : 0;
     c.position.set(this.pos.x, (this.sitting ? this.eyeY : this.eyeY) + bob, this.pos.z);
+    c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
+
+  // Third person: the camera at the end of a boom from a pivot above the protagonist's
+  // shoulders, pointing where you look. The boom stops short of walls, the room's ceiling,
+  // a floor above (stacked levels) and the ground; it snaps in and eases back out.
+  _thirdPerson() {
+    const c = this.camera;
+    const px = this.pos.x, pz = this.pos.z;
+    // the pivot follows the feet smoothly (steps and stairs do not jolt the view)
+    const want = this.pos.y + (this.sitting ? PIVOT_SIT : PIVOT);
+    if (this.pivotY === undefined || !this.onGround || Math.abs(want - this.pivotY) > 2) this.pivotY = want;
+    else this.pivotY += (want - this.pivotY) * Math.min(1, (this._dt || 0.016) * 10);
+    const py = this.pivotY;
+    const cp = Math.cos(this.pitch);
+    const bx = Math.sin(this.yaw) * cp, by = -Math.sin(this.pitch), bz = Math.cos(this.yaw) * cp;
+    const feet = this.pos.y;
+    const room = this.indoors.find((r) => px > r.x0 && px < r.x1 && pz > r.z0 && pz < r.z1 && feet > r.y0 && feet < r.y1);
+    const floorHere = this.col.groundAt(px, pz, feet + 0.3);
+    let free = this.boom;
+    for (let d = 0.25; d <= this.boom; d += 0.08) {
+      const x = px + bx * d, y = py + by * d, z = pz + bz * d;
+      const g = this.col.groundAt(x, z, y);
+      // (things lower than the camera, a bench under her, a low wall, are passed over)
+      let hit = this.col.solidAt(x, z, y - 0.2) || y < g + 0.3;
+      // another level's floor between the pivot and the camera
+      if (!hit && g > floorHere + 0.9 && g < y + 0.2) hit = true;
+      if (!hit && room) hit = y > room.y1 - 0.3 || x < room.x0 + 0.2 || x > room.x1 - 0.2 || z < room.z0 + 0.2 || z > room.z1 - 0.2;
+      if (hit) {
+        free = Math.max(0.3, d - 0.3);
+        break;
+      }
+    }
+    if (free < this.boomNow) this.boomNow = free;
+    else this.boomNow += (free - this.boomNow) * Math.min(1, (this._dt || 0.016) * 3);
+    const d = this.boomNow;
+    c.position.set(px + bx * d, py + by * d, pz + bz * d);
     c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
 

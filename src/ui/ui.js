@@ -81,11 +81,13 @@ export class UI {
     $('vol-voice').addEventListener('input', (ev) => this.emit('volume', 'voice', ev.target.value / 100));
     $('subs-toggle').addEventListener('change', (ev) => this.emit('subtitles', ev.target.checked));
     $('minimap-toggle').addEventListener('change', (ev) => this.emit('minimap', ev.target.checked));
+    $('view-toggle').addEventListener('change', (ev) => this.emit('view', ev.target.checked));
     for (const b of document.querySelectorAll('[data-lang]')) b.addEventListener('click', () => setLang(b.dataset.lang));
     onLang(() => this._langChanged());
     applyStatic();
     this._langChanged();
     for (const b of document.querySelectorAll('#quality-buttons button')) b.addEventListener('click', () => this.emit('quality', b.dataset.q));
+    for (const b of document.querySelectorAll('#outfit-buttons button')) b.addEventListener('click', () => this.emit('outfit', +b.dataset.outfit));
     this._bindTouch();
   }
 
@@ -295,6 +297,14 @@ export class UI {
   setMinimap(on) {
     this.el.minimap.hidden = !on;
     $('minimap-toggle').checked = on;
+  }
+
+  setView(v) {
+    $('view-toggle').checked = v === 'third';
+  }
+
+  setOutfit(i) {
+    for (const b of document.querySelectorAll('#outfit-buttons button')) b.classList.toggle('on', +b.dataset.outfit === i);
   }
 
   openMenu(state) {

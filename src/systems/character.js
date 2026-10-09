@@ -65,8 +65,9 @@ function materialFor(m) {
     // eyes, lashes and brows: flat, no ink lines, no cast shadows on them
     return createCharacterMaterial({ ...base, unlit: /Highlight/.test(name) ? 1 : 0.7, outline: 0, selfShadow: 0, soft: 0.3 });
   }
-  if (/Face_00_SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.85, soft: 0.22, wrap: 0.12, selfShadow: 0.55, outline: 0.5, rim: 0.12 });
-  if (/SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.8, soft: 0.08, wrap: 0.04 });
+  // skin: a light, warm shadow side (it must not go dark in the shade)
+  if (/Face_00_SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.85, soft: 0.22, wrap: 0.12, selfShadow: 0.55, outline: 0.5, rim: 0.12, shadeFloor: 0.84 });
+  if (/SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.8, soft: 0.08, wrap: 0.04, shadeFloor: 0.8 });
   if (/HAIR/.test(name)) return createCharacterMaterial({ ...base, shade: new THREE.Color(0.78, 0.74, 0.9), shadeMix: 0.5, soft: 0.05, rim: 0.3 });
   return createCharacterMaterial({ ...base, shade, shadeMix: 0.55, soft: 0.05 });
 }
@@ -384,25 +385,30 @@ export class Character {
 
   // Settle the hips and IK each leg so the feet meet the terrain under them.
   _fitGround() {
+    if (this.noFit) return; // in the air: the legs keep the clip's pose
     const n = this.node;
     this.root.updateMatrixWorld(true);
     const g0 = this.root.position.y;
+    // for each foot: how far the ankle must move. It follows the terrain under it (the clip
+    // stands on flat ground at the root's height) and never goes below its standing height
+    // over the ground (no sole sinks into it)
     const legs = ['left', 'right'].map((s) => {
-      const foot = n(s + 'Foot');
-      foot.getWorldPosition(_v);
-      return { s, d: this.ground(_v.x, _v.z) - g0 };
+      n(s + 'Foot').getWorldPosition(_v);
+      const d = this.ground(_v.x, _v.z) - g0;
+      const a = _v.y - g0;
+      return { s, c: Math.max(d, d + this.ankleHeight * 0.98 - a) };
     });
-    const drop = Math.min(0, legs[0].d, legs[1].d);
+    const drop = Math.min(0, legs[0].c, legs[1].c);
     // on a seat: raise the hips in proportion to how far down toward the clip's seat they are
     const hips = n('hips');
     this._hipsY = hips.position.y;
     let raise = 0;
     if (this.seat && this.sitHips) raise = this.seat.lift * THREE.MathUtils.clamp((this.hipsHeight - hips.position.y) / (this.hipsHeight - this.sitHips), 0, 1);
-    if (Math.abs(legs[0].d) < 0.008 && Math.abs(legs[1].d) < 0.008 && raise < 0.004) return;
+    if (Math.abs(legs[0].c) < 0.004 && Math.abs(legs[1].c) < 0.004 && raise < 0.004) return;
     hips.position.y += drop + raise;
     this.root.updateMatrixWorld(true);
     for (const leg of legs) {
-      const lift = leg.d - drop - raise;
+      const lift = leg.c - drop - raise;
       if (Math.abs(lift) > 0.004) this._ikLeg(leg.s, lift);
     }
   }
@@ -445,11 +451,17 @@ export class Character {
   }
 }
 
+// motion files are shared by every character that uses them
+const motionFiles = new Map();
+function loadMotions(path) {
+  if (!motionFiles.has(path)) motionFiles.set(path, loadAsset(path).then((b) => JSON.parse(new TextDecoder().decode(b))));
+  return motionFiles.get(path);
+}
+
 export async function loadCharacter(modelPath, motionsPath, opts = {}) {
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
-  const [buf, mbuf] = await Promise.all([loadAsset(modelPath), loadAsset(motionsPath)]);
+  const [buf, motions] = await Promise.all([loadAsset(modelPath), loadMotions(motionsPath)]);
   const gltf = await loader.parseAsync(buf, '');
-  const motions = JSON.parse(new TextDecoder().decode(mbuf));
   return new Character(gltf, motions, opts);
 }
