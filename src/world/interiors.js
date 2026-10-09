@@ -8,6 +8,7 @@ import { benchAt, bench } from './coast.js';
 import { midrise, bladeSign, GROUND_SHOPS } from './commercial.js';
 import { car } from './kit.js';
 import { createRiverWaterMaterial } from '../render/materials.js';
+import { shrub, AZALEA, GARDEN_FLOWERS } from './greenery.js';
 import { roadSurfaceY } from './roads.js';
 
 // Public places you can walk into: コンビニ, 喫茶, さくらモール, 市立図書館 — plus the
@@ -1096,11 +1097,10 @@ function buildPlaza(ctx, block) {
     const yy = groundH((x0 + x1) / 2, (z0 + z1) / 2);
     b.boxMM(x0, yy - 0.1, z0, x1, yy + 0.4, z1, { color: 0xb9b2a4, pattern: PAT.STONE });
     ctx.ground.rect(x0 + 0.1, z0 + 0.1, x1 - 0.1, z1 - 0.1, 0x6a5038, PAT.DIRT);
-    for (let z = z0 + 0.3; z < z1 - 0.2; z += 0.35) {
-      for (let x = x0 + 0.3; x < x1 - 0.2; x += 0.35) {
-        const c = rng.pick([0xe8432e, 0xffd94a, 0xffffff, 0xf08ab0]);
-        b.box(x, yy + 0.5, z, 0.03, 0.22, 0.03, { color: 0x4f8a48 });
-        b.box(x, yy + 0.66, z, 0.12, 0.13, 0.12, { color: c });
+    // spring bedding: low leafy clumps full of tulips and pansies
+    for (let z = z0 + 0.45; z < z1 - 0.3; z += 0.6) {
+      for (let x = x0 + 0.45; x < x1 - 0.3; x += 0.6) {
+        shrub(x, yy + 0.58, z, 0.38, 0.2, rng, { cards: 3, size: 0.3, flowers: GARDEN_FLOWERS, flowerCards: 3, mixed: true });
       }
     }
     ctx.colliders.addBox((x0 + x1) / 2, (z0 + z1) / 2, (x1 - x0) / 2, (z1 - z0) / 2, 0, yy + 0.4);
@@ -1159,7 +1159,9 @@ function buildC2(ctx, block) {
   for (const [x0, z0, x1, z1] of [[262.0, -44.2, 269.6, -43.2], [262.0, -21.4, 263.4, -20.8]]) {
     const yy = groundH((x0 + x1) / 2, (z0 + z1) / 2);
     b.boxMM(x0, yy - 0.1, z0, x1, yy + 0.45, z1, { color: 0xb9b2a4, pattern: PAT.STONE });
-    for (let x = x0 + 0.3; x < x1 - 0.2; x += 0.5) b.geom(new THREE.IcosahedronGeometry(0.3, 1), new THREE.Matrix4().compose(V(x, yy + 0.65, (z0 + z1) / 2), new THREE.Quaternion(), V(1, 0.8, 1)), 0x5f9a4c);
+    // clipped azaleas (tsutsuji) in bloom
+    const prng = new RNG(Math.round(x0 * 10 + z0));
+    for (let x = x0 + 0.35; x < x1 - 0.2; x += 0.55) shrub(x, yy + 0.72, (z0 + z1) / 2, 0.36, 0.26, prng, { cards: 4, size: 0.32, flowers: AZALEA, flowerCards: 3 });
     ctx.colliders.addBox((x0 + x1) / 2, (z0 + z1) / 2, (x1 - x0) / 2, (z1 - z0) / 2, 0, yy + 0.5);
   }
   ctx.vending.push({ x: 269.6, z: -22.0, ry: Math.PI / 2, seed: 3131, n: 2 });

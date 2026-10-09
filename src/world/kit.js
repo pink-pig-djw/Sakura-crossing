@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { PAT, col } from '../core/builder.js';
+import { RNG } from '../core/rng.js';
+import { activeFoliage, hedgeLeaves, shrub, GARDEN_FLOWERS } from './greenery.js';
 
 // Building kit: reusable pieces built in a local frame. A `Kit` owns the
 // builders of one chunk (toon / window / sign) and keeps their transform
@@ -240,11 +242,14 @@ export function potPlant(b0, x, y, z, rng, scale = 1) {
   const pc = rng.pick([0xb6643f, 0x8f7a68, 0xd8d2c4, 0x6f8a95]);
   const r = rng.range(0.14, 0.24) * scale;
   b.cyl(x, y, z, r * 0.8, r, r * 1.6, 8, pc, 0, { top: 0x5a4632 });
+  const bloom = rng.chance(0.4);
+  // leafy clump of cards (falls back to a low-poly blob outside the foliage pass)
+  const m = b.identity ? null : b.matrix;
+  if (shrub(x, y + r * 2.3, z, r * 1.5, r * 1.15, rng, { cards: 4, size: r * 2.2, m, flowers: bloom ? GARDEN_FLOWERS : null, flowerCards: 2 })) return;
   const g = rng.pick([0x5f9a4c, 0x4f8a48, 0x76a957]);
   const s = new THREE.IcosahedronGeometry(r * 1.4, 0);
-  const m = new THREE.Matrix4().compose(V(x, y + r * 1.6 + r * 0.9, z), new THREE.Quaternion(), V(1, 0.85, 1));
-  b.geom(s, m, g);
-  if (rng.chance(0.4)) {
+  b.geom(s, new THREE.Matrix4().compose(V(x, y + r * 1.6 + r * 0.9, z), new THREE.Quaternion(), V(1, 0.85, 1)), g);
+  if (bloom) {
     const fl = rng.pick([0xf06a8a, 0xffd94a, 0xffffff, 0xb07ae0, 0xff8a4a]);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + rng.next();
@@ -448,15 +453,25 @@ export function blockWall(b, x0, z0, x1, z1, yFn, h, o = {}) {
   }
 }
 
+// clipped hedge: a dark leafy core box wrapped in leaf cards (when the foliage pass is on)
 export function hedge(b, x0, z0, x1, z1, yFn, h, color = 0x5e9150) {
   const len = Math.hypot(x1 - x0, z1 - z0);
   const segs = Math.max(1, Math.ceil(len / 2.5));
+  const leafy = !!activeFoliage();
+  const w = leafy ? 0.46 : 0.6; // leaf cards wrap a box this wide
+  const coreW = leafy ? 0.22 : w; // the solid core stays deep inside (shadow caster)
+  const core = leafy ? col(color).clone().multiplyScalar(0.6) : color;
   for (let i = 0; i < segs; i++) {
     const t0 = i / segs, t1 = (i + 1) / segs;
     const ax = x0 + (x1 - x0) * t0, az = z0 + (z1 - z0) * t0;
     const bx = x0 + (x1 - x0) * t1, bz = z0 + (z1 - z0) * t1;
     const y = Math.min(yFn(ax, az), yFn(bx, bz));
-    b.wall(ax, az, bx, bz, y - 0.1, y + h, 0.6, { color, pattern: PAT.GRASS, ao: 0.25 });
+    b.wall(ax, az, bx, bz, y - 0.1, y + h - (leafy ? 0.32 : 0), coreW, { color: core, pattern: leafy ? PAT.LEAVES : PAT.GRASS, ao: 0.25 });
+  }
+  if (leafy) {
+    const base = col(color);
+    const cols = [0.86, 0.95, 1.04, 1.12].map((k, i) => base.clone().multiplyScalar(k).offsetHSL(i % 2 ? 0.012 : -0.01, 0, 0));
+    hedgeLeaves(x0, z0, x1, z1, yFn, h, w, new RNG(Math.floor(Math.abs(x0 * 73.1 + z0 * 131.7 + x1 * 7.3)) + 1), { cols, m: b.identity ? null : b.matrix });
   }
 }
 

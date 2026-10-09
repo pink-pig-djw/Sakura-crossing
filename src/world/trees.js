@@ -2,170 +2,12 @@ import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { terrainH } from './layout.js';
-import { createFoliageMaterial } from '../render/materials.js';
+import { FoliageSet } from './greenery.js';
 
 // Trees: tube trunks/branches in the toon builder + camera-facing foliage
-// cards (alpha-tested painted clumps) shaded with spherical normals.
+// cards (alpha-tested painted clumps, see greenery.js) shaded with spherical normals.
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-
-class FoliageBuilder {
-  constructor() {
-    this.pos = [];
-    this.nor = [];
-    this.col = [];
-    this.center = [];
-    this.card = [];
-    this.idx = [];
-    this.count = 0;
-  }
-  card4(p, n, c, center, size, rot) {
-    const base = this.count;
-    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-    for (const [cx, cy] of corners) {
-      this.pos.push(p.x, p.y, p.z);
-      this.nor.push(n.x, n.y, n.z);
-      this.col.push(c.r, c.g, c.b);
-      this.center.push(center.x, center.y, center.z);
-      this.card.push(cx, cy, size, rot);
-    }
-    this.count += 4;
-    this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-  toGeometry() {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    g.setAttribute('center', new THREE.Float32BufferAttribute(this.center, 3));
-    g.setAttribute('card', new THREE.Float32BufferAttribute(this.card, 4));
-    g.setIndex(this.count > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
-    g.computeBoundingSphere();
-    g.boundingSphere.radius += 4;
-    return g;
-  }
-}
-
-class FoliageSet {
-  constructor(chunk = 64) {
-    this.chunk = chunk;
-    this.map = new Map();
-  }
-  get(kind, x, z) {
-    const key = kind + '|' + Math.floor(x / this.chunk) + '|' + Math.floor(z / this.chunk);
-    let b = this.map.get(key);
-    if (!b) {
-      b = new FoliageBuilder();
-      b.kind = kind;
-      this.map.set(key, b);
-    }
-    return b;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// painted card textures
-// ---------------------------------------------------------------------------
-function cardTexture(kind) {
-  const S = 256;
-  const c = document.createElement('canvas');
-  c.width = S;
-  c.height = S;
-  const g = c.getContext('2d');
-  const rnd = new RNG(kind === 'blossom' ? 11 : kind === 'pine' ? 23 : 37);
-  g.clearRect(0, 0, S, S);
-  const cx = S / 2, cy = S / 2;
-  if (kind === 'blossom' || kind === 'leaf') {
-    // painted clumps: overlapping round blobs with their own light-to-dark shading,
-    // a scalloped silhouette, and small flower/leaf marks on the lit side
-    const nClump = kind === 'blossom' ? 13 : 12;
-    const clumps = [];
-    for (let i = 0; i < nClump; i++) {
-      const a = rnd.next() * Math.PI * 2;
-      const r = Math.sqrt(rnd.next()) * S * 0.3;
-      clumps.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r * 0.9, r: rnd.range(S * 0.13, S * 0.2) });
-    }
-    clumps.sort((p, q) => p.y - q.y);
-    for (const cl of clumps) {
-      // each clump is a cluster of circles
-      const n = 9;
-      for (let k = 0; k < n; k++) {
-        const a = (k / n) * Math.PI * 2 + rnd.next();
-        const rr = cl.r * rnd.range(0.35, 0.6);
-        const x = cl.x + Math.cos(a) * cl.r * 0.55, y = cl.y + Math.sin(a) * cl.r * 0.55;
-        const g2 = g.createRadialGradient(x - rr * 0.35, y - rr * 0.45, rr * 0.1, x, y, rr);
-        g2.addColorStop(0, 'rgb(255,255,255)');
-        g2.addColorStop(0.75, 'rgb(226,226,226)');
-        g2.addColorStop(1, 'rgb(196,196,196)');
-        g.fillStyle = g2;
-        g.beginPath();
-        g.arc(x, y, rr, 0, Math.PI * 2);
-        g.fill();
-      }
-      const g3 = g.createRadialGradient(cl.x - cl.r * 0.3, cl.y - cl.r * 0.4, cl.r * 0.1, cl.x, cl.y, cl.r * 0.75);
-      g3.addColorStop(0, 'rgb(255,255,255)');
-      g3.addColorStop(1, 'rgb(214,214,214)');
-      g.fillStyle = g3;
-      g.beginPath();
-      g.arc(cl.x, cl.y, cl.r * 0.62, 0, Math.PI * 2);
-      g.fill();
-    }
-    // marks: tiny flowers (blossom) or leaf strokes, mostly on upper halves
-    for (let i = 0; i < (kind === 'blossom' ? 260 : 200); i++) {
-      const cl = clumps[Math.floor(rnd.next() * clumps.length)];
-      const a = rnd.next() * Math.PI * 2;
-      const r = Math.sqrt(rnd.next()) * cl.r * 0.9;
-      const x = cl.x + Math.cos(a) * r, y = cl.y + Math.sin(a) * r - cl.r * 0.15;
-      if (kind === 'blossom') {
-        const sz = rnd.range(2.5, 4.5);
-        g.fillStyle = rnd.next() < 0.75 ? 'rgba(255,255,255,0.95)' : 'rgba(200,150,170,0.8)';
-        for (let p = 0; p < 5; p++) {
-          const pa = (p / 5) * Math.PI * 2 + a;
-          g.beginPath();
-          g.arc(x + Math.cos(pa) * sz * 0.6, y + Math.sin(pa) * sz * 0.6, sz * 0.5, 0, Math.PI * 2);
-          g.fill();
-        }
-      } else {
-        g.fillStyle = rnd.next() < 0.6 ? 'rgba(255,255,255,0.9)' : 'rgba(170,170,170,0.8)';
-        g.beginPath();
-        g.ellipse(x, y, rnd.range(4, 7), rnd.range(2, 3.5), rnd.next() * Math.PI, 0, Math.PI * 2);
-        g.fill();
-      }
-    }
-    // a few gaps so the canopy breathes
-    g.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < 10; i++) {
-      const a = rnd.next() * Math.PI * 2;
-      const r = rnd.range(0.1, 0.35) * S;
-      g.beginPath();
-      g.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, rnd.range(3, 7), 0, Math.PI * 2);
-      g.fill();
-    }
-    g.globalCompositeOperation = 'source-over';
-  } else if (kind === 'pine') {
-    for (let i = 0; i < 260; i++) {
-      const a = rnd.next() * Math.PI * 2;
-      const r = Math.sqrt(rnd.next()) * S * 0.45;
-      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.55;
-      const shade = Math.round(255 * rnd.range(0.75, 1.0));
-      g.strokeStyle = `rgb(${shade},${shade},${shade})`;
-      g.lineWidth = 2.2;
-      for (let k = 0; k < 7; k++) {
-        const na = -Math.PI / 2 + (k - 3) * 0.32 + rnd.range(-0.1, 0.1);
-        g.beginPath();
-        g.moveTo(x, y);
-        g.lineTo(x + Math.cos(na) * 14, y + Math.sin(na) * 10);
-        g.stroke();
-      }
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.generateMipmaps = true;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.anisotropy = 4;
-  return t;
-}
 
 // ---------------------------------------------------------------------------
 // tree generators
@@ -229,7 +71,7 @@ function canopy(fb, center, R, Ry, cols, rng, o = {}) {
 }
 
 export function buildTrees(ctx, specs) {
-  const fol = new FoliageSet(64);
+  const fol = ctx.foliage ?? new FoliageSet(64);
   const emitters = [];
   for (const sp of specs) {
     const rng = new RNG(sp.seed || 1);
@@ -337,29 +179,5 @@ export function buildTrees(ctx, specs) {
     }
   }
 
-  // build meshes
-  const textures = { blossom: cardTexture('blossom'), leaf: cardTexture('leaf'), forest: cardTexture('leaf'), pine: cardTexture('pine') };
-  const mats = {};
-  for (const k of Object.keys(textures)) {
-    mats[k] = createFoliageMaterial(textures[k], {
-      outline: k === 'forest' ? 0.15 : 0.3,
-      soft: k === 'blossom' ? 0.22 : 0.2,
-      wrap: k === 'blossom' ? 0.12 : 0.05,
-      ambTint: k === 'blossom' ? 0xffd2e4 : k === 'pine' ? 0xc8dcd0 : 0xd8ecd8,
-    });
-  }
-  const group = new THREE.Group();
-  group.name = 'foliage';
-  for (const fb of fol.map.values()) {
-    if (fb.count === 0) continue;
-    const m = mats[fb.kind];
-    const mesh = new THREE.Mesh(fb.toGeometry(), m.material);
-    mesh.customDepthMaterial = m.depth;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.matrixAutoUpdate = false;
-    group.add(mesh);
-  }
-  ctx.scene.add(group);
-  return { emitters, group };
+  return { emitters };
 }

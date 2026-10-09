@@ -254,6 +254,14 @@ vec3 applyPattern(vec3 albedo, float patF, vec2 uv, vec3 wp, vec3 N) {
     float n = fbm5(vec2(wp.x + wp.z, wp.y) * 0.8);
     albedo *= 0.75 + 0.45 * n;
     albedo *= 1.0 - 0.3 * smoothstep(0.05, 0.0, abs(vnoise(wp.xz * 1.3 + wp.y) - 0.5));
+  } else if (pat == 26) { // clipped leaves (hedge cores): tiny leaves over darker hollows
+    vec2 q = abs(N.y) > 0.6 ? wp.xz : (abs(N.x) > abs(N.z) ? wp.zy : wp.xy);
+    float hollow = smoothstep(0.35, 0.7, fbm3(q * 2.2));
+    vec2 v = voronoi(vec2(q.x * 26.0, q.y * 18.0));
+    float leaf = 1.0 - smoothstep(0.3, 0.75, v.x);
+    float fade = clamp(1.0 - fwidth(q.x) * 30.0, 0.0, 1.0);
+    albedo *= mix(0.9, mix(0.72, 0.86 + 0.3 * v.y, leaf), fade);
+    albedo *= mix(1.06, 0.72, hollow);
   }
   return albedo;
 }

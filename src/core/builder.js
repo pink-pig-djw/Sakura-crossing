@@ -55,6 +55,7 @@ export const PAT = {
   TATAMI: 23,
   ROCK: 24,
   SHINGLE: 25,
+  LEAVES: 26, // clipped hedge / shrub leaves
 };
 
 export class MeshBuilder {

@@ -428,7 +428,7 @@ export function buildPlaza(ctx) {
   t.box(phx, y(phx, phz) + 1.2, phz + 0.3, 0.3, 0.45, 0.2, { color: 0x6aa86a });
   ctx.colliders.addBox(phx, phz, 0.55, 0.55);
   // lamp posts
-  for (const [lx, lz] of [[-60, 28], [-36, 30], [-12, 40], [-46, 46]]) {
+  for (const [lx, lz] of [[-60, 28], [-36, 30], [-12, 40], [-49.5, 43.5]]) {
     const ly = y(lx, lz);
     t.cyl(lx, ly, lz, 0.08, 0.06, 3.6, 8, 0x3f4a44);
     t.cyl(lx, ly + 3.6, lz, 0.22, 0.12, 0.12, 10, 0x3f4a44);

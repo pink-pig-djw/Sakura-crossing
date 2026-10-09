@@ -581,6 +581,7 @@ function frame() {
     }
   }
   for (const u of world.updaters) u(t, dt);
+  world.grass?.update(camera);
   world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
@@ -684,6 +685,7 @@ window.__setView = (cam, hour) => {
   if (hour !== undefined && !Number.isNaN(hour)) tod.setHour(hour);
   tod.update(0);
   clouds.userData.update(camera, G.uTime.value);
+  world.grass?.update(camera);
   pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value);
   renderer.info.reset();
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });

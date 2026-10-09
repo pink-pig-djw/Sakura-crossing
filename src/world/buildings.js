@@ -7,6 +7,7 @@ import {
   acUnit, potPlant, mailbox, bicycle, car, blockWall, hedge, metalFence, laundry, FRAME,
 } from './kit.js';
 import { FONTS, drawBoard, drawVertical, fitText } from '../render/atlas.js';
+import { shrub, GARDEN_FLOWERS } from './greenery.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -688,12 +689,18 @@ export function buildField(ctx, lot) {
       } else if (crop === 'leek') {
         t.box(x, y + 0.25, z, 0.05, 0.5, 0.05, { color: 0x6aa85a });
       } else if (crop === 'flower') {
-        t.box(x, y + 0.2, z, 0.08, 0.4, 0.08, { color: 0x5f9a4c });
-        t.box(x, y + 0.45, z, 0.22, 0.12, 0.22, { color: rng.pick([0xffd84a, 0xff9ab0, 0xffffff]) });
+        const m = t.identity ? null : t.matrix;
+        if (!shrub(x, y + 0.3, z, 0.26, 0.2, rng, { cards: 2, size: 0.24, m, flowers: [rng.pick(GARDEN_FLOWERS)], flowerCards: 2 })) {
+          t.box(x, y + 0.2, z, 0.08, 0.4, 0.08, { color: 0x5f9a4c });
+          t.box(x, y + 0.45, z, 0.22, 0.12, 0.22, { color: rng.pick([0xffd84a, 0xff9ab0, 0xffffff]) });
+        }
       } else {
+        // runner beans climbing a pole
         t.box(x, y + 0.6, z, 0.03, 1.2, 0.03, { color: 0x9a8a6a });
-        const g = new THREE.IcosahedronGeometry(0.25, 0);
-        t.geom(g, new THREE.Matrix4().compose(V(x, y + 0.8, z), new THREE.Quaternion(), V(0.8, 1.6, 0.8)), 0x6aa85a);
+        if (!shrub(x, y + 0.75, z, 0.22, 0.42, rng, { cards: 3, size: 0.26, m: t.identity ? null : t.matrix })) {
+          const g = new THREE.IcosahedronGeometry(0.25, 0);
+          t.geom(g, new THREE.Matrix4().compose(V(x, y + 0.8, z), new THREE.Quaternion(), V(0.8, 1.6, 0.8)), 0x6aa85a);
+        }
       }
     }
   }

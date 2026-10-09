@@ -93,6 +93,22 @@ export class Colliders {
     return h;
   }
 
+  // Is (x,z) inside something solid standing at height y? (used to place decoration)
+  solidAt(x, z, y = 0) {
+    const arr = this.grid.get(Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell));
+    if (!arr) return false;
+    for (const it of arr) {
+      if (it.off || it.yTop < y + 0.15 || it.yBottom > y + 1.5) continue;
+      if (it.t === 1) {
+        if ((x - it.cx) ** 2 + (z - it.cz) ** 2 < it.r * it.r) return true;
+      } else {
+        const wx = x - it.cx, wz = z - it.cz;
+        if (Math.abs(it.c * wx - it.s * wz) < it.hx && Math.abs(it.s * wx + it.c * wz) < it.hz) return true;
+      }
+    }
+    return false;
+  }
+
   // Street-level colliders above an underground space must not block walkers below:
   // lift their bottoms to just under the street (items flagged `under` are left alone).
   liftOver(x0, z0, x1, z1, yBottom) {

@@ -8,6 +8,8 @@ import { buildRoads, paintRoadsides } from './roads.js';
 import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA, TOWN, overRiver, SUBWAY } from './layout.js';
 import { buildHouse, buildOldHouse, buildApartment, buildMansion, buildParking, buildField, buildGarden, buildSento } from './buildings.js';
 import { buildTrees } from './trees.js';
+import { FoliageSet, useFoliage, buildFoliageMeshes } from './greenery.js';
+import { buildGrass } from './grass.js';
 import { Colliders } from './collision.js';
 import { buildPolesAndWires, buildStreetProps, buildVending, buildLightPools, createWireMaterial, WireSet } from './props.js';
 import { buildTrack, buildCrossings, buildTrain } from './railway.js';
@@ -112,6 +114,9 @@ export async function buildWorld(scene, opts = {}) {
     updaters: [],
   };
   ctx.wires = null;
+  // leaf cards from every builder (trees, hedges, shrubs, flowers) gather here
+  ctx.foliage = new FoliageSet(64);
+  useFoliage(ctx.foliage);
 
   progress(0.04, '道を描いています');
   await tick();
@@ -179,6 +184,8 @@ export async function buildWorld(scene, opts = {}) {
   forest(ctx);
   const trees = buildTrees(ctx, ctx.trees);
   ctx.petalEmitters = trees.emitters;
+  buildFoliageMeshes(ctx.foliage, scene);
+  useFoliage(null);
   // street-level colliders above the subway must not block anyone walking below
   ctx.colliders.liftOver(SUBWAY.x0 - 4, SUBWAY.z0 - 2, SUBWAY.x1 + 4, SUBWAY.z1 + 2, 3.0);
 
@@ -187,6 +194,9 @@ export async function buildWorld(scene, opts = {}) {
   const terrain = buildTerrain(ctx.ground);
   scene.add(terrain);
   ctx.terrain = terrain;
+  const grass = buildGrass(ctx);
+  scene.add(grass.group);
+  ctx.grass = grass;
 
   signTex.needsUpdate = true;
   signTex2.needsUpdate = true;

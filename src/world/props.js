@@ -302,7 +302,8 @@ export function vendingFront(ctx, variant) {
 export function buildVending(ctx, x, z, ry, seed, n = 1) {
   const rng = new RNG(seed);
   const kit = new Kit(ctx, x, z);
-  const y = terrainH(x, z);
+  // stand on whatever is walkable there (platforms, lot pads), not the bare terrain
+  const y = ctx.colliders.groundAt(x, z);
   kit.begin(x, y, z, ry);
   const t = kit.t;
   for (let i = 0; i < n; i++) {

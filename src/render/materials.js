@@ -832,6 +832,75 @@ export function createFoliageMaterial(tex, opts = {}) {
   return { material: mat, depth };
 }
 
+// Instanced grass tufts (see world/grass.js): crossed blade cards rooted on the
+// ground, swaying at the tips, shrinking into the ground with distance.
+export function createGrassMaterial(tex, opts = {}) {
+  const uniforms = makeUniforms({ map: { value: tex }, uFar: { value: opts.far ?? 42 } });
+  uniforms.uOutline.value = opts.outline ?? 0.0;
+  uniforms.uSoft.value = opts.soft ?? 0.25;
+  uniforms.uWrap.value = opts.wrap ?? 0.1;
+  return new THREE.ShaderMaterial({
+    name: 'grass',
+    lights: true,
+    uniforms,
+    side: THREE.DoubleSide,
+    vertexShader: /* glsl */ `
+      #include <common>
+      #include <shadowmap_pars_vertex>
+      attribute vec4 inst;   // world x, y, z, rotation
+      attribute vec4 tint;   // color, scale
+      uniform float uTime;
+      uniform vec2 uWind;
+      uniform float uFar;
+      varying vec3 vColor;
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      varying vec3 vNormalW;
+      varying float vFade;
+      void main() {
+        float c = cos(inst.w), s = sin(inst.w);
+        vec3 lp = position * tint.w;
+        vec3 wp = inst.xyz + vec3(lp.x * c - lp.z * s, lp.y, lp.x * s + lp.z * c);
+        float h = uv.y;
+        float ph = uTime * 1.7 + inst.x * 0.37 + inst.z * 0.29;
+        float sway = sin(ph) * 0.65 + sin(ph * 2.3 + inst.x) * 0.25;
+        wp.xz += (uWind * 0.06 + vec2(0.012, 0.008)) * sway * h * h * tint.w;
+        float d = distance(cameraPosition.xz, wp.xz);
+        vFade = 1.0 - smoothstep(uFar * 0.6, uFar, d);
+        wp.y -= (1.0 - vFade) * h * 0.4 * tint.w;
+        vec3 qn = vec3(normal.x * c - normal.z * s, normal.y, normal.x * s + normal.z * c);
+        vec3 nrm = normalize(mix(vec3(0.0, 1.0, 0.0), qn, 0.3));
+        vec3 transformedNormal = (viewMatrix * vec4(nrm, 0.0)).xyz;
+        vec4 worldPosition = vec4(wp, 1.0);
+        vec4 mvPosition = viewMatrix * worldPosition;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <shadowmap_vertex>
+        vWorldPos = wp;
+        vNormalW = nrm;
+        vColor = tint.rgb;
+        vUv = uv;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD.replace('varying float vPattern;', '')}
+      uniform sampler2D map;
+      varying float vFade;
+      void main() {
+        vec4 t = texture2D(map, vUv);
+        if (t.a < 0.5) discard;
+        if (hash12(floor(gl_FragCoord.xy)) > vFade + 0.02) discard;
+        vec3 N = normalize(vNormalW);
+        float sh = mix(1.0, getShadowMask(), 0.85);
+        // blades darken toward the roots (painted value in the texture)
+        vec3 albedo = vColor * mix(0.62, 1.12, t.r);
+        vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
+        col = applyHaze(col, vWorldPos);
+        gl_FragColor = vec4(col, uOutline);
+      }
+    `,
+  });
+}
+
 // Simple unlit material (for emissive bulbs, distant silhouettes ...)
 export function createUnlitMaterial(opts = {}) {
   return new THREE.ShaderMaterial({

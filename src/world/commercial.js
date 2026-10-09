@@ -8,6 +8,7 @@ import { G } from '../render/materials.js';
 import { FONTS, drawBoard, fitText } from '../render/atlas.js';
 import { benchAt } from './coast.js';
 import { roadSurfaceY } from './roads.js';
+import { shrub, AZALEA } from './greenery.js';
 
 // 桜ヶ浜中央: the newer commercial district on the east bank. Mid-rise mixed-use
 // buildings (雑居ビル) with shops on the ground floor, office glazing above, blade
@@ -474,9 +475,17 @@ function buildStreets(ctx) {
       if (Math.abs(z + 1) < 3 && side > 0) continue; // bus stop in front of the mall
       if (Math.abs(z + 32) < 3 && side < 0) continue; // bus stop by the plaza
       ctx.trees.push({ kind: 'zelkova', x: xt, z, seed: rng.int(1, 1e9), scale: rng.range(0.95, 1.1) });
-      // tree pit grate
+      // planted tree pit: granite curb, clipped azaleas (tsutsuji) in bloom around the trunk
       const y = roadSurfaceY(xt, z);
-      ctx.builders.get('detail', xt, z).box(xt, y + 0.01, z, 1.3, 0.025, 1.3, { color: 0x4a4c4e, pattern: PAT.LATTICE });
+      const pb = ctx.builders.get('toon', xt, z);
+      for (const [x0, z0, x1, z1] of [[xt - 0.6, z - 1.5, xt + 0.6, z - 1.38], [xt - 0.6, z + 1.38, xt + 0.6, z + 1.5], [xt - 0.6, z - 1.38, xt - 0.48, z + 1.38], [xt + 0.48, z - 1.38, xt + 0.6, z + 1.38]]) {
+        pb.boxMM(x0, y - 0.05, z0, x1, y + 0.16, z1, { color: 0xb4b0a8, pattern: PAT.STONE });
+      }
+      pb.boxMM(xt - 0.48, y - 0.02, z - 1.38, xt + 0.48, y + 0.1, z + 1.38, { color: 0x5e4836, pattern: PAT.DIRT });
+      const blooms = [AZALEA[rng.int(0, AZALEA.length - 1)]];
+      for (const dz of [-0.85, 0.85]) shrub(xt, y + 0.42, z + dz, 0.42, 0.3, rng, { cards: 5, size: 0.34, flowers: blooms, flowerCards: 4 });
+      for (const dx of [-0.3, 0.3]) shrub(xt + dx, y + 0.3, z, 0.18, 0.2, rng, { cards: 2, size: 0.24 });
+      ctx.colliders.addBox(xt, z, 0.6, 1.5, 0, y + 0.9);
     }
     for (let z = av.a + 12.5; z < av.b - 4; z += 18) {
       if (nearCross(z, 6)) continue;

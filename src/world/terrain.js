@@ -118,6 +118,15 @@ const C_GRASS = new THREE.Color('#9fbf6a');
 const C_GRASS_DRY = new THREE.Color('#b9b47a');
 const C_FOREST = new THREE.Color('#6f9a55');
 const C_FOREST_DK = new THREE.Color('#5a8550');
+
+// vertex tint of grassy (unpainted) terrain at (x, z) with outside distance `out`
+export function grassTint(x, z, out, target) {
+  if (out > 0) {
+    target.copy(C_FOREST).lerp(C_FOREST_DK, fbm2(x * 0.02, z * 0.02, 3));
+    return target.lerp(C_GRASS, 1 - smoothstep(0, 12, out));
+  }
+  return target.copy(C_GRASS).lerp(C_GRASS_DRY, noise2(x * 0.05, z * 0.05) * 0.6);
+}
 const C_SAND = new THREE.Color('#e2d0aa');
 const C_SAND_WET = new THREE.Color('#cdb994');
 const C_SEABED = new THREE.Color('#c9b48e');
