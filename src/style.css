@@ -598,3 +598,50 @@ kbd {
 #hud.photo {
   opacity: 0;
 }
+
+/* ---------- controller ---------- */
+.pad-only {
+  display: none;
+}
+.has-pad .pad-only {
+  display: flex;
+}
+.pad-btn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.55em;
+  height: 1.55em;
+  padding: 0 0.2em;
+  border-radius: 999px;
+  background: #3a3f4f;
+  color: #fff;
+  font: 700 0.72rem var(--font-label);
+  font-style: normal;
+  box-sizing: border-box;
+}
+.pad-btn.wide {
+  border-radius: 6px;
+}
+.pad-btn.a {
+  background: #3fae4a;
+}
+.pad-btn.b {
+  background: #d9473c;
+}
+.pad-btn.x {
+  background: #2f74d0;
+}
+.pad-btn.y {
+  background: #e3b324;
+}
+.prompt kbd.pad {
+  background: #3fae4a;
+  color: #fff;
+  border-color: #3fae4a;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.gp-focus {
+  outline: 3px solid var(--sakura) !important;
+  outline-offset: 2px;
+}

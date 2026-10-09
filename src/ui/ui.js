@@ -91,6 +91,7 @@ export class UI {
       this.emit('stick', dx / R, -dy / R);
     };
     zone.addEventListener('touchstart', (ev) => {
+      this.setInputMode('touch');
       const t = ev.changedTouches[0];
       id = t.identifier;
       const r = stick.getBoundingClientRect();
@@ -177,6 +178,14 @@ export class UI {
     this.toastTimer = secs;
   }
 
+  setInputMode(mode) {
+    if (mode === this.inputMode) return;
+    this.inputMode = mode;
+    const k = this.el.prompt.querySelector('kbd');
+    k.textContent = mode === 'pad' ? 'A' : 'E';
+    k.classList.toggle('pad', mode === 'pad');
+  }
+
   setPrompt(label) {
     if (!label) {
       this.el.prompt.hidden = true;
@@ -184,7 +193,7 @@ export class UI {
     }
     this.el.prompt.hidden = false;
     this.el.promptText.textContent = label;
-    this.el.prompt.querySelector('kbd').hidden = this.isTouch;
+    this.el.prompt.querySelector('kbd').hidden = this.isTouch && this.inputMode !== 'pad';
   }
 
   setClock(label, period, hour) {

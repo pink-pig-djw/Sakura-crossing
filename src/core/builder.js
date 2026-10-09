@@ -151,6 +151,22 @@ export class MeshBuilder {
     return this;
   }
 
+  // Quad guaranteed to face away from `center` (local space): avoids winding mistakes
+  // on closed shapes such as car cabins.
+  quadOut(a, b, c, d, center, color, pattern = 0, opts = {}) {
+    _t.subVectors(b, a);
+    _b.subVectors(d, a);
+    _n.crossVectors(_t, _b);
+    const fx = (a.x + b.x + c.x + d.x) / 4 - center.x;
+    const fy = (a.y + b.y + c.y + d.y) / 4 - center.y;
+    const fz = (a.z + b.z + c.z + d.z) / 4 - center.z;
+    if (_n.x * fx + _n.y * fy + _n.z * fz < 0) {
+      const uv = opts.uvs ? [opts.uvs[1], opts.uvs[0], opts.uvs[3], opts.uvs[2]] : undefined;
+      return this.quad(b, a, d, c, color, pattern, { ...opts, uvs: uv });
+    }
+    return this.quad(a, b, c, d, color, pattern, opts);
+  }
+
   tri(a, b, c, color, pattern = 0, opts = {}) {
     const cc = col(color);
     _t.subVectors(b, a);

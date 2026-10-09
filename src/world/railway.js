@@ -257,8 +257,9 @@ export function buildCrossings(ctx, scene) {
       arm.receiveShadow = true;
       const pivot = new THREE.Group();
       pivot.position.set(gx + side * -0.45, y + 1.0, z - side * 0.45);
-      // arm points across the road: north gate (west side) points +x, south gate (east side) points -x
-      pivot.rotation.y = side < 0 ? 0 : Math.PI;
+      // arm points across the road: the north gate stands east of the road (arm toward -x),
+      // the south gate stands west of it (arm toward +x)
+      pivot.rotation.y = side < 0 ? Math.PI : 0;
       pivot.add(arm);
       scene.add(pivot);
       state.arms.push({ arm, pivot });
@@ -302,6 +303,12 @@ function buildCar(ctx, cab) {
     b.box(0, y0 + 0.82, zs * (Wd / 2 + 0.005), L - 0.02, 0.05, 0.01, { color: pink });
     b.box(0, y0 + H - 0.18, zs * (Wd / 2 + 0.005), L - 0.02, 0.06, 0.01, { color: 0xa9a6a0 });
   }
+  // roof air-conditioning units and a walkway strip
+  for (const ax of [-L / 4, L / 4]) {
+    b.box(ax, y0 + H + 0.34, 0, 2.4, 0.32, 1.7, { color: 0xd9dcde, pattern: PAT.METAL });
+    b.box(ax, y0 + H + 0.51, 0, 2.0, 0.04, 1.3, { color: 0xb9bcc0 });
+  }
+  b.box(0, y0 + H + 0.26, Wd / 2 - 0.35, L - 1.2, 0.04, 0.3, { color: 0xa9adb2 });
   // underframe + bogies
   b.box(0, y0 - 0.25, 0, L - 1.2, 0.5, Wd - 0.5, { color: 0x3b3d42 });
   for (const bx of [-L / 2 + 2.6, L / 2 - 2.6]) {
@@ -325,14 +332,14 @@ function buildCar(ctx, cab) {
     for (const dx of doorXs) {
       b.box(dx, y0 + 1.0, zs * (Wd / 2 + 0.008), 1.3, 2.0, 0.02, { color: 0xe9e3d2 });
       b.box(dx, y0 + 1.0, zs * (Wd / 2 + 0.014), 0.03, 2.0, 0.02, { color: 0x8a8a8a });
-      quadW(dx - 0.6, dx - 0.08, y0 + 1.15, y0 + 1.95, 90);
-      quadW(dx + 0.08, dx + 0.6, y0 + 1.15, y0 + 1.95, 91);
+      quadW(dx - 0.6, dx - 0.08, y0 + 1.15, y0 + 1.95, 240);
+      quadW(dx + 0.08, dx + 0.6, y0 + 1.15, y0 + 1.95, 241);
     }
     for (let i = 0; i < doorXs.length - 1; i++) {
       const a = doorXs[i] + 0.9, c = doorXs[i + 1] - 0.9;
       const n = 2;
       const seg = (c - a) / n;
-      for (let k = 0; k < n; k++) quadW(a + k * seg + 0.08, a + (k + 1) * seg - 0.08, y0 + 1.18, y0 + 2.1, 92 + k);
+      for (let k = 0; k < n; k++) quadW(a + k * seg + 0.08, a + (k + 1) * seg - 0.08, y0 + 1.18, y0 + 2.1, 242 + k);
     }
   }
   // ends
@@ -345,8 +352,8 @@ function buildCar(ctx, cab) {
     };
     if (isCab) {
       b.box(ex - e * 0.05, y0 + 0.62, 0, 0.12, 0.9, Wd - 0.02, { color: pink });
-      ptsW(-Wd / 2 + 0.25, -0.15, y0 + 1.15, y0 + 2.15, 100);
-      ptsW(0.15, Wd / 2 - 0.25, y0 + 1.15, y0 + 2.15, 101);
+      ptsW(-Wd / 2 + 0.25, -0.15, y0 + 1.15, y0 + 2.15, 250);
+      ptsW(0.15, Wd / 2 - 0.25, y0 + 1.15, y0 + 2.15, 251);
       const P = destBoard(ctx);
       const sz = [V(ex + e * 0.01, y0 + 2.28, e > 0 ? -0.6 : 0.6), V(ex + e * 0.01, y0 + 2.28, e > 0 ? 0.6 : -0.6), V(ex + e * 0.01, y0 + 2.55, e > 0 ? 0.6 : -0.6), V(ex + e * 0.01, y0 + 2.55, e > 0 ? -0.6 : 0.6)];
       sb.quad(sz[0], sz[1], sz[2], sz[3], 0xffffff, 1.2, { uvs: [[P.u0, P.v0], [P.u1, P.v0], [P.u1, P.v1], [P.u0, P.v1]] });
@@ -354,7 +361,7 @@ function buildCar(ctx, cab) {
       b.box(ex + e * 0.06, y0 - 0.15, 0, 0.12, 0.3, Wd - 0.2, { color: 0x2a2b2f });
     } else {
       b.box(ex, y0 + 1.2, 0, 0.1, 2.2, 1.0, { color: 0x6a6e74 });
-      ptsW(-0.35, 0.35, y0 + 1.25, y0 + 2.0, 102);
+      ptsW(-0.35, 0.35, y0 + 1.25, y0 + 2.0, 252);
     }
   }
   return { b, wb, sb, eb };

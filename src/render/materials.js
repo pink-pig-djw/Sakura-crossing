@@ -244,6 +244,14 @@ export function createWindowMaterial() {
           gl_FragColor = vec4(c2, uOutline);
           return;
         }
+        if (vPattern > 235.5) {
+          // vehicle glass: clear, with seat backs and a bright far window
+          curtain = 0.0;
+          float seats = step(uv.y, 0.42) * (0.6 + 0.4 * step(0.5, fract(uv.x * 5.0)));
+          glass = mix(glass, vec3(0.32, 0.42, 0.52), 0.25);
+          glass = mix(glass, vec3(0.28, 0.45, 0.62), seats * 0.7);
+          glass = mix(glass, uHorizon * 0.8, smoothstep(0.55, 0.95, uv.y) * 0.35);
+        }
         float shade = 0.6 + 0.4 * sh;
         vec3 col = mix(glass, curtainCol * mix(uSkyAmb * 1.2, uSkyAmb + uSunColor, 0.5 * shade), curtain * (1.0 - fres * 0.5));
         // diagonal highlight streaks

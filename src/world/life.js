@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { MeshBuilder } from '../core/builder.js';
 import { G } from '../render/materials.js';
-import { terrainH, shoreZ } from './layout.js';
+import { terrainH, shoreZ, COAST, TUNNEL_X } from './layout.js';
+import { car } from './kit.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -26,7 +27,7 @@ export function createPetals(emitters, count = 5200) {
     const r = Math.sqrt(rng.next()) * e.r * 1.05;
     const y = e.y + rng.range(-e.r * 0.3, e.r * 0.45);
     a0.set([e.x + Math.cos(a) * r, y, e.z + Math.sin(a) * r, Math.max(1, y - e.ground)], i * 4);
-    a1.set([rng.next(), rng.range(7, 13), rng.next() * 100, rng.range(0.055, 0.085)], i * 4);
+    a1.set([rng.next(), rng.range(7, 13), rng.next() * 100, rng.range(0.075, 0.11)], i * 4);
   }
   g.setAttribute('aStart', new THREE.InstancedBufferAttribute(a0, 4));
   g.setAttribute('aParam', new THREE.InstancedBufferAttribute(a1, 4));
@@ -103,7 +104,7 @@ export function createPetals(emitters, count = 5200) {
         float e = length(q * vec2(2.0, 1.45));
         float notch = smoothstep(0.08, 0.0, length(q - vec2(0.0, 0.42)));
         if (e > 1.0 || notch > 0.5 || vFade < 0.02) discard;
-        vec3 base = mix(vec3(1.0, 0.82, 0.88), vec3(0.98, 0.7, 0.8), smoothstep(0.2, 0.9, e));
+        vec3 base = mix(vec3(1.0, 0.76, 0.85), vec3(0.95, 0.6, 0.74), smoothstep(0.2, 0.9, e));
         vec3 col = base * (uSkyAmb * 1.1 + uSunColor * (0.55 + 0.6 * vLight));
         float d = length(vWorld - cameraPosition);
         col = mix(col, uHazeColor, 1.0 - exp(-d * uHazeDensity));
@@ -372,4 +373,79 @@ export function createSmallAnimations(ctx, materials) {
 
 export function nearestShoreDistance(x, z) {
   return Math.abs(z - shoreZ(x));
+}
+
+// ---------------------------------------------------------------------------
+// Traffic on the coastal road (cars appear from one tunnel and leave by the other)
+// ---------------------------------------------------------------------------
+function miniKit() {
+  const mk = () => new MeshBuilder();
+  const k = { t: mk(), w: mk(), s: mk(), e: mk(), d: mk() };
+  k.t.detail = k.d;
+  k.all = [k.t, k.w, k.s, k.e, k.d];
+  k.begin = (x, y, z, ry) => k.all.forEach((b) => b.pushTRS(x, y, z, ry));
+  k.end = () => k.all.forEach((b) => b.pop());
+  return k;
+}
+
+export function createTraffic(ctx, materials, count = 5) {
+  const rng = new RNG(1717);
+  const group = new THREE.Group();
+  group.name = 'traffic';
+  const cars = [];
+  const laneW = COAST.z0 + 1.75; // eastbound keeps left (north lane)
+  const laneE = COAST.z1 - 1.75; // westbound (south lane)
+  for (let i = 0; i < count; i++) {
+    const k = miniKit();
+    car(k, 0, 0, 0, 0, rng, i === 2 ? 'truck' : null);
+    const root = new THREE.Group();
+    const add = (b, m, cast) => {
+      if (b.empty) return;
+      const mesh = new THREE.Mesh(b.toGeometry(), m);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      root.add(mesh);
+    };
+    add(k.t, materials.toon.material, true);
+    add(k.d, materials.toon.material, false);
+    add(k.w, materials.window.material, false);
+    add(k.e, materials.emissive.material, false);
+    const dir = i % 2 === 0 ? 1 : -1;
+    const c = { root, dir, x: rng.range(-TUNNEL_X, TUNNEL_X), z: dir > 0 ? laneW : laneE, v: rng.range(8, 11), vMax: rng.range(9, 12), wait: 0 };
+    root.position.set(c.x, COAST.y + 0.03, c.z);
+    root.rotation.y = dir > 0 ? 0 : Math.PI;
+    group.add(root);
+    cars.push(c);
+  }
+  ctx.scene.add(group);
+  const update = (dt, player) => {
+    for (const c of cars) {
+      if (c.wait > 0) {
+        c.wait -= dt;
+        c.root.visible = false;
+        if (c.wait <= 0) {
+          c.x = -c.dir * (TUNNEL_X + 8);
+          c.v = c.vMax;
+        }
+        continue;
+      }
+      // brake for the player or a car ahead in the same lane
+      let limit = c.vMax;
+      if (player && Math.abs(player.z - c.z) < 2.2) {
+        const ahead = (player.x - c.x) * c.dir;
+        if (ahead > 0 && ahead < 22) limit = Math.min(limit, Math.max(0, (ahead - 4.5) * 0.9));
+      }
+      for (const o of cars) {
+        if (o === c || o.dir !== c.dir || o.wait > 0) continue;
+        const ahead = (o.x - c.x) * c.dir;
+        if (ahead > 0 && ahead < 14) limit = Math.min(limit, Math.max(0, (ahead - 6) * 0.8));
+      }
+      c.v += (limit - c.v) * Math.min(1, dt * (limit < c.v ? 3 : 0.8));
+      c.x += c.dir * c.v * dt;
+      c.root.visible = true;
+      c.root.position.x = c.x;
+      if (c.x * c.dir > TUNNEL_X + 10) c.wait = rng.range(4, 18);
+    }
+  };
+  return { cars, update };
 }

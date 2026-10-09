@@ -261,7 +261,7 @@ export function buildTrees(ctx, specs) {
       canopy(fol.get('blossom', sp.x, sp.z), cc, R, R * 0.58, SAKURA_COLS, rng, { cardSize: big ? [1.3, 2.0] : [0.9, 1.3], puffs: big ? 20 : 8, cardsPer: big ? 7 : 5, puffScale: big ? 1 : 0.65, flatBottom: -0.25 });
       ctx.colliders.addCircle(sp.x, sp.z, r0 + 0.12);
       ctx.ground.petals(sp.x, sp.z, R * 1.15, big ? 0.55 : 0.35);
-      emitters.push({ x: cc.x, y: cc.y, z: cc.z, r: R, ground: y0, big });
+      if (sp.z > -135 && Math.abs(sp.x) < 150) emitters.push({ x: cc.x, y: cc.y, z: cc.z, r: R, ground: y0, big });
     } else if (sp.kind === 'broadleaf' || sp.kind === 'shrubTree' || sp.kind === 'forest') {
       const small = sp.kind === 'shrubTree';
       const forest = sp.kind === 'forest';

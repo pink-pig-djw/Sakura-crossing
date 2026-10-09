@@ -32,6 +32,9 @@ export class Player {
     this.onStep = null;
     this.moveInput = new THREE.Vector2();
     this.touchMove = new THREE.Vector2();
+    this.padMove = new THREE.Vector2();
+    this.padLook = new THREE.Vector2();
+    this.padRun = false;
     this.lookDelta = new THREE.Vector2();
     this.dragging = false;
     this.pointerLocked = false;
@@ -122,6 +125,11 @@ export class Player {
     const k = 0.0022 * this.sensitivity;
     this.yaw -= this.lookDelta.x * k;
     this.pitch -= this.lookDelta.y * k * (this.invertY ? -1 : 1);
+    // controller look (rates in rad/s at full tilt)
+    if (this.enabled) {
+      this.yaw -= this.padLook.x * 2.7 * this.sensitivity * dt;
+      this.pitch -= this.padLook.y * 1.9 * this.sensitivity * dt * (this.invertY ? -1 : 1);
+    }
     this.pitch = THREE.MathUtils.clamp(this.pitch, -1.45, 1.45);
     this.lookDelta.set(0, 0);
     if (!this.enabled) {
@@ -135,8 +143,8 @@ export class Player {
     if (K.has('KeyS') || K.has('ArrowDown')) iz -= 1;
     if (K.has('KeyA') || K.has('ArrowLeft')) ix -= 1;
     if (K.has('KeyD') || K.has('ArrowRight')) ix += 1;
-    ix += this.touchMove.x;
-    iz += this.touchMove.y;
+    ix += this.touchMove.x + this.padMove.x;
+    iz += this.touchMove.y + this.padMove.y;
     const len = Math.hypot(ix, iz);
     if (len > 1) {
       ix /= len;
@@ -153,7 +161,7 @@ export class Player {
         return;
       }
     }
-    const running = this.run || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
+    const running = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
     const maxSpeed = running ? 6.2 : 3.1;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;

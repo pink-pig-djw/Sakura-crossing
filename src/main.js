@@ -10,9 +10,10 @@ import { Player } from './systems/player.js';
 import { AudioEngine } from './systems/audio.js';
 import { buildWorld } from './world/world.js';
 import { updateCrossings } from './world/railway.js';
-import { createPetals, createCats, createBirds, createShells, createSmallAnimations } from './world/life.js';
+import { createPetals, createCats, createBirds, createShells, createSmallAnimations, createTraffic } from './world/life.js';
 import { areaAt, AREAS, shoreZ, STATION } from './world/layout.js';
 import { UI } from './ui/ui.js';
+import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
 const params = new URLSearchParams(location.search);
 const debug = params.has('cam') || params.has('still');
@@ -93,6 +94,8 @@ applyQuality(quality);
 // ---------------------------------------------------------------------------
 const ui = new UI();
 const audio = new AudioEngine();
+const pad = new GamepadInput();
+const usingPad = () => pad.connected && performance.now() - pad.lastUsed < 6000;
 const state = {
   mode: 'loading', // loading | title | play | menu | map | omikuji
   visited: new Set(),
@@ -118,6 +121,8 @@ const birds = createBirds(world.materials);
 scene.add(birds);
 const shells = createShells(world, world.materials);
 const anims = createSmallAnimations(world, world.materials);
+const traffic = createTraffic(world, world.materials, 5);
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) player.bobAmount = 0;
 const placesMax = new Set(AREAS.map((a) => a.name)).size;
 
 // start position: on Sakura-zaka, looking down toward the crossing and the sea
@@ -205,6 +210,7 @@ function interact() {
       const d = DRINKS[Math.floor(Math.random() * DRINKS.length)];
       state.drinks++;
       audio.sfx('vending');
+      setTimeout(() => pad.rumble(0.35, 0.3, 140), 900);
       ui.toast(`「${d}」を買った。ひんやりしておいしい。`);
       break;
     }
@@ -276,7 +282,7 @@ function menuState() {
 }
 
 function lockPointer() {
-  if (!isTouch) player.requestLock();
+  if (!isTouch && !usingPad()) player.requestLock();
 }
 function releasePointer() {
   if (document.pointerLockElement) document.exitPointerLock();
@@ -297,7 +303,12 @@ function startPlay() {
     state.visited.add(a.name);
     ui.showArea(a);
   }
-  setTimeout(() => ui.toast(isTouch ? '左下のスティックで歩く・右側をなぞって見回す' : 'マウスで見回し、WASDで歩く。E でしらべる'), 1400);
+  const hint = usingPad()
+    ? '左スティックで歩く・右スティックで見回す。A でしらべる'
+    : isTouch
+      ? '左下のスティックで歩く・右側をなぞって見回す'
+      : 'マウスで見回し、WASDで歩く。E でしらべる';
+  setTimeout(() => ui.toast(hint), 1400);
   updateCounts();
 }
 
@@ -307,6 +318,7 @@ function openMenu() {
   player.enabled = false;
   releasePointer();
   ui.openMenu(menuState());
+  if (usingPad()) focusEl(document.getElementById('resume'));
 }
 function backToPlay() {
   ui.closeMenu();
@@ -329,7 +341,49 @@ function openOmikuji(f) {
   player.enabled = false;
   releasePointer();
   ui.openOmikuji(f[0], f[1]);
+  if (usingPad()) focusEl(document.getElementById('close-omikuji'));
 }
+
+function cycleTime(dir) {
+  let i = 0, best = 99;
+  PRESETS.forEach((p, k) => {
+    const d = Math.abs(p.hour - tod.hour);
+    if (d < best) {
+      best = d;
+      i = k;
+    }
+  });
+  const next = PRESETS[(i + dir + PRESETS.length) % PRESETS.length];
+  tod.setHour(next.hour);
+  ui.toast(`${next.label}になった`, 1.6);
+}
+
+// controller
+function modalRoot() {
+  for (const id of ['omikuji', 'map', 'menu']) {
+    const el = document.getElementById(id);
+    if (!el.hidden) return el;
+  }
+  return document.body;
+}
+pad.on('connect', () => {
+  document.getElementById('app').classList.add('has-pad');
+  ui.toast('コントローラーを接続しました', 2.4);
+});
+pad.on('disconnect', () => document.getElementById('app').classList.remove('has-pad'));
+pad.on('active', () => ui.setInputMode('pad'));
+pad.on('start', startPlay);
+pad.on('interact', interact);
+pad.on('back', () => {
+  if (player.sitting) player.stand();
+});
+pad.on('jump', () => player.jump());
+pad.on('map', openMap);
+pad.on('menu', openMenu);
+pad.on('time', cycleTime);
+pad.on('confirm', () => activateFocused(modalRoot()));
+pad.on('close', backToPlay);
+pad.on('nav', (dx, dy) => moveFocus(modalRoot(), dx, dy));
 
 ui.on('start', startPlay);
 ui.on('resume', backToPlay);
@@ -365,6 +419,7 @@ canvas.addEventListener('click', () => {
 });
 
 addEventListener('keydown', (e) => {
+  ui.setInputMode('kb');
   if (state.mode === 'title' && (e.code === 'Enter' || e.code === 'Space')) {
     e.preventDefault();
     startPlay();
@@ -382,12 +437,7 @@ addEventListener('keydown', (e) => {
   if (state.mode !== 'play') return;
   if (e.code === 'KeyE' || e.code === 'Enter') interact();
   if (e.code === 'KeyM') openMap();
-  if (e.code === 'KeyT') {
-    const idx = PRESETS.findIndex((p) => p.hour > tod.hour + 0.05);
-    const next = PRESETS[idx === -1 ? 0 : idx];
-    tod.setHour(next.hour);
-    ui.toast(`${next.label}になった`, 1.6);
-  }
+  if (e.code === 'KeyT') cycleTime(1);
   if (e.code === 'KeyH') document.getElementById('hud').classList.toggle('photo');
 });
 
@@ -408,7 +458,10 @@ addEventListener('resize', onResize);
 world.wireMaterial?.resolution.set(innerWidth, innerHeight);
 
 player.onStep = (surface, running) => audio.step(surface, running);
-player.onLand = () => audio.step('hard', true);
+player.onLand = (v) => {
+  audio.step('hard', true);
+  if (v > 7) pad.rumble(0.2, 0.25, 110);
+};
 
 // ---------------------------------------------------------------------------
 // title attract camera: a slow glide down Sakura-zaka toward the sea
@@ -430,6 +483,7 @@ let areaCheck = 0;
 let gust = 0, gustT = 4;
 let frames = 0;
 let lastTrainState = 'wait';
+let rumbleT = 0;
 const fwd = new THREE.Vector3();
 window.__info = { buildMs };
 
@@ -447,14 +501,31 @@ function frame() {
     player.update(state.mode === 'play' ? dt : 0);
   }
 
+  // controller
+  pad.poll(dt, state.mode);
+  const padOn = state.mode === 'play';
+  player.padMove.set(padOn ? pad.move.x : 0, padOn ? pad.move.y : 0);
+  player.padLook.set(padOn ? pad.look.x : 0, padOn ? pad.look.y : 0);
+  player.padRun = padOn && pad.run;
+
   // town life
   const train = world.train;
   train.update(dt, state.mode === 'play' ? player.pos : null);
   if (lastTrainState === 'depart' && train.state === 'wait') state.trains++;
   lastTrainState = train.state;
   updateCrossings(world.crossings, train, dt, t);
+  if (padOn && train.v > 2 && Math.abs(player.pos.z - 56) < 12) {
+    const [a, b] = train.span();
+    const dx = Math.max(a - player.pos.x, 0, player.pos.x - b);
+    rumbleT -= dt;
+    if (dx < 10 && rumbleT <= 0) {
+      pad.rumble(0.22, 0.08, 160);
+      rumbleT = 0.3;
+    }
+  }
   for (const u of world.updaters) u(t, dt);
   catSys.update(t, dt, player.pos);
+  traffic.update(dt, state.mode === 'play' ? player.pos : null);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);
@@ -550,7 +621,7 @@ window.__setView = (cam, hour) => {
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, state, ui, startPlay };
+window.__game = { world, player, tod, state, ui, startPlay, updateCrossings };
 // debug: place the train (?train=x[,dir]) for screenshots
 if (params.get('train')) {
   const [tx, td] = params.get('train').split(',').map(Number);

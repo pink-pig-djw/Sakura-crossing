@@ -284,64 +284,149 @@ export function bicycle(b0, x, y, z, ry, color = 0xd8d8d0) {
   b.pop();
 }
 
-const CAR_COLORS = [0xf2f2ee, 0xd9dbdc, 0xbfc5ca, 0x9bc4c0, 0xe8d6a8, 0xf0c4c4, 0x8fb0d8, 0xc6a5a0, 0x5d6f7e, 0xe9ecef];
-export function car(kit, x, y, z, ry, rng, kind = null) {
-  const b = kit.t;
-  const type = kind || rng.weighted([['kei', 5], ['wagon', 3], ['truck', 2]]);
-  const c = rng.pick(CAR_COLORS);
+const CAR_COLORS = [0xf2f2ee, 0xd9dbdc, 0xbfc5ca, 0x9bc4c0, 0xe8d6a8, 0xf0c4c4, 0x8fb0d8, 0xc6a5a0, 0x5d6f7e, 0xe9ecef, 0x2f3f5a, 0xb8463e];
+const CAR_SPECS = {
+  // L, W, belt, roof, hood (front of cabin from the nose), windshield run, rear run, rear overhang
+  kei: { L: 3.4, W: 1.48, belt: 0.98, roof: 1.7, hood: 0.62, ws: 0.48, rear: 0.1, rov: 0.06, nose: 0.82 },
+  wagon: { L: 4.3, W: 1.7, belt: 0.98, roof: 1.62, hood: 0.95, ws: 0.62, rear: 0.22, rov: 0.08, nose: 0.86 },
+  sedan: { L: 4.55, W: 1.76, belt: 0.92, roof: 1.42, hood: 1.15, ws: 0.62, rear: 0.5, rov: 0.95, nose: 0.82 },
+};
+
+// Small Japanese cars: kei car, compact wagon, sedan and the kei truck (軽トラ).
+// Local frame: +x = forward, y = up, z = across. o.pitch / o.roll tilt the car on slopes.
+export function car(kit, x, y, z, ry, rng, kind = null, o = {}) {
+  const type = kind || rng.weighted([['kei', 5], ['wagon', 3], ['sedan', 1.5], ['truck', 2]]);
+  const c = o.color ?? rng.pick(CAR_COLORS);
+  const twoTone = type === 'kei' && rng.chance(0.35);
   kit.begin(x, y, z, ry);
-  const wheelY = 0.28;
-  const L = type === 'wagon' ? 4.3 : 3.4;
-  const W = type === 'wagon' ? 1.7 : 1.48;
+  if (o.pitch || o.roll) {
+    const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(o.roll || 0, 0, o.pitch || 0, 'XYZ'));
+    for (const bb of kit.all) bb.push(m);
+  }
+  const b = kit.t;
+  const d = kit.d;
+  const spec = CAR_SPECS[type === 'truck' ? 'kei' : type];
+  const L = spec.L, W = spec.W;
+  const glass = (pts, center, seed = 40) => kit.w.quadOut(pts[0], pts[1], pts[2], pts[3], center, 0xffffff, seed, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
+  // wheels with hubcaps and dark arches
+  const wx = L / 2 - (type === 'sedan' ? 0.85 : 0.62);
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      const g = new THREE.CylinderGeometry(0.28, 0.28, 0.2, 12);
-      const m = new THREE.Matrix4().compose(V(sx * (L / 2 - 0.62), wheelY, sz * (W / 2 - 0.08)), new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2), V(1, 1, 1));
-      b.geom(g, m, 0x26262a);
-      b.box(sx * (L / 2 - 0.62), wheelY, sz * (W / 2 + 0.02), 0.26, 0.26, 0.02, { color: 0xa9adb3 });
+      const g = new THREE.CylinderGeometry(0.28, 0.28, 0.19, 14);
+      const m = new THREE.Matrix4().compose(V(sx * wx, 0.28, sz * (W / 2 - 0.1)), new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2), V(1, 1, 1));
+      b.geom(g, m, 0x232327);
+      const hub = new THREE.CylinderGeometry(0.15, 0.15, 0.02, 12);
+      d.geom(hub, new THREE.Matrix4().compose(V(sx * wx, 0.28, sz * (W / 2 - 0.0)), new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2), V(1, 1, 1)), 0xb9bdc2);
+      d.box(sx * wx, 0.5, sz * (W / 2 + 0.004), 0.74, 0.1, 0.012, { color: 0x2a2a2e });
     }
   }
-  const win = (pts) => kit.w.quad(pts[0], pts[1], pts[2], pts[3], 0xffffff, 40, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
+  const lights = (frontX, rearX, yl) => {
+    for (const s of [-1, 1]) {
+      kit.e.box(frontX + 0.005, yl, s * (W / 2 - 0.2), 0.03, 0.13, 0.28, { color: 0xfff6e0 });
+      d.box(rearX - 0.005, yl, s * (W / 2 - 0.16), 0.03, 0.17, 0.2, { color: 0xc8302c });
+      d.box(frontX + 0.004, yl - 0.13, s * (W / 2 - 0.12), 0.02, 0.06, 0.12, { color: 0xf0a030 });
+    }
+    // grille, bumpers, plates
+    d.box(frontX + 0.01, yl - 0.08, 0, 0.03, 0.16, W * 0.45, { color: 0x30323a });
+    d.box(frontX + 0.03, 0.42, 0, 0.07, 0.14, W + 0.02, { color: 0x4a4b50 });
+    d.box(rearX - 0.03, 0.42, 0, 0.07, 0.14, W + 0.02, { color: 0x4a4b50 });
+    const plate = type === 'kei' || type === 'truck' ? 0xf2d043 : 0xf2f2ea;
+    d.box(frontX + 0.07, 0.52, 0, 0.01, 0.13, 0.33, { color: plate });
+    d.box(rearX - 0.07, 0.58, 0, 0.01, 0.13, 0.33, { color: plate });
+  };
+
   if (type === 'truck') {
-    // kei truck: cab + flat bed
-    b.box(L / 2 - 0.65, 0.78, 0, 1.25, 0.86, W, { color: c, ao: 0.1 });
-    b.box(L / 2 - 0.75, 1.5, 0, 1.0, 0.62, W - 0.06, { color: c });
-    win([V(L / 2 - 0.24, 1.22, -W / 2 + 0.1), V(L / 2 - 0.24, 1.22, W / 2 - 0.1), V(L / 2 - 0.3, 1.74, W / 2 - 0.12), V(L / 2 - 0.3, 1.74, -W / 2 + 0.12)]);
-    b.box(-0.55, 0.62, 0, L - 1.3, 0.12, W, { color: 0x77797c });
-    b.box(-0.55, 0.85, -W / 2 + 0.03, L - 1.3, 0.38, 0.05, { color: c });
-    b.box(-0.55, 0.85, W / 2 - 0.03, L - 1.3, 0.38, 0.05, { color: c });
-    b.box(-L / 2 + 0.07, 0.85, 0, 0.05, 0.38, W, { color: c });
-    if (rng.chance(0.6)) b.box(-0.6, 0.86, 0, 1.2, 0.4, 0.9, { color: rng.pick([0x6d8b4a, 0x2f5f9a, 0xc9b892]) });
-  } else {
-    const h = type === 'wagon' ? 1.6 : 1.62;
-    b.box(0, 0.62, 0, L, 0.62, W, { color: c, ao: 0.12 });
-    const roofL = L * (type === 'wagon' ? 0.62 : 0.7);
-    const rx = type === 'wagon' ? -0.25 : -0.1;
-    b.box(rx, h - 0.06, 0, roofL, 0.1, W - 0.12, { color: c });
-    // pillars + glass
-    const fz = W / 2 - 0.08;
-    const front = rx + roofL / 2;
-    const back = rx - roofL / 2;
-    win([V(L / 2 - 0.45, 0.94, -fz + 0.05), V(L / 2 - 0.45, 0.94, fz - 0.05), V(front, h - 0.1, fz - 0.08), V(front, h - 0.1, -fz + 0.08)]);
-    win([V(back, h - 0.1, -fz + 0.08), V(back, h - 0.1, fz - 0.08), V(-L / 2 + 0.08, 0.98, fz - 0.05), V(-L / 2 + 0.08, 0.98, -fz + 0.05)].reverse());
-    for (const side of [-1, 1]) {
-      const z = side * (W / 2 - 0.02);
-      const p = [V(back + 0.05, 0.96, z), V(front - 0.02, 0.96, z), V(front - 0.05, h - 0.12, z), V(back + 0.08, h - 0.12, z)];
-      if (side < 0) win([p[1], p[0], p[3], p[2]]);
-      else win(p);
-      b.box(rx, 1.3, z * 0.995, roofL - 0.1, 0.62, 0.02, { color: c });
+    // kei truck: tall cab over the front axle + flat bed with low sides
+    const cab0 = L / 2 - 1.3, cab1 = L / 2;
+    b.box((cab0 + cab1) / 2, 0.66, 0, cab1 - cab0, 0.68, W, { color: c, ao: 0.1 });
+    const yb = 1.0, yr = 1.82;
+    const center = V((cab0 + cab1) / 2, (yb + yr) / 2, 0);
+    const B = [V(cab1 - 0.04, yb, -W / 2 + 0.02), V(cab1 - 0.04, yb, W / 2 - 0.02), V(cab0, yb, W / 2 - 0.02), V(cab0, yb, -W / 2 + 0.02)];
+    const T = [V(cab1 - 0.22, yr, -W / 2 + 0.08), V(cab1 - 0.22, yr, W / 2 - 0.08), V(cab0 + 0.02, yr, W / 2 - 0.08), V(cab0 + 0.02, yr, -W / 2 + 0.08)];
+    b.quadOut(B[0], B[1], T[1], T[0], center, c); // front
+    b.quadOut(B[2], B[3], T[3], T[2], center, c); // back
+    b.quadOut(B[1], B[2], T[2], T[1], center, c); // right
+    b.quadOut(B[3], B[0], T[0], T[3], center, c); // left
+    b.quadOut(T[0], T[1], T[2], T[3], center, c); // roof
+    // windshield, side and back windows
+    const lerp = (p, q, t) => p.clone().lerp(q, t);
+    glass([lerp(B[0], T[0], 0.08).add(V(0.012, 0, 0.1)), lerp(B[1], T[1], 0.08).add(V(0.012, 0, -0.1)), lerp(B[1], T[1], 0.9).add(V(0.012, 0, -0.1)), lerp(B[0], T[0], 0.9).add(V(0.012, 0, 0.1))], center);
+    for (const sz of [-1, 1]) {
+      const zz = sz * (W / 2 - 0.02 + 0.012);
+      glass([V(cab0 + 0.12, yb + 0.08, zz), V(cab1 - 0.3, yb + 0.08, zz), V(cab1 - 0.4, yr - 0.1, zz * 0.97), V(cab0 + 0.14, yr - 0.1, zz * 0.97)], center);
     }
-    b.box(L / 2 - 0.25, 0.94, 0, 0.5, 0.06, W - 0.04, { color: c }); // hood top
-    b.box(L / 2 + 0.01, 0.6, 0, 0.04, 0.2, W - 0.2, { color: 0x3a3a3a }); // grille
-    for (const s of [-1, 1]) kit.e.box(L / 2 + 0.005, 0.78, s * (W / 2 - 0.22), 0.03, 0.12, 0.26, { color: 0xfff6e0 });
-    for (const s of [-1, 1]) b.box(-L / 2 - 0.005, 0.78, s * (W / 2 - 0.18), 0.03, 0.14, 0.2, { color: 0xc23a36 });
-    b.box(L / 2 + 0.03, 0.42, 0, 0.06, 0.12, W, { color: 0x4a4a4c }); // bumpers
-    b.box(-L / 2 - 0.03, 0.42, 0, 0.06, 0.12, W, { color: 0x4a4a4c });
-    // yellow kei plate
-    b.box(L / 2 + 0.05, 0.5, 0, 0.01, 0.12, 0.3, { color: type === 'kei' ? 0xf4d24a : 0xf0f0ea });
+    glass([V(cab0 - 0.012, yb + 0.25, -0.45), V(cab0 - 0.012, yb + 0.25, 0.45), V(cab0 - 0.012, yr - 0.15, 0.45), V(cab0 - 0.012, yr - 0.15, -0.45)], center);
+    for (const sz of [-1, 1]) d.box(cab1 - 0.32, yb + 0.12, sz * (W / 2 + 0.08), 0.12, 0.14, 0.1, { color: 0x2a2a2e });
+    // bed
+    const bed0 = -L / 2, bed1 = cab0 - 0.06;
+    b.box((bed0 + bed1) / 2, 0.6, 0, bed1 - bed0, 0.12, W, { color: 0x77797c });
+    for (const sz of [-1, 1]) b.box((bed0 + bed1) / 2, 0.86, sz * (W / 2 - 0.03), bed1 - bed0, 0.4, 0.05, { color: c });
+    b.box(bed0 + 0.03, 0.86, 0, 0.05, 0.4, W, { color: c });
+    d.box(bed1 - 0.02, 1.25, 0, 0.05, 0.8, W - 0.1, { color: 0x6a6c70 });
+    if (rng.chance(0.6)) d.box(bed0 + 0.8, 0.86, 0, 1.0, 0.4, 0.9, { color: rng.pick([0x6d8b4a, 0x2f5f9a, 0xc9b892]) });
+    lights(cab1, bed0, 0.82);
+  } else {
+    const yb = spec.belt, yr = spec.roof;
+    // lower body
+    b.box(0, (0.3 + yb) / 2, 0, L, yb - 0.3, W, { color: c, ao: 0.14 });
+    // hood slope (slightly lower at the nose)
+    const xb1 = L / 2 - spec.hood, xb0 = -L / 2 + spec.rov;
+    b.quadOut(V(L / 2, spec.nose, -W / 2 + 0.03), V(L / 2, spec.nose, W / 2 - 0.03), V(xb1, yb + 0.01, W / 2 - 0.03), V(xb1, yb + 0.01, -W / 2 + 0.03), V(0, 0, 0), c);
+    if (type === 'sedan') b.quadOut(V(-L / 2, spec.nose + 0.05, -W / 2 + 0.03), V(-L / 2, spec.nose + 0.05, W / 2 - 0.03), V(xb0, yb + 0.01, W / 2 - 0.03), V(xb0, yb + 0.01, -W / 2 + 0.03), V(0, 0, 0), c);
+    // cabin (greenhouse) as a closed tapered prism
+    const xr1 = xb1 - spec.ws, xr0 = xb0 + spec.rear;
+    const zb = W / 2 - 0.03, zr = W / 2 - 0.13;
+    const B = [V(xb1, yb, -zb), V(xb1, yb, zb), V(xb0, yb, zb), V(xb0, yb, -zb)];
+    const T = [V(xr1, yr, -zr), V(xr1, yr, zr), V(xr0, yr, zr), V(xr0, yr, -zr)];
+    const center = V((xb0 + xb1) / 2, (yb + yr) / 2, 0);
+    const roofC = twoTone ? 0x2c2d33 : c;
+    b.quadOut(B[0], B[1], T[1], T[0], center, c);
+    b.quadOut(B[2], B[3], T[3], T[2], center, c);
+    b.quadOut(B[1], B[2], T[2], T[1], center, c);
+    b.quadOut(B[3], B[0], T[0], T[3], center, c);
+    b.quadOut(T[0], T[1], T[2], T[3], center, roofC);
+    // glass on every face, leaving pillars around the edges
+    const inset = (q, u0, u1, v0, v1, n) => {
+      // q = [b0, b1, t1, t0] (bottom edge b0->b1, top edge t0->t1)
+      const P = (u, v) => {
+        const bot = q[0].clone().lerp(q[1], u);
+        const top = q[3].clone().lerp(q[2], u);
+        return bot.lerp(top, v).addScaledVector(n, 0.012);
+      };
+      return [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)];
+    };
+    const nrm = (q) => {
+      const e1 = q[1].clone().sub(q[0]);
+      const e2 = q[3].clone().sub(q[0]);
+      const n = e1.cross(e2).normalize();
+      const fc = q[0].clone().add(q[1]).add(q[2]).add(q[3]).multiplyScalar(0.25).sub(center);
+      return n.dot(fc) < 0 ? n.negate() : n;
+    };
+    const front = [B[0], B[1], T[1], T[0]];
+    const back = [B[3], B[2], T[2], T[3]];
+    glass(inset(front, 0.07, 0.93, 0.06, 0.93, nrm(front)), center, 41);
+    glass(inset(back, 0.12, 0.88, 0.12, 0.9, nrm(back)), center, 42);
+    for (const side of [[B[3], B[0], T[0], T[3]], [B[1], B[2], T[2], T[1]]]) {
+      const n = nrm(side);
+      // two door windows with a B pillar between them
+      glass(inset(side, 0.05, 0.47, 0.08, 0.9, n), center, 43);
+      glass(inset(side, 0.53, 0.94, 0.08, 0.9, n), center, 44);
+    }
+    // door lines, handles and mirrors on both sides
+    const doorX = [xb1 - 0.05, (xb0 + xb1) / 2 + 0.05, xb0 + 0.25];
+    for (const sz of [-1, 1]) {
+      const zz = sz * (W / 2 + 0.003);
+      for (const dx of doorX) d.box(dx, (0.36 + yb) / 2, zz, 0.012, yb - 0.4, 0.008, { color: 0x3a3c42 });
+      d.box(xb1 - 0.35, yb - 0.15, zz * 1.004, 0.14, 0.03, 0.012, { color: 0x9a9da2 });
+      d.box((xb0 + xb1) / 2 - 0.2, yb - 0.15, zz * 1.004, 0.14, 0.03, 0.012, { color: 0x9a9da2 });
+      d.box(xb1 - 0.05, yb + 0.12, sz * (W / 2 + 0.1), 0.12, 0.12, 0.16, { color: twoTone ? 0x2c2d33 : c });
+    }
+    lights(L / 2, -L / 2, spec.nose - 0.08);
   }
+  if (o.pitch || o.roll) for (const bb of kit.all) bb.pop();
   kit.end();
-  return { L: type === 'wagon' ? 4.3 : 3.4, W: type === 'wagon' ? 1.7 : 1.48 };
+  const sp = CAR_SPECS[type === 'truck' ? 'kei' : type];
+  return { L: sp.L, W: sp.W, type };
 }
 
 // Concrete block wall segment between two points along the ground.
