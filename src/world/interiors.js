@@ -6,7 +6,7 @@ import { Kit, signOnFace, gableRoof, bicycle } from './kit.js';
 import { FONTS, drawBoard, drawVertical, fitText, roundRect } from '../render/atlas.js';
 import { benchAt, bench } from './coast.js';
 import { midrise, bladeSign, GROUND_SHOPS } from './commercial.js';
-import { car } from './kit.js';
+import { parkedCar } from './kit.js';
 import { createRiverWaterMaterial } from '../render/materials.js';
 import { shrub, AZALEA, GARDEN_FLOWERS } from './greenery.js';
 import { roadSurfaceY } from './roads.js';
@@ -397,7 +397,7 @@ function buildKonbini(ctx, block, doors) {
   const rng = new RNG(1234);
   for (const i of [1, 3]) {
     const x = block.x0 + 1.0 + i * 2.7 + 1.35;
-    car(kit, x, roadSurfaceY(x, 29.6) + 0.02, 29.6, -Math.PI / 2, rng);
+    parkedCar(kit, x, 29.6, -Math.PI / 2, rng, roadSurfaceY);
     ctx.colliders.addBox(x, 29.6, 0.85, 1.9, 0, roadSurfaceY(x, 29.6) + 1.6);
   }
   const px = block.x1 - 0.8, pz = block.z0 + 0.8;

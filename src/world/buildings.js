@@ -4,7 +4,7 @@ import { PAT } from '../core/builder.js';
 import { terrainH } from './layout.js';
 import {
   Kit, boxFaces, fp, faceBox, signOnFace, windowUnit, door, koshiDoor, gableRoof, hipRoof, leanTo,
-  acUnit, potPlant, mailbox, bicycle, car, blockWall, hedge, metalFence, laundry, FRAME,
+  acUnit, potPlant, mailbox, bicycle, parkedCar, blockWall, hedge, metalFence, laundry, FRAME,
 } from './kit.js';
 import { FONTS, drawBoard, drawVertical, fitText } from '../render/atlas.js';
 import { shrub, GARDEN_FLOWERS } from './greenery.js';
@@ -121,16 +121,22 @@ export function buildHouse(ctx, lot) {
 
   // roof
   const roofType = rng.weighted([['gable', 5], ['hip', 4], ['shed', 1.2]]);
+  // solar panels need a long roof face looking along local z, and its real pitch
+  let roofSlope = 0, zFaces = false;
   if (roofType === 'gable') {
     const alongX = rng.chance(0.6);
-    if (alongX) gableRoof(t, cx, cz, hw, hd, yTop, { color: roof, wallColor: wall2, wallPattern: wallPat, slope: rng.range(0.38, 0.52), fascia: trim });
+    roofSlope = rng.range(0.38, 0.52);
+    zFaces = alongX;
+    if (alongX) gableRoof(t, cx, cz, hw, hd, yTop, { color: roof, wallColor: wall2, wallPattern: wallPat, slope: roofSlope, fascia: trim });
     else {
       t.push(new THREE.Matrix4().makeTranslation(cx, 0, cz).multiply(new THREE.Matrix4().makeRotationY(Math.PI / 2)));
-      gableRoof(t, 0, 0, hd, hw, yTop, { color: roof, wallColor: wall2, wallPattern: wallPat, slope: rng.range(0.38, 0.52), fascia: trim });
+      gableRoof(t, 0, 0, hd, hw, yTop, { color: roof, wallColor: wall2, wallPattern: wallPat, slope: roofSlope, fascia: trim });
       t.pop();
     }
   } else if (roofType === 'hip') {
-    hipRoof(t, cx, cz, hw, hd, yTop, { color: roof, slope: rng.range(0.38, 0.5), fascia: trim });
+    roofSlope = rng.range(0.38, 0.5);
+    zFaces = hw >= hd;
+    hipRoof(t, cx, cz, hw, hd, yTop, { color: roof, slope: roofSlope, fascia: trim });
   } else {
     // shed roof sloping toward the back, parapet front
     leanTo(t, cx - hw / 2 - 0.35, cx + hw / 2 + 0.35, cz - hd / 2 - 0.35, cz + hd / 2 + 0.45, yTop + 1.3, 0.13, { color: roof, pattern: PAT.SEAM });
@@ -209,15 +215,17 @@ export function buildHouse(ctx, lot) {
       for (let e = 0; e < 6; e++) t.box(ax, yy, az - 0.5 + e * 0.2, 0.7 - e * 0.07, 0.025, 0.025, { color: 0x9a9da2 });
     }
   }
-  if (roofType !== 'shed' && rng.chance(0.18)) {
-    // solar panels on the sunny slope
+  // (a hip face narrows toward the ridge: keep the array inside it)
+  const span = Math.min(hw * 0.395, roofType === 'hip' ? (hw - hd) / 2 + hd * 0.09 - 0.15 : hw / 2 - 0.4);
+  if (rng.chance(0.18) && zFaces && span > 0.9) {
+    // solar panels on the sunny slope, lying on the tiles
     const sgn = lot.front === 'N' ? 1 : -1;
-    const slope = 0.42;
+    const slope = roofSlope;
     const pz = cz + sgn * hd * 0.25;
     const py = yTop + (hd / 2 - hd * 0.25) * slope + 0.12;
     const m = new THREE.Matrix4().makeTranslation(cx, py, pz).multiply(new THREE.Matrix4().makeRotationX(sgn * Math.atan(slope)));
     t.push(m);
-    for (let i = 0; i < 4; i++) t.box(-hw * 0.3 + i * hw * 0.2, 0, 0, hw * 0.19, 0.05, hd * 0.32, { color: 0x2c3a5a, top: 0x3a4f7c });
+    for (let i = 0; i < 4; i++) t.box(-span + (i + 0.5) * (span / 2), 0, 0, span / 2 - 0.05, 0.05, hd * 0.32, { color: 0x2c3a5a, top: 0x3a4f7c });
     t.pop();
   }
 
@@ -255,8 +263,7 @@ function yard(ctx, kit, L, rng, h) {
   // path to the door
   paint(ctx, L, doorX - 0.7, 0, doorX + 0.7, h.front, 0xcfc7b6, PAT.PAVING);
   if (hasCar) {
-    const cy = yAt(padX, 2.6) + 0.02;
-    car(kit, padX, cy, Math.min(h.front, 5.6) / 2 + 0.2, Math.PI / 2, rng);
+    parkedCar(kit, padX, Math.min(h.front, 5.6) / 2 + 0.2, Math.PI / 2, rng, yAt);
     collide(ctx, L, padX, Math.min(h.front, 5.6) / 2 + 0.2, 1.7, 3.6, 1.6);
   } else if (rng.chance(0.6)) {
     bicycle(t, padX, yAt(padX, 2) + 0.02, 2.4, Math.PI / 2 + rng.range(-0.2, 0.2), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a]));
@@ -511,7 +518,7 @@ export function buildApartment(ctx, lot) {
   paint(ctx, L, -L.W / 2, 0, L.W / 2, L.D, 0xb4afa5, PAT.GRAVEL);
   for (let i = 0; i < units; i++) bicycle(t, cx - hw / 2 + 1 + i * 1.0, L.yAt(0, front - 1.5), front - 1.6, Math.PI / 2 + rng.range(-0.15, 0.15), rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a, 0x2f2f2f, 0xe8c84a, 0x9fd0a0]));
   if (rng.chance(0.6)) {
-    car(kit, cx + hw / 4, L.yAt(cx + hw / 4, front / 2), front / 2, Math.PI / 2 + Math.PI, rng);
+    parkedCar(kit, cx + hw / 4, front / 2, Math.PI / 2 + Math.PI, rng, L.yAt);
     collide(ctx, L, cx + hw / 4, front / 2, 1.7, 3.6, 1.6);
   }
   const yFn = (lx, lz) => L.yAt(lx, lz);
@@ -595,7 +602,7 @@ export function buildMansion(ctx, lot) {
     const x = -L.W / 2 + 2 + i * 2.8;
     if (x > es - hw / 2 - 2.5) break;
     if (rng.chance(0.7)) {
-      car(kit, x, L.yAt(x, front / 2), front / 2, Math.PI / 2, rng);
+      parkedCar(kit, x, front / 2, Math.PI / 2, rng, L.yAt);
       collide(ctx, L, x, front / 2, 1.7, 3.8, 1.6);
     }
   }
@@ -629,7 +636,7 @@ export function buildParking(ctx, lot) {
       // wheel stops
       t.box(x + 1.3, L.yAt(x + 1.3, L.D - 1.0) + 0.06, L.D - 1.0, 1.2, 0.12, 0.15, { color: 0xd0ccc4 });
       if (rng.chance(0.55)) {
-        car(kit, x + 1.3, L.yAt(x + 1.3, L.D - 3), L.D - 3, rng.chance(0.5) ? Math.PI / 2 : -Math.PI / 2, rng);
+        parkedCar(kit, x + 1.3, L.D - 3, rng.chance(0.5) ? Math.PI / 2 : -Math.PI / 2, rng, L.yAt);
         collide(ctx, L, x + 1.3, L.D - 3, 1.7, 3.8, 1.6);
       }
     }

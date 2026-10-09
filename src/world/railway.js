@@ -3,6 +3,7 @@ import { PAT, MeshBuilder } from '../core/builder.js';
 import { RAIL_Z, CROSSINGS, STATION, TUNNEL, ROADS, groundH, RIVER } from './layout.js';
 import { Kit, signOnFace } from './kit.js';
 import { FONTS, fitText } from '../render/atlas.js';
+import { roadSurfaceY } from './roads.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const RAIL_TOP = 3.26;
@@ -263,6 +264,8 @@ export function buildCrossings(ctx, scene) {
   const lampOff = new THREE.Color(0.18, 0.03, 0.03);
   for (const x of CROSSINGS) {
     const half = crossingHalf(x);
+    // the crossing deck is raised to rail height: walk on it, not on the terrain beneath
+    ctx.colliders.addSurface(x - half, 51.2, x + half, 60.3, (xx, zz) => roadSurfaceY(xx, zz) - 0.03, 0);
     const state = { x, active: false, armT: 0, timer: 0, lampsA: [], lampsB: [], arms: [], blink: 0 };
     // two sides: north (z=51) gate on the west side of the road; south (z=61) on the east
     for (const side of [-1, 1]) {

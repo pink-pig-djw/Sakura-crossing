@@ -7,7 +7,7 @@ import { GroundMap, buildTerrain } from './terrain.js';
 import { buildRoads, paintRoadsides } from './roads.js';
 import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA, TOWN, overRiver, SUBWAY } from './layout.js';
 import { buildHouse, buildOldHouse, buildApartment, buildMansion, buildParking, buildField, buildGarden, buildSento } from './buildings.js';
-import { buildTrees } from './trees.js';
+import { buildTrees, fitTrees } from './trees.js';
 import { FoliageSet, useFoliage, buildFoliageMeshes } from './greenery.js';
 import { buildGrass } from './grass.js';
 import { Colliders } from './collision.js';
@@ -182,6 +182,7 @@ export async function buildWorld(scene, opts = {}) {
   await tick();
   streetTrees(ctx);
   forest(ctx);
+  ctx.treeFit = fitTrees(ctx);
   const trees = buildTrees(ctx, ctx.trees);
   ctx.petalEmitters = trees.emitters;
   buildFoliageMeshes(ctx.foliage, scene);

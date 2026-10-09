@@ -300,6 +300,18 @@ const CAR_SPECS = {
 
 // Small Japanese cars: kei car, compact wagon, sedan and the kei truck (軽トラ).
 // Local frame: +x = forward, y = up, z = across. o.pitch / o.roll tilt the car on slopes.
+// A parked car settled on its four wheels on sloping ground. yFn(x, z) gives the
+// ground height in the same frame as (x, z).
+export function parkedCar(kit, x, z, ry, rng, yFn, kind = null, o = {}) {
+  const a = 1.2, b = 0.62; // half wheelbase, half track
+  const fx = Math.cos(ry), fz = -Math.sin(ry); // car +x (bonnet) in the parent frame
+  const sx = Math.sin(ry), sz = Math.cos(ry); // car +z
+  const yF = yFn(x + fx * a, z + fz * a), yB = yFn(x - fx * a, z - fz * a);
+  const yP = yFn(x + sx * b, z + sz * b), yN = yFn(x - sx * b, z - sz * b);
+  const y = (yF + yB + yP + yN) / 4;
+  car(kit, x, y + 0.02, z, ry, rng, kind, { ...o, pitch: Math.atan2(yF - yB, 2 * a), roll: Math.atan2(yN - yP, 2 * b) });
+}
+
 export function car(kit, x, y, z, ry, rng, kind = null, o = {}) {
   const type = kind || rng.weighted([['kei', 5], ['wagon', 3], ['sedan', 1.5], ['truck', 2]]);
   const c = o.color ?? rng.pick(CAR_COLORS);

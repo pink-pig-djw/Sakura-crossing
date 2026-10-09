@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
-import { terrainH } from './layout.js';
-import { FoliageSet } from './greenery.js';
+import { terrainH, roadAt } from './layout.js';
+import { FoliageSet, shrub } from './greenery.js';
 
 // Trees: tube trunks/branches in the toon builder + camera-facing foliage
 // cards (alpha-tested painted clumps, see greenery.js) shaded with spherical normals.
@@ -68,6 +68,74 @@ function canopy(fb, center, R, Ry, cols, rng, o = {}) {
     const pc = V(center.x + rng.range(-R, R) * 0.45, center.y + rng.range(-0.1, 0.6) * Ry * 0.6, center.z + rng.range(-R, R) * 0.45);
     placePuff(pc, 0.9 * (o.puffScale ?? 1), Math.max(2, Math.round(cardsPer * 0.5)), 0.9);
   }
+}
+
+// Approximate crown of each kind at scale 1: horizontal reach and crown-center height.
+const CROWN = {
+  sakura: { r: 4.9, cy: 5.8 },
+  sakuraSmall: { r: 2.4, cy: 3.0 },
+  broadleaf: { r: 3.6, cy: 5.0 },
+  shrubTree: { r: 1.4, cy: 1.75 },
+  zelkova: { r: 4.1, cy: 7.5 },
+  pine: { r: 1.6, cy: 3.5 },
+};
+
+// Keep crowns out of buildings: shrink a tree until its crown clears every solid
+// standing at crown height, or drop it when even a small one would not fit.
+export function fitTrees(ctx) {
+  const C = ctx.colliders;
+  const hits = (x, z, R, y) => {
+    if (C.solidAt(x, z, y)) return true;
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      for (const f of [0.5, 0.92]) if (C.solidAt(x + Math.cos(a) * R * f, z + Math.sin(a) * R * f, y)) return true;
+    }
+    return false;
+  };
+  const kept = [];
+  let shrunk = 0, dropped = 0;
+  for (const t of ctx.trees) {
+    const cr = CROWN[t.kind];
+    if (!cr || t.compact) {
+      kept.push(t);
+      continue;
+    }
+    const s0 = t.scale ?? 1;
+    // small garden trees may also shift a little within the yard
+    const movable = t.y === undefined && (t.kind === 'shrubTree' || t.kind === 'sakuraSmall' || t.kind === 'pine');
+    const spots = [[0, 0]];
+    if (movable) for (const d of [0.8, 1.5]) for (let k = 0; k < 8; k++) spots.push([Math.cos((k / 8) * Math.PI * 2) * d, Math.sin((k / 8) * Math.PI * 2) * d]);
+    let s = s0, ok = false;
+    for (let k = 0; k < 5 && !ok; k++) {
+      for (const [dx, dz] of spots) {
+        const x = t.x + dx, z = t.z + dz;
+        if ((dx || dz) && roadAt(x, z, 0.6)) continue;
+        const y0 = t.y ?? terrainH(x, z);
+        if ((dx || dz) && C.solidAt(x, z, y0 + 0.2)) continue;
+        if (!hits(x, z, cr.r * s, y0 + cr.cy * s)) {
+          t.x = x;
+          t.z = z;
+          ok = true;
+          break;
+        }
+      }
+      if (!ok) s *= 0.84;
+    }
+    if (!ok) {
+      // no room for a tree: a clipped bush keeps the corner green
+      const y0 = t.y ?? terrainH(t.x, t.z);
+      if (movable && !hits(t.x, t.z, 0.65, y0 + 0.5)) shrub(t.x, y0 + 0.5, t.z, 0.62, 0.5, new RNG(t.seed || 7), { cards: 6, size: 0.42 });
+      dropped++;
+      continue;
+    }
+    if (s !== s0) {
+      t.scale = s;
+      shrunk++;
+    }
+    kept.push(t);
+  }
+  ctx.trees = kept;
+  return { shrunk, dropped };
 }
 
 export function buildTrees(ctx, specs) {
