@@ -5,7 +5,7 @@ import { createToonMaterial, createWindowMaterial, createRoadMaterial, createInt
 import { Atlas } from '../render/atlas.js';
 import { GroundMap, buildTerrain } from './terrain.js';
 import { buildRoads, paintRoadsides } from './roads.js';
-import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA, TOWN, overRiver } from './layout.js';
+import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA, TOWN, overRiver, SUBWAY } from './layout.js';
 import { buildHouse, buildOldHouse, buildApartment, buildMansion, buildParking, buildField, buildGarden, buildSento } from './buildings.js';
 import { buildTrees } from './trees.js';
 import { Colliders } from './collision.js';
@@ -14,6 +14,8 @@ import { buildTrack, buildCrossings, buildTrain } from './railway.js';
 import { buildCoast, createWater, buildIsland, createSailboats } from './coast.js';
 import { buildStation, buildPlaza, buildShotengai, buildPark, buildShrine, lanternMesh } from './places.js';
 import { buildRiver } from './river.js';
+import { buildCommercial } from './commercial.js';
+import { buildSubway } from './subway.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -70,18 +72,21 @@ function forest(ctx) {
 // Builds the whole town. `progress(p, label)` reports 0..1 for the loader.
 export async function buildWorld(scene, opts = {}) {
   const progress = opts.progress || (() => {});
-  const atlas = new Atlas(2048);
+  const atlas = new Atlas(2048, 0);
+  const atlas2 = new Atlas(2048, 1, 4096);
   const signTex = atlas.texture();
+  const signTex2 = atlas2.texture();
   const materials = {
     toon: { material: createToonMaterial({ name: 'toon' }) },
     detail: null,
     window: { material: createWindowMaterial(), castShadow: false },
     road: { material: createRoadMaterial(), castShadow: false },
     sign: { material: createToonMaterial({ name: 'sign', map: signTex, emissiveFlag: true, alphaTest: 0.5 }), castShadow: false },
+    sign2: { material: createToonMaterial({ name: 'sign2', map: signTex2, emissiveFlag: true, alphaTest: 0.5 }), castShadow: false },
     emissive: { material: createToonMaterial({ name: 'emissive', emissiveAll: true, noPattern: true }), castShadow: false },
     // inside shops and stations: lit by ceiling lights, see-through glass in front
     interior: { material: createInteriorMaterial(), castShadow: false, receiveShadow: false },
-    interiorSign: { material: createInteriorMaterial({ name: 'interiorSign', map: signTex, alphaTest: 0.5, emissiveFlag: true }), castShadow: false, receiveShadow: false },
+    interiorSign: { material: createInteriorMaterial({ name: 'interiorSign', map: signTex2, alphaTest: 0.5, emissiveFlag: true }), castShadow: false, receiveShadow: false },
     glass: { material: createGlassMaterial(), castShadow: false, receiveShadow: false, renderOrder: 3 },
   };
   materials.detail = { material: materials.toon.material, castShadow: false };
@@ -92,6 +97,7 @@ export async function buildWorld(scene, opts = {}) {
     ground: new GroundMap(-300, -192, 380, 100, 3),
     colliders: new Colliders(8),
     atlas,
+    atlas2,
     rng: new RNG(WORLD_SEED),
     trees: [],
     soundSpots: [],
@@ -156,6 +162,12 @@ export async function buildWorld(scene, opts = {}) {
   await tick();
   buildCoast(ctx);
   buildRiver(ctx);
+
+  progress(0.68, '街をつくっています');
+  await tick();
+  buildCommercial(ctx, {});
+  const subway = buildSubway(ctx, scene);
+  ctx.updaters.push((t, dt) => subway.update(dt));
   for (const v of ctx.vending) buildVending(ctx, v.x, v.z, v.ry, v.seed, v.n ?? (new RNG(v.seed).chance(0.5) ? 2 : 1));
 
   progress(0.7, '桜を植えています');
@@ -164,6 +176,8 @@ export async function buildWorld(scene, opts = {}) {
   forest(ctx);
   const trees = buildTrees(ctx, ctx.trees);
   ctx.petalEmitters = trees.emitters;
+  // street-level colliders above the subway must not block anyone walking below
+  ctx.colliders.liftOver(SUBWAY.x0 - 4, SUBWAY.z0 - 2, SUBWAY.x1 + 4, SUBWAY.z1 + 2, 3.0);
 
   progress(0.86, '仕上げ中');
   await tick();
@@ -172,6 +186,7 @@ export async function buildWorld(scene, opts = {}) {
   ctx.terrain = terrain;
 
   signTex.needsUpdate = true;
+  signTex2.needsUpdate = true;
   const group = new THREE.Group();
   group.name = 'static';
   ctx.builders.build(materials, group);

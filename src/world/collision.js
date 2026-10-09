@@ -8,6 +8,7 @@ import { terrainH } from './layout.js';
 export class Colliders {
   constructor(cell = 8) {
     this.cell = cell;
+    this.items = [];
     this.grid = new Map();
     this.surfaces = [];
     this.surfGrid = new Map();
@@ -36,12 +37,14 @@ export class Colliders {
     const ez = Math.abs(s) * hx + Math.abs(c) * hz;
     const item = { t: 0, cx, cz, hx, hz, c, s, yTop, yBottom };
     this._insert(this.grid, item, cx - ex, cz - ez, cx + ex, cz + ez);
+    this.items.push(item);
     return item;
   }
 
   addCircle(x, z, r, yTop = 99, yBottom = -99) {
     const item = { t: 1, cx: x, cz: z, r, yTop, yBottom };
     this._insert(this.grid, item, x - r, z - r, x + r, z + r);
+    this.items.push(item);
     return item;
   }
 

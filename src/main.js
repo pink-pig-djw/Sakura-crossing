@@ -11,7 +11,7 @@ import { AudioEngine } from './systems/audio.js';
 import { buildWorld } from './world/world.js';
 import { updateCrossings } from './world/railway.js';
 import { createPetals, createCats, createBirds, createShells, createSmallAnimations, createTraffic } from './world/life.js';
-import { areaAt, AREAS, shoreZ, STATION } from './world/layout.js';
+import { areaAt, AREAS, shoreZ, STATION, groundH } from './world/layout.js';
 import { UI } from './ui/ui.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
@@ -177,8 +177,13 @@ let focus = null;
 function findInteractable() {
   let best = null, bd = 1e9;
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  const py = player.pos.y;
+  const below = py < groundH(player.pos.x, player.pos.z) - 2.5; // underground / in the river bed
   for (const it of world.interactables) {
     if (it.kind === 'shell' && it.shell.taken) continue;
+    // things on other floors (subway concourse, platform, street above) are out of reach
+    const iy = it.y ?? (it.sit ? it.sit.y - 0.45 : null);
+    if (iy !== null ? Math.abs(iy - py) > 2.2 : below) continue;
     const dx = it.x - player.pos.x, dz = it.z - player.pos.z;
     const d = Math.hypot(dx, dz);
     if (d > it.r + 0.6) continue;
@@ -603,8 +608,8 @@ function frame() {
 // debug hooks for automated screenshots (?cam=x,y,z,yawDeg,pitchDeg&still)
 // ---------------------------------------------------------------------------
 function setCam(str) {
-  const [x, y, z, yaw, pitch] = str.split(',').map(Number);
-  const g = world.colliders.groundAt(x, z);
+  const [x, y, z, yaw, pitch, fy] = str.split(',').map(Number);
+  const g = world.colliders.groundAt(x, z, Number.isFinite(fy) ? fy : null);
   camera.position.set(x, y + g, z);
   camera.rotation.set(THREE.MathUtils.degToRad(pitch || 0), THREE.MathUtils.degToRad(yaw || 0), 0, 'YXZ');
 }
@@ -622,6 +627,17 @@ window.__setView = (cam, hour) => {
   return true;
 };
 window.__game = { world, player, tod, state, ui, startPlay, updateCrossings };
+// debug: subway trains standing at the platform with doors open (?subway)
+if (params.has('subway') && world.subway) {
+  for (const tr of world.subway.trains) {
+    tr.state = 'dwell';
+    tr.z = -14;
+    tr.timer = 15;
+    tr.open = 1;
+    tr.place();
+  }
+  world.subway.update(0);
+}
 // debug: place the train (?train=x[,dir]) for screenshots
 if (params.get('train')) {
   const [tx, td] = params.get('train').split(',').map(Number);

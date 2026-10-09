@@ -37,18 +37,18 @@ export function lotFrame(lot) {
 }
 
 // paint a local rect on the ground map
-function paint(ctx, L, lx0, lz0, lx1, lz1, color, pattern) {
+export function paint(ctx, L, lx0, lz0, lx1, lz1, color, pattern) {
   const [x0, z0, x1, z1] = L.rectW(lx0, lz0, lx1, lz1);
   ctx.ground.rect(x0, z0, x1, z1, color, pattern);
 }
 
 // register a local-space box as a collider
-function collide(ctx, L, lcx, lcz, w, d, yTop = 99) {
+export function collide(ctx, L, lcx, lcz, w, d, yTop = 99) {
   const [x, z] = L.toW(lcx, lcz);
   ctx.colliders.addBox(x, z, w / 2, d / 2, L.ry, yTop);
 }
 
-function padHeight(L, cx, cz, w, d) {
+export function padHeight(L, cx, cz, w, d) {
   let mx = -Infinity, mn = Infinity;
   for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]]) {
     const y = L.yAt(cx + (a * w) / 2, cz + (b * d) / 2);
@@ -334,7 +334,7 @@ function yard(ctx, kit, L, rng, h) {
   }
 }
 
-function collideSeg(ctx, L, ax, az, bx, bz, thick = 0.25) {
+export function collideSeg(ctx, L, ax, az, bx, bz, thick = 0.25) {
   const [x0, z0] = L.toW(ax, az);
   const [x1, z1] = L.toW(bx, bz);
   ctx.colliders.addSegment(x0, z0, x1, z1, thick);

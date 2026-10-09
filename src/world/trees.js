@@ -174,6 +174,8 @@ const SAKURA_COLS = ['#ffd6e4', '#fbc3d6', '#f6b3ca', '#ffe2ec', '#f3b9d2', '#fc
 const GREEN_COLS = ['#7fb26a', '#6ea35d', '#8cbd72', '#5f9656', '#94c27a'].map((h) => new THREE.Color(h));
 const DARK_GREENS = ['#4f7f52', '#5b8c56', '#467548', '#5f8f5a'].map((h) => new THREE.Color(h));
 const PINE_COLS = ['#3f6b48', '#4a7a50', '#38623f'].map((h) => new THREE.Color(h));
+// fresh spring leaves of the avenue zelkovas (けやき)
+const ZELKOVA_COLS = ['#a9c97a', '#9cc070', '#b5d189', '#8fb867', '#a3c574'].map((h) => new THREE.Color(h));
 
 function branchPath(start, dir, len, bend, rng, segs = 5) {
   const pts = [start.clone()];
@@ -281,6 +283,22 @@ export function buildTrees(ctx, specs) {
         cardSize: small ? [0.7, 1.1] : forest ? [2.6, 4.0] : [1.2, 1.9],
         puffScale: small ? 0.5 : forest ? 1.8 : 1,
       });
+    } else if (sp.kind === 'zelkova') {
+      // vase shape: a straight trunk that splits into upward-reaching limbs, broad crown
+      const H = rng.range(8.5, 10.5) * s;
+      const R = rng.range(3.2, 4.0) * s;
+      const trunk = branchPath(base, V(rng.range(-0.05, 0.05), 1, rng.range(-0.05, 0.05)), 2.8 * s, 0.04, rng, 3);
+      tb.tube(trunk, trunk.map((_, i) => 0.24 * s * (1 - i * 0.1)), 7, 0x6f6a62, PAT.BARK);
+      const top = trunk[trunk.length - 1];
+      const nb = rng.int(4, 6);
+      for (let i = 0; i < nb; i++) {
+        const a = (i / nb) * Math.PI * 2 + rng.range(-0.3, 0.3);
+        const pts = branchPath(top, V(Math.cos(a) * 0.55, 1, Math.sin(a) * 0.55), H * 0.48, 0.1, rng, 4);
+        tb.tube(pts, pts.map((_, k) => 0.12 * s * (1 - k * 0.18) + 0.015), 5, 0x6f6a62, PAT.BARK);
+      }
+      const cc = V(top.x, y0 + H - R * 0.55, top.z);
+      canopy(fol.get('leaf', sp.x, sp.z), cc, R, R * 0.62, ZELKOVA_COLS, rng, { puffs: 16, cardsPer: 6, cardSize: [1.2, 1.8], flatBottom: -0.1 });
+      ctx.colliders.addCircle(sp.x, sp.z, 0.32);
     } else if (sp.kind === 'pine') {
       const H = rng.range(3.5, 5.5) * s;
       const pts = [base.clone()];

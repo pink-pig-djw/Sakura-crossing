@@ -14,11 +14,14 @@ export const FONTS = {
 };
 
 export class Atlas {
-  constructor(size = 2048) {
+  // page: index stored in every uv so geometry can pick the matching material
+  constructor(size = 2048, page = 0, height = size) {
     this.size = size;
+    this.height = height;
+    this.page = page;
     this.canvas = document.createElement('canvas');
     this.canvas.width = size;
-    this.canvas.height = size;
+    this.canvas.height = height;
     this.ctx = this.canvas.getContext('2d');
     this.skyline = [{ x: 0, y: 0, w: size }];
     this.pad = 3;
@@ -31,7 +34,7 @@ export class Atlas {
   // skyline bottom-left packing
   alloc(w, h) {
     const pw = Math.ceil(w) + this.pad, ph = Math.ceil(h) + this.pad;
-    const S = this.size;
+    const S = this.size, SH = this.height;
     const sky = this.skyline;
     let best = null;
     for (let i = 0; i < sky.length; i++) {
@@ -43,7 +46,7 @@ export class Atlas {
         covered += sky[j].w - (j === i ? 0 : 0);
         j++;
       }
-      if (covered < pw || y + ph > S) continue;
+      if (covered < pw || y + ph > SH) continue;
       if (!best || y + ph < best.y + best.h || (y + ph === best.y + best.h && x < best.x)) best = { x, y, w: pw, h: ph, i };
     }
     if (!best) {
@@ -84,7 +87,7 @@ export class Atlas {
     if (!r) {
       if (!this._warned) console.warn('sign atlas full at', key);
       this._warned = true;
-      const blank = { u0: 0, u1: 0.0001, v0: 0, v1: 0.0001, aspect: 1 };
+      const blank = { u0: 0, u1: 0.0001, v0: 0, v1: 0.0001, aspect: 1, page: this.page };
       if (key) this.cache.set(key, blank);
       return blank;
     }
@@ -97,13 +100,14 @@ export class Atlas {
     fn(ctx, r.w, r.h);
     ctx.restore();
     // shrink half a texel to avoid bleeding
-    const s = this.size;
+    const s = this.size, sh = this.height;
     const uv = {
       u0: (r.x + 0.5) / s,
       u1: (r.x + r.w - 0.5) / s,
-      v0: 1 - (r.y + r.h - 0.5) / s,
-      v1: 1 - (r.y + 0.5) / s,
+      v0: 1 - (r.y + r.h - 0.5) / sh,
+      v1: 1 - (r.y + 0.5) / sh,
       aspect: r.w / r.h,
+      page: this.page,
     };
     if (key) this.cache.set(key, uv);
     return uv;

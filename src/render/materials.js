@@ -228,6 +228,40 @@ export function createWindowMaterial() {
           curtain = 0.85;
           curtainCol = vec3(0.78, 0.82, 0.86);
         }
+        if (vPattern > 99.5 && vPattern < 149.5) {
+          // office ribbon glazing: one pane per floor and face; pane size (m) comes in the vertex color
+          float Wm = max(vColor.r * 64.0, 0.5), Hm = max(vColor.g * 8.0, 0.5);
+          float nb = max(1.0, floor(Wm / 1.3 + 0.5));
+          float bx = uv.x * nb;
+          float bay = floor(bx);
+          float fx = fract(bx);
+          float my = uv.y * Hm;
+          float aw = fwidth(bx) + 1e-4;
+          float mw = 0.035 / (Wm / nb);
+          float mull = 1.0 - smoothstep(mw, mw + aw, min(fx, 1.0 - fx));
+          float tr = 1.0 - smoothstep(0.03, 0.03 + fwidth(my) + 1e-4, abs(my - (Hm - 0.5)));
+          float rnd = hash12(vec2(bay, floor(vWorldPos.y / 3.0)) + seed * 17.0);
+          vec3 inside2 = vec3(0.12, 0.15, 0.19);
+          // ceiling light rows seen through the glass
+          float ceil = smoothstep(Hm - 0.35, Hm - 0.25, my) * (1.0 - smoothstep(Hm - 0.12, Hm - 0.05, my));
+          inside2 += vec3(0.5, 0.55, 0.6) * ceil * step(0.5, fract(fx * 2.0 + rnd));
+          // blinds pulled down to random heights
+          float blind = step(my, Hm) * step(Hm * (1.0 - rnd * 0.8) - 0.2, my);
+          vec3 blindCol = vec3(0.82, 0.8, 0.74) * (0.85 + 0.15 * step(0.5, fract(my * 12.0)));
+          vec3 refl2 = mix(uHorizon * 0.6 + vec3(0.04, 0.05, 0.07), uZenith * 0.7 + uHorizon * 0.3, clamp((vWorldPos.y - 3.0) / 30.0, 0.0, 1.0));
+          refl2 = mix(refl2 * 0.6, refl2, 0.3 + 0.7 * sh);
+          vec3 c3 = mix(inside2, blindCol * mix(uSkyAmb, uSkyAmb + uSunColor, 0.5 * sh + 0.2), blind * 0.85);
+          c3 = mix(c3, refl2, 0.35 + 0.45 * fres);
+          // night: about half of the bays lit
+          float litO = step(0.45, fract(rnd * 7.31)) * uNight;
+          c3 = mix(c3, mix(vec3(0.95, 0.97, 1.0), vec3(1.0, 0.9, 0.72), step(0.7, rnd)) * (1.2 - blind * 0.4), litO * 0.85);
+          float st2 = smoothstep(0.06, 0.0, abs(fract((vWorldPos.x + vWorldPos.z) * 0.08 + vWorldPos.y * 0.05 + seed) - 0.3) - 0.03);
+          c3 += st2 * uHorizon * 0.18 * (1.0 - uNight);
+          c3 = mix(c3, vec3(0.32, 0.34, 0.37) * (0.6 + 0.4 * sh), max(mull, tr));
+          c3 = applyHaze(c3, vWorldPos);
+          gl_FragColor = vec4(c3, uOutline);
+          return;
+        }
         if (vPattern > 149.5 && vPattern < 199.5) {
           // shop front: lit interior with shelves of goods behind the glass
           vec2 q = uv * vec2(6.0, 4.0);

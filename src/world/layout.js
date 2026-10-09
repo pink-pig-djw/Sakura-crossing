@@ -43,9 +43,11 @@ export const SUBWAY = {
   yP: -4.4, // platform floor
   yC: 0.8, // concourse floor
   concZ1: -18, // concourse slab covers z0 .. concZ1
+  hall: { x0: 243.2, x1: 260.8 }, // B2 track walls (inner faces)
   plat: { x0: 248, x1: 256, z0: -44, z1: 16 },
-  tracks: [244.5, 259.5], // west: northbound, east: southbound (trains keep left)
-  stair: { x0: 250.5, x1: 253.5, z0: -30, z1: -20.5 }, // B1 -> B2
+  tracks: [246.45, 257.55], // west: northbound, east: southbound (trains keep left)
+  stop: -14, // train centre when stopped
+  stair: { x0: 250.2, x1: 254.2, z0: -30, z1: -20.5 }, // B1 -> B2 (stairs + escalator)
   // street stairwells (holes in the ground mesh, aligned to its 2 m grid)
   exits: [
     { id: 1, x0: 236, x1: 240, z0: -38, z1: -24 },

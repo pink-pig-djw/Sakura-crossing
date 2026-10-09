@@ -13,9 +13,10 @@ export class Kit {
     this.t = ctx.builders.get('toon', x, z);
     this.w = ctx.builders.get('window', x, z);
     this.s = ctx.builders.get('sign', x, z);
+    this.s2 = ctx.builders.get('sign2', x, z); // second atlas page (newer district, interiors)
     this.e = ctx.builders.get('emissive', x, z);
     this.d = this.t.detail;
-    this.all = [this.t, this.w, this.s, this.e, this.d];
+    this.all = [this.t, this.w, this.s, this.s2, this.e, this.d];
     this.depth = 0;
   }
   begin(ox, oy, oz, ry = 0) {
@@ -61,7 +62,7 @@ export function faceQuad(b, face, s, y, w, h, out, color, pattern = 0, uvs = nul
 
 export function signOnFace(kit, face, s, y, w, h, out, uv, emissive = 0, back = null) {
   const uvs = [[uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1]];
-  faceQuad(kit.s, face, s, y, w, h, out, 0xffffff, emissive, uvs);
+  faceQuad(uv.page === 1 ? kit.s2 : kit.s, face, s, y, w, h, out, 0xffffff, emissive, uvs);
   if (back) faceBox(kit.t, face, s, y - 0.03, w + 0.06, h + 0.06, 0.06, out - 0.005, back);
 }
 
