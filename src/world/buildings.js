@@ -407,8 +407,10 @@ export function buildOldHouse(ctx, lot) {
     collideSeg(ctx, L, a, 0.2, b, 0.2, 0.4);
   }
   // wooden gate posts
-  for (const e of [-1, 1]) t.box(gx + e * 0.95, L.yAt(gx, 0.2) + 1.1, 0.2, 0.18, 2.2, 0.18, { color: wood });
-  t.box(gx, L.yAt(gx, 0.2) + 2.25, 0.2, 2.3, 0.12, 0.35, { color: kc, pattern: PAT.KAWARA });
+  // each post stands on its own ground (lots slope), the little roof spans the higher one
+  const gpy = [-1, 1].map((e) => L.yAt(gx + e * 0.95, 0.2));
+  [-1, 1].forEach((e, i) => t.boxMM(gx + e * 0.95 - 0.09, gpy[i] - 0.15, 0.11, gx + e * 0.95 + 0.09, Math.max(...gpy) + 2.2, 0.29, { color: wood }));
+  t.box(gx, Math.max(...gpy) + 2.25, 0.2, 2.3, 0.12, 0.35, { color: kc, pattern: PAT.KAWARA });
   blockWall(t, L.W / 2 - 0.1, 0.4, L.W / 2 - 0.1, L.D - 0.2, yFn, 1.2, { color: 0xa59c8e, pattern: PAT.STONE, thick: 0.3 });
   collideSeg(ctx, L, L.W / 2 - 0.1, 0.4, L.W / 2 - 0.1, L.D - 0.2, 0.35);
   blockWall(t, -L.W / 2, L.D - 0.15, L.W / 2, L.D - 0.15, yFn, 1.3, {});
@@ -669,8 +671,7 @@ export function buildParking(ctx, lot) {
     c.fillText('TEL 0467-00-1234', w / 2, h * 0.88);
   });
   const sy = L.yAt(L.W / 2 - 1, 0.3);
-  t.box(L.W / 2 - 1.5, sy + 0.9, 0.3, 0.06, 1.8, 0.06, { color: 0x888888 });
-  t.box(L.W / 2 - 0.6, sy + 0.9, 0.3, 0.06, 1.8, 0.06, { color: 0x888888 });
+  for (const px of [L.W / 2 - 1.5, L.W / 2 - 0.6]) t.boxMM(px - 0.03, L.yAt(px, 0.3) - 0.15, 0.27, px + 0.03, sy + 1.8, 0.33, { color: 0x888888 });
   const face = { o: V(L.W / 2 - 0.4, sy, 0.25), r: V(-1, 0, 0), n: V(0, 0, -1), len: 1 };
   signOnFace(kit, face, 0.65, 1.3, 1.2, 0.9, 0.0, uv, 0, 0xe8e8e8);
   // low chain fence posts
@@ -722,8 +723,9 @@ export function buildField(ctx, lot) {
   }
   // shed
   const sx = L.W / 2 - 1.4, sz = L.D - 1.6;
-  const sy = L.yAt(sx, sz);
-  t.box(sx, sy + 1.0, sz, 2.0, 2.0, 1.6, { color: 0xc9c6bc, pattern: PAT.CORRUGATED });
+  const shed = padHeight(L, sx, sz, 2.0, 1.6);
+  const sy = shed.top;
+  t.boxMM(sx - 1.0, shed.bottom - 0.12, sz - 0.8, sx + 1.0, sy + 2.0, sz + 0.8, { color: 0xc9c6bc, pattern: PAT.CORRUGATED });
   t.box(sx, sy + 2.05, sz, 2.3, 0.08, 1.9, { color: 0x6a7f8a, pattern: PAT.CORRUGATED });
   collide(ctx, L, sx, sz, 2.0, 1.6);
   // scarecrow-free: just a watering can and a hose reel
