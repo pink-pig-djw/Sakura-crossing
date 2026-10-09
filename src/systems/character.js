@@ -128,6 +128,7 @@ export class Character {
     this.rest = rest;
     this.hipsHeight = rest.hips.y;
     this.ankleHeight = (rest.leftFoot.y + rest.rightFoot.y) / 2;
+    this.sole = this._solePoints(vrm, rest);
     // per-bone correction: the model's own rest bone direction -> the motion file's ideal
     // T-pose bone axis (none for the trunk, neck and head)
     const AXIS = motions.axes;
@@ -197,6 +198,57 @@ export class Character {
       const h = decode(sd.hips, Int16Array), n = sd.frames;
       this.sitBack = ((h[2] - h[(n - 1) * 3 + 2]) / 10000) * (this.hipsHeight / sd.hipsHeight);
     }
+  }
+
+  // Points under each shoe (heel, ball, tip), from the vertices skinned to the foot and toes:
+  // offsets from the foot / toes bone at rest, so that they follow the posed bones. The
+  // ground fit keeps them all above the ground (a foot rolled heel-down or toe-down would
+  // otherwise dig its shoe in).
+  _solePoints(vrm, rest) {
+    const H = vrm.humanoid;
+    const out = {};
+    for (const side of ['left', 'right']) {
+      const foot = H.getRawBoneNode(side + 'Foot'), toes = H.getRawBoneNode(side + 'Toes');
+      const pts = { foot: [], toes: [] };
+      vrm.scene.traverse((o) => {
+        if (!o.isSkinnedMesh) return;
+        const g = o.geometry, P = g.attributes.position, I = g.attributes.skinIndex, Wt = g.attributes.skinWeight;
+        const bones = o.skeleton.bones;
+        for (let i = 0; i < P.count; i++) {
+          let best = -1, bw = 0;
+          for (let k = 0; k < 4; k++) if (Wt.getComponent(i, k) > bw) (bw = Wt.getComponent(i, k)), (best = I.getComponent(i, k));
+          const b = bones[best];
+          if (b !== foot && b !== toes) continue;
+          const y = P.getY(i);
+          if (y > rest[side + 'Foot'].y) continue; // the sole and the lower shoe only
+          (b === foot ? pts.foot : pts.toes).push(new THREE.Vector3(P.getX(i), y, P.getZ(i)));
+        }
+      });
+      const all = [...pts.foot, ...pts.toes];
+      if (!all.length) continue;
+      const minY = Math.min(...all.map((p) => p.y));
+      const low = (arr) => arr.filter((p) => p.y < minY + 0.02);
+      const heel = low(pts.foot).reduce((a, p) => (!a || p.z < a.z ? p : a), null);
+      const tip = low(pts.toes.length ? pts.toes : pts.foot).reduce((a, p) => (!a || p.z > a.z ? p : a), null);
+      const ball = new THREE.Vector3(rest[side + 'Toes']?.x ?? 0, minY, rest[side + 'Toes']?.z ?? 0);
+      const F = rest[side + 'Foot'], T = rest[side + 'Toes'] || F;
+      out[side] = [
+        { bone: side + 'Foot', p: heel.clone().sub(F) },
+        { bone: side + 'Foot', p: ball.clone().sub(F) },
+        { bone: rest[side + 'Toes'] ? side + 'Toes' : side + 'Foot', p: tip.clone().sub(rest[side + 'Toes'] ? T : F) },
+      ];
+    }
+    return out;
+  }
+
+  // how far a foot must rise so that no point under its shoe is below the ground
+  _soleNeed(side) {
+    let need = -Infinity;
+    for (const s of this.sole[side] || []) {
+      _v3.copy(s.p).applyMatrix4(this.node(s.bone).matrixWorld);
+      need = Math.max(need, this.ground(_v3.x, _v3.z) - _v3.y);
+    }
+    return need;
   }
 
   // world rotations of the clip -> local rotations of this model's normalized bones
@@ -401,7 +453,7 @@ export class Character {
       n(s + 'Foot').getWorldPosition(_v);
       const d = this.ground(_v.x, _v.z) - g0;
       const a = _v.y - g0;
-      return { s, c: Math.max(d, d + this.ankleHeight * 0.98 - a) };
+      return { s, c: Math.max(d, d + this.ankleHeight * 0.98 - a, this._soleNeed(s) + 0.005) };
     });
     const drop = Math.min(0, legs[0].c, legs[1].c);
     // on a seat: raise the hips in proportion to how far down toward the clip's seat they are
