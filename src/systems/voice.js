@@ -58,9 +58,12 @@ export class VoiceSystem {
     if (!this.audio.ctx || !VOICE_LINES[id]) return Promise.resolve(null);
     let p = this.cache.get(id);
     if (!p) {
-      const url = window.__VOICES?.[id] || `${this.base}${id}.mp3`;
-      p = fetch(url)
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+      // single-file builds embed the clips as base64 (window.__VOICES); otherwise fetch them
+      const inline = window.__VOICES?.[id];
+      const bytes = inline
+        ? Promise.resolve(Uint8Array.from(atob(inline), (ch) => ch.charCodeAt(0)).buffer)
+        : fetch(`${this.base}${id}.mp3`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))));
+      p = bytes
         .then((b) => new Promise((res, rej) => this.audio.ctx.decodeAudioData(b, res, rej)))
         .catch(() => null);
       this.cache.set(id, p);
