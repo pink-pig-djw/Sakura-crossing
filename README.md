@@ -6,7 +6,7 @@ An explorable anime-background-style Japanese seaside town in spring, built with
 
 **在线试玩 / Play online：<https://pink-pig-djw.github.io/Sakura-crossing/>**
 
-界面可在 **日本語 / 中文** 之间切换（标题画面或菜单里的「语言」），浏览器语言为中文时默认显示中文。
+界面可在 **日本語 / 中文** 之间切换（标题画面或菜单里的「语言」），浏览器语言为中文时默认显示中文。想直接分享中文版，可以用 <https://pink-pig-djw.github.io/Sakura-crossing/?lang=zh>。
 
 ## 运行 / Run
 
