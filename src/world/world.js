@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ChunkedBuilders } from '../core/builder.js';
+import { ChunkedBuilders, AUDIT } from '../core/builder.js';
 import { RNG, fbm2 } from '../core/rng.js';
 import { createToonMaterial, createWindowMaterial, createRoadMaterial, createInteriorMaterial, createGlassMaterial } from '../render/materials.js';
 import { Atlas } from '../render/atlas.js';
@@ -141,6 +141,7 @@ export async function buildWorld(scene, opts = {}) {
   };
   for (const lot of lots) {
     if (lot.type === 'shop') continue;
+    AUDIT.tag = `${lot.type}@${Math.round(lot.x0)},${Math.round(lot.z0)}`;
     (builders[lot.type] || buildHouse)(ctx, lot);
     if (++n % 25 === 0) {
       progress(0.08 + 0.4 * (n / lots.length), '家を建てています');
@@ -151,12 +152,19 @@ export async function buildWorld(scene, opts = {}) {
   progress(0.5, '電線を張っています');
   await tick();
   ctx.wires = new WireSet();
+  AUDIT.tag = 'shotengai';
   buildShotengai(ctx);
+  AUDIT.tag = 'station';
   buildStation(ctx);
+  AUDIT.tag = 'plaza';
   buildPlaza(ctx);
+  AUDIT.tag = 'park';
   buildPark(ctx);
+  AUDIT.tag = 'shrine';
   buildShrine(ctx);
+  AUDIT.tag = 'poles';
   buildPolesAndWires(ctx);
+  AUDIT.tag = 'streetprops';
   buildStreetProps(ctx);
 
   progress(0.58, '線路を敷いています');
@@ -166,14 +174,19 @@ export async function buildWorld(scene, opts = {}) {
 
   progress(0.64, '海を描いています');
   await tick();
+  AUDIT.tag = 'coast';
   buildCoast(ctx);
+  AUDIT.tag = 'river';
   buildRiver(ctx);
 
   progress(0.68, '街をつくっています');
   await tick();
+  AUDIT.tag = 'interiors';
   const interiors = buildInteriors(ctx, scene);
+  AUDIT.tag = 'commercial';
   buildCommercial(ctx, interiors.specials);
   ctx.autoDoors = interiors.doors;
+  AUDIT.tag = 'subway';
   const subway = buildSubway(ctx, scene);
   ctx.updaters.push((t, dt) => subway.update(dt));
   for (const v of ctx.vending) buildVending(ctx, v.x, v.z, v.ry, v.seed, v.n ?? (new RNG(v.seed).chance(0.5) ? 2 : 1));

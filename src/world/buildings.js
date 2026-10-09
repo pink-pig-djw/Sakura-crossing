@@ -3,7 +3,7 @@ import { RNG, clamp } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { terrainH } from './layout.js';
 import {
-  Kit, boxFaces, fp, faceBox, signOnFace, windowUnit, door, koshiDoor, gableRoof, hipRoof, leanTo,
+  Kit, boxFaces, fp, faceBox, groundFaceBox, signOnFace, windowUnit, door, koshiDoor, gableRoof, hipRoof, leanTo,
   acUnit, potPlant, mailbox, bicycle, parkedCar, blockWall, hedge, metalFence, laundry, FRAME,
 } from './kit.js';
 import { FONTS, drawBoard, drawVertical, fitText } from '../render/atlas.js';
@@ -202,12 +202,18 @@ export function buildHouse(ctx, lot) {
   acUnit(t, ...localPt(F.left, rng.range(1, hd - 1), 0, 0.5), -Math.PI / 2);
   if (rng.chance(0.5)) acUnit(t, ...localPt(F.right, rng.range(1, hd - 1), 0, 0.5), Math.PI / 2);
   const dp = fp(F.front, 0.12, 0, 0.12);
-  t.cyl(dp.x, y0 - 0.4, dp.z, 0.045, 0.045, yTop - y0 + 0.3, 6, 0x8f8f8a);
+  const dpY = Math.min(y0 - 0.4, L.yAt(dp.x, dp.z) - 0.05);
+  t.cyl(dp.x, dpY, dp.z, 0.045, 0.045, yTop + 0.3 - dpY, 6, 0x8f8f8a);
   if (rng.chance(0.55)) {
     // TV antenna
     const ax = cx + rng.range(-hw / 4, hw / 4);
     const az = cz;
-    const ay = yTop + hd * 0.2;
+    // the mast foot stands on the roof surface wherever it lands (gable, hip or flat-ish shed)
+    const ay = (roofType === 'shed'
+      ? yTop + 1.3
+      : roofType === 'gable'
+        ? yTop + roofSlope * (zFaces ? hd / 2 - Math.abs(az - cz) : hw / 2 - Math.abs(ax - cx))
+        : yTop + roofSlope * Math.min(hw / 2 - Math.abs(ax - cx), hd / 2 - Math.abs(az - cz))) - 0.08;
     t.cyl(ax, ay, az, 0.03, 0.025, 2.4, 5, 0x8c8f94);
     for (let k = 0; k < 2; k++) {
       const yy = ay + 1.6 + k * 0.55;
@@ -480,7 +486,7 @@ export function buildApartment(ctx, lot) {
   // second floor corridor slab + railing on the front face
   faceBox(t, F.front, hw / 2, fh - 0.2, hw, 0.22, 1.3, 1.3, 0xcfccc4, PAT.CONCRETE);
   faceBox(t, F.front, hw / 2, fh + 0.02, hw, 1.05, 0.08, 1.3, rng.pick([0xe9e6dc, wall]), PAT.SIDING);
-  for (let i = 0; i <= units; i++) faceBox(t, F.front, i * uw, 0, 0.14, fh - 0.2, 0.14, 1.25, 0xbcb8b0);
+  for (let i = 0; i <= units; i++) groundFaceBox(t, F.front, i * uw, fh - 0.2, 0.14, 0.14, 1.25, 0xbcb8b0, L.yAt);
   for (let f = 0; f < 2; f++) {
     for (let u = 0; u < units; u++) {
       const s = u * uw + uw * 0.32;
@@ -504,23 +510,29 @@ export function buildApartment(ctx, lot) {
       }
     }
   }
-  // steel stairs along the right side, rising toward the corridor
+  // steel stairs along the right side, rising from the ground to the corridor. The lot slopes,
+  // so the foot of the stair is found on the terrain and the rise adjusted to reach from there
   const steel = 0x7c7f84;
-  const steps = 14, run = 0.27, rise = fh / steps;
+  const run = 0.27;
   const sEnd = hd - 0.2;
+  const footG = (s) => {
+    const p = fp(F.right, s, 0, 0.55);
+    return L.yAt(p.x, p.z);
+  };
+  let steps = 14;
+  for (let k = 0; k < 3; k++) steps = Math.max(10, Math.min(20, Math.round((y0 + fh - footG(sEnd - steps * run) + 0.05) / 0.196)));
   const s0 = sEnd - steps * run;
-  for (let i = 0; i < steps; i++) faceBox(t, F.right, s0 + i * run + run / 2, (i + 1) * rise - 0.05, run, 0.05, 0.95, 1.05, steel);
+  const yFoot = Math.min(0, footG(s0) - 0.05 - y0); // stair foot, relative to the floor level
+  const rise = (fh - yFoot) / steps;
+  for (let i = 0; i < steps; i++) faceBox(t, F.right, s0 + i * run + run / 2, yFoot + (i + 1) * rise - 0.05, run, 0.05, 0.95, 1.05, steel);
   faceBox(t, F.right, hd + 0.55, fh - 0.2, 1.5, 0.2, 0.95, 1.05, steel);
   for (const out of [0.1, 1.05]) {
-    const a = fp(F.right, s0, 0, out), b2 = fp(F.right, sEnd, fh, out);
+    const a = fp(F.right, s0, yFoot, out), b2 = fp(F.right, sEnd, fh, out);
     t.rod(a, b2, 0.06, 0.06, 4, 0x6c6f74);
-    const ha = fp(F.right, s0, 1.0, out), hb = fp(F.right, sEnd, fh + 1.0, out);
+    const ha = fp(F.right, s0, yFoot + 1.0, out), hb = fp(F.right, sEnd, fh + 1.0, out);
     if (out > 1) t.rod(ha, hb, 0.03, 0.03, 4, 0x6c6f74);
   }
-  for (const s2 of [hd - 0.15, hd + 1.25]) {
-    const a = fp(F.right, s2, 0, 1.0);
-    t.box(a.x, a.y + fh / 2, a.z, 0.1, fh, 0.1, { color: steel });
-  }
+  for (const s2 of [hd - 0.15, hd + 1.25]) groundFaceBox(t, F.right, s2, fh, 0.1, 0.1, 1.0, steel, L.yAt);
   // name plate
   const name = rng.pick(APT_NAMES);
   const uv = ctx.atlas.draw('apt:' + name, 256, 64, (c, w, h) => drawBoard(c, w, h, { text: name, bg: '#f7f3ea', fg: '#3d4a5c', font: FONTS.mincho, border: '#8b8f96' }));
@@ -782,7 +794,7 @@ export function buildSento(ctx, lot) {
   t.push(new THREE.Matrix4().makeTranslation(0, 0, front - 0.5));
   gableRoof(t, 0, 0, 3.4, 1.8, y0 + 3.0, { color: kc, pattern: PAT.KAWARA, wallColor: '#5d4636', slope: 0.6, ox: 0.3, oz: 0.35, fascia: 0x5d4636 });
   t.pop();
-  for (const e of [-1, 1]) t.box(e * 1.6, y0 + 1.5, front - 0.5, 0.18, 3.0, 0.18, { color: 0x5d4636 });
+  for (const e of [-1, 1]) t.boxMM(e * 1.6 - 0.09, Math.min(y0, L.yAt(e * 1.6, front - 0.5)) - 0.15, front - 0.59, e * 1.6 + 0.09, y0 + 3.0, front - 0.41, { color: 0x5d4636 });
   koshiDoor(kit, F.front, hw / 2, 0, 2.6, 2.3, 0x5d4636);
   // noren with ゆ
   const nuv = ctx.atlas.draw('noren-yu', 256, 160, (c, w, h) => {

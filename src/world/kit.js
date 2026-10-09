@@ -53,6 +53,16 @@ export function faceBox(b, face, s, y, w, h, dd, out, color, pattern = 0, o = {}
   b.box(c.x, c.y, c.z, alongX ? w : dd, h, alongX ? dd : w, { color, pattern, ...o });
 }
 
+// Post on a face that reaches down to the terrain under it (yAt is the lot's ground function
+// in the same local frame): from the ground to `top`, measured like faceBox's y (up from the
+// face base). Used for posts and stair supports that stand outside the building footprint,
+// where a sloping lot leaves the floor level well above the ground.
+export function groundFaceBox(b, face, s, top, w, dd, out, color, yAt, pattern = 0, o = {}) {
+  const c = fp(face, s, 0, out - dd / 2);
+  const y = Math.min(0, yAt(c.x, c.z) - 0.12 - face.o.y);
+  faceBox(b, face, s, y, w, top - y, dd, out, color, pattern, o);
+}
+
 // Quad on a face (flat), with optional explicit uvs
 export function faceQuad(b, face, s, y, w, h, out, color, pattern = 0, uvs = null) {
   const bl = fp(face, s - w / 2, y, out);

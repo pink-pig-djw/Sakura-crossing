@@ -58,6 +58,11 @@ export const PAT = {
   LEAVES: 26, // clipped hedge / shrub leaves
 };
 
+// Debug aid (?audit): records every box and cylinder in world space so a test can look for
+// posts, rails and walls that hang above the ground without anything underneath.
+export const AUDIT = { on: false, tag: '', rec: [] };
+const _ap = new THREE.Vector3();
+
 export class MeshBuilder {
   constructor() {
     this.pos = [];
@@ -206,6 +211,7 @@ export class MeshBuilder {
   // o.color, o.pattern, o.ry, o.ao (bottom darkening 0..1), o.top (top face color),
   // o.skip: string of faces to skip among 'xXyYzZ' (lower = negative side)
   box(cx, cy, cz, sx, sy, sz, o = {}) {
+    if (AUDIT.on) this._audit('b', cx, cy - sy / 2, cz, cx, cy + sy / 2, cz, Math.abs(sx) / 2, Math.abs(sz) / 2, o.ry || 0);
     const color = col(o.color ?? 0xcccccc);
     const pattern = o.pattern ?? 0;
     const hx = sx / 2, hy = sy / 2, hz = sz / 2;
@@ -246,6 +252,32 @@ export class MeshBuilder {
     return this;
   }
 
+  // world-space record of a box (kind 'b': half extents hx, hz about (x,z)) or a cylinder
+  // ('c': axis from p0 to p1, radius hx); bottom/top points are the axis ends
+  _audit(kind, x0, y0, z0, x1, y1, z1, hx, hz, ry) {
+    const m = this.identity ? null : this.matrix;
+    const pt = (x, y, z) => {
+      _ap.set(x, y, z);
+      if (m) _ap.applyMatrix4(m);
+      return [_ap.x, _ap.y, _ap.z];
+    };
+    const a = pt(x0, y0, z0), b = pt(x1, y1, z1);
+    const cs = Math.cos(ry), sn = Math.sin(ry);
+    let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity, mny = Infinity, mxy = -Infinity;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      for (const [x, y, z] of [[x0, y0, z0], [x1, y1, z1]]) {
+        const p = pt(x + (sx * hx) * cs + (sz * hz) * sn, y, z - (sx * hx) * sn + (sz * hz) * cs);
+        mnx = Math.min(mnx, p[0]); mxx = Math.max(mxx, p[0]);
+        mny = Math.min(mny, p[1]); mxy = Math.max(mxy, p[1]);
+        mnz = Math.min(mnz, p[2]); mxz = Math.max(mxz, p[2]);
+      }
+    }
+    // the long axis of a box in world space (for walls on slopes)
+    const long = hx >= hz ? [cs, -sn, hx] : [sn, cs, hz];
+    const e0 = pt(x0 - long[0] * long[2], y0, z0 - long[1] * long[2]), e1 = pt(x0 + long[0] * long[2], y0, z0 + long[1] * long[2]);
+    AUDIT.rec.push({ k: kind, tag: AUDIT.tag, a, b, e0, e1, hx, hz, x0: mnx, x1: mxx, y0: mny, y1: mxy, z0: mnz, z1: mxz });
+  }
+
   // Box defined by min/max corners (local axis aligned).
   boxMM(x0, y0, z0, x1, y1, z1, o = {}) {
     return this.box((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), o);
@@ -277,6 +309,7 @@ export class MeshBuilder {
 
   // Vertical cylinder / cone frustum.
   cyl(x, y, z, r0, r1, h, segs, color, pattern = 0, o = {}) {
+    if (AUDIT.on) this._audit('c', x, y, z, x, y + h, z, Math.max(r0, r1), Math.max(r0, r1), 0);
     const c0 = col(color);
     const cTop = o.top !== undefined ? col(o.top) : c0;
     const cBot = o.ao ? _c.copy(c0).multiplyScalar(1 - o.ao).clone() : c0;

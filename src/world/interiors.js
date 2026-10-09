@@ -815,7 +815,7 @@ function buildMall(ctx, block, doors) {
   cb.boxMM(265.4, y1, 7.6, 268.0, y1 + 1.05, 9.0, { color: 0xf6c0d0 });
   cb.boxMM(265.3, y1 + 1.05, 7.5, 268.1, y1 + 1.1, 9.1, { color: 0xffffff });
   cb.boxMM(265.4, y1 + 2.4, 7.4, 268.0, y1 + 2.5, 9.2, { color: 0xf39ab8 });
-  for (const [a, b] of [[265.45, 7.45], [267.95, 7.45], [265.45, 9.15], [267.95, 9.15]]) cb.box(a, y1 + 1.75, b, 0.06, 1.3, 0.06, { color: 0xf2f2ee });
+  for (const [a, b] of [[265.45, 7.56], [267.95, 7.56], [265.45, 9.04], [267.95, 9.04]]) cb.box(a, y1 + 1.75, b, 0.06, 1.3, 0.06, { color: 0xf2f2ee });
   const crepe = ctx.atlas2.draw('mall-crepe', 192, 64, (c, w, h) => drawBoard(c, w, h, { text: 'クレープ 春風', sub: 'CREPE', bg: '#ffffff', fg: '#c86a8a', font: FONTS.maru, weather: false }));
   vsign(ctx, 'z', 268.12, 7.6, 9.0, y1 + 2.0, y1 + 2.4, 1, crepe, 0.8);
   ctx.colliders.addBox(266.7, 8.3, 1.4, 0.8, 0, y1 + 1.1, y1 - 1);

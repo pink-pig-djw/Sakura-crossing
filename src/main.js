@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { G } from './render/materials.js';
+import { AUDIT } from './core/builder.js';
 import { createSky } from './render/sky.js';
 import { createClouds } from './render/clouds.js';
 import { Pipeline } from './render/pipeline.js';
@@ -114,6 +115,10 @@ const state = {
   lastArea: null,
 };
 
+if (params.has('audit')) {
+  AUDIT.on = true;
+  window.__audit = AUDIT;
+}
 ui.setProgress(0.02, '町をつくっています');
 const t0 = performance.now();
 const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l) });
