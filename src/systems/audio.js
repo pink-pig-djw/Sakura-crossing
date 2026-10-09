@@ -56,6 +56,7 @@ export class AudioEngine {
     this.setupWind();
     this.setupTrain();
     this.setupNight();
+    this.setupPlaces();
     this.crossingVoices = new Map();
     this.music = new PianoMusic(this);
     this.music.start();
@@ -492,9 +493,121 @@ export class AudioEngine {
       case 'sit':
         this.noiseHit(out, t, 300, 1, 0.15, 0.12, 'lowpass');
         break;
+      case 'chime':
+        // shop door chime (two soft electronic tones)
+        this.tone(out, t, 1318, 1318, 0.55, 0.05);
+        this.tone(out, t + 0.32, 1046, 1046, 0.9, 0.05);
+        this.tone(this.revSend, t + 0.32, 1046, 1046, 0.9, 0.02);
+        break;
+      case 'beep':
+        this.tone(out, t, 2093, 2093, 0.09, 0.05, 'square');
+        break;
+      case 'ticket':
+        this.noiseHit(out, t, 600, 1.5, 0.5, 0.06);
+        this.tone(out, t + 0.6, 1568, 1568, 0.08, 0.04, 'square');
+        this.noiseHit(out, t + 0.75, 2400, 2, 0.12, 0.08);
+        break;
+      case 'register':
+        this.tone(out, t, 2637, 2637, 0.07, 0.04, 'square');
+        this.noiseHit(out, t + 0.25, 3000, 1.5, 0.35, 0.05);
+        break;
+      case 'gacha':
+        for (let i = 0; i < 6; i++) this.noiseHit(out, t + i * 0.09, rand(2000, 3200), 3, 0.05, 0.12);
+        this.noiseHit(out, t + 0.75, 500, 1, 0.12, 0.25, 'lowpass');
+        break;
+      case 'page':
+        this.noiseHit(out, t, 4200, 0.7, 0.18, 0.06);
+        break;
       default:
         break;
     }
+  }
+
+  // subway platform: arrival chime, door chimes and a short departure melody (original)
+  stationChime(kind, x, y, z) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const p = this.panner(x, y, z, 10, 1.0);
+    p.connect(this.amb);
+    const send = this.ctx.createGain();
+    send.gain.value = 0.6;
+    p.connect(send).connect(this.revSend);
+    if (kind === 'approach') {
+      [784, 988, 1175, 988].forEach((f, i) => this.tone(p, t + i * 0.28, f, f, 0.6, 0.05));
+    } else if (kind === 'doorsOpen') {
+      for (let k = 0; k < 3; k++) {
+        this.tone(p, t + k * 0.62, 1480, 1480, 0.3, 0.04);
+        this.tone(p, t + k * 0.62 + 0.24, 1175, 1175, 0.36, 0.04);
+      }
+    } else if (kind === 'melody') {
+      const notes = [76, 79, 83, 88, 86, 83, 85, 88, 81, 85, 88, 93];
+      notes.forEach((m, i) => {
+        const f = 440 * Math.pow(2, (m - 69) / 12);
+        this.tone(p, t + i * 0.2, f, f, 0.32, 0.045);
+        this.tone(p, t + i * 0.2, f * 2, f * 2, 0.2, 0.012);
+      });
+    } else if (kind === 'doorsClose') {
+      for (let k = 0; k < 4; k++) this.tone(p, t + k * 0.3, 1760, 1760, 0.14, 0.035, 'square');
+    }
+  }
+
+  // pedestrian signal guide tones: ピヨピヨ / カッコー
+  crosswalkTone(kind, x, y, z) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const p = this.panner(x, y, z, 6, 1.4);
+    p.connect(this.amb);
+    if (kind === 'piyo') {
+      this.tone(p, t, 2600, 2200, 0.12, 0.035);
+      this.tone(p, t + 0.16, 2600, 2200, 0.12, 0.035);
+    } else {
+      this.tone(p, t, 1080, 1060, 0.22, 0.04);
+      this.tone(p, t + 0.3, 880, 860, 0.36, 0.04);
+    }
+  }
+
+  setupPlaces() {
+    const ctx = this.ctx;
+    // flowing river water (moved to the nearest river point every frame)
+    this.riverPan = this.panner(182, 3, 0, 8, 1.1);
+    this.riverPan.connect(this.amb);
+    const rn = this.loopNoise(this.pink);
+    const rf = ctx.createBiquadFilter();
+    rf.type = 'bandpass';
+    rf.frequency.value = 900;
+    rf.Q.value = 0.5;
+    this.riverG = ctx.createGain();
+    this.riverG.gain.value = 0;
+    rn.connect(rf).connect(this.riverG).connect(this.riverPan);
+    // fountain
+    this.fountainPan = this.panner(229, 6, -33, 5, 1.3);
+    this.fountainPan.connect(this.amb);
+    const fn = this.loopNoise(this.white);
+    const ff = ctx.createBiquadFilter();
+    ff.type = 'highpass';
+    ff.frequency.value = 1400;
+    this.fountainG = ctx.createGain();
+    this.fountainG.gain.value = 0;
+    fn.connect(ff).connect(this.fountainG).connect(this.fountainPan);
+    // underground hum (ventilation, distant trains)
+    const hn = this.loopNoise(this.brown);
+    const hf = ctx.createBiquadFilter();
+    hf.type = 'lowpass';
+    hf.frequency.value = 180;
+    this.humG = ctx.createGain();
+    this.humG.gain.value = 0;
+    hn.connect(hf).connect(this.humG).connect(this.amb);
+    // subway train rumble
+    this.subPan = this.panner(252, -3, -14, 12, 1.0);
+    this.subPan.connect(this.amb);
+    const sn = this.loopNoise(this.brown);
+    this.subF = ctx.createBiquadFilter();
+    this.subF.type = 'lowpass';
+    this.subF.frequency.value = 260;
+    this.subG = ctx.createGain();
+    this.subG.gain.value = 0;
+    sn.connect(this.subF).connect(this.subG).connect(this.subPan);
+    this.walkT = 0;
   }
 
   // ------------------------------------------------------------------ per frame
@@ -522,20 +635,21 @@ export class AudioEngine {
     this.setPos(this.seaPan, s.x, 0.5, Math.max(s.shoreZ, s.z + 2));
     const dShore = Math.max(0, s.shoreZ - s.z);
     const near = Math.max(0.05, Math.min(1, 26 / (dShore + 14)));
-    this.seaBed.gain.setTargetAtTime(0.32 * near + 0.03, t, 0.5);
+    const outside = 1 - 0.85 * (s.indoor || 0);
+    this.seaBed.gain.setTargetAtTime((0.32 * near + 0.03) * outside, t, 0.5);
     this.nextWave -= dt;
     if (this.nextWave <= 0) {
-      this.waveCrash(near);
+      if (outside > 0.5) this.waveCrash(near);
       this.nextWave = rand(5.5, 9.5);
     }
     // wind: stronger on the hill and the beach
     this.windT += dt;
     const wv = 0.035 + 0.03 * Math.sin(this.windT * 0.21) + 0.02 * Math.sin(this.windT * 0.57) + (s.y > 18 ? 0.04 : 0) + (dShore < 30 ? 0.02 : 0);
-    this.windG.gain.setTargetAtTime(Math.max(0.01, wv), t, 0.8);
+    this.windG.gain.setTargetAtTime(Math.max(0.005, wv * outside), t, 0.8);
     this.windF.frequency.setTargetAtTime(420 + 260 * Math.sin(this.windT * 0.13), t, 1);
 
     // birds by time of day
-    const day = s.night < 0.5;
+    const day = s.night < 0.5 && !s.indoor;
     const T = this.timers;
     for (const k in T) T[k] -= dt;
     if (day && T.sparrow <= 0 && s.inTown) {
@@ -598,6 +712,45 @@ export class AudioEngine {
       for (const e of tr.events.splice(0)) {
         if (e === 'horn') this.horn();
         if (e === 'melody') this.melody(s.station.x, 5, s.station.z);
+      }
+    }
+    // river, fountain, underground hum, subway, crosswalk tones
+    if (this.riverG) {
+      const rd = s.river ? s.river.d : 999;
+      if (s.river) this.setPos(this.riverPan, s.river.x, s.river.y, s.river.z);
+      this.riverG.gain.setTargetAtTime(rd < 40 ? 0.22 * Math.min(1, 10 / (rd + 4)) * outside + (s.river?.weir ? 0.05 : 0) : 0, t, 0.6);
+      const fd = Math.hypot(s.x - 229.4, s.z + 33);
+      this.fountainG.gain.setTargetAtTime(fd < 30 && !s.under ? 0.06 : 0, t, 0.6);
+      this.humG.gain.setTargetAtTime(s.under ? 0.1 : 0, t, 0.8);
+      const sub = s.subway;
+      if (sub) {
+        let best = null, bd = 1e9;
+        for (const tr of sub.trains) {
+          if (tr.state === 'wait') continue;
+          const d = Math.abs(tr.z - s.z) + Math.abs(tr.x - s.x);
+          if (d < bd) {
+            bd = d;
+            best = tr;
+          }
+        }
+        if (best) this.setPos(this.subPan, best.x, -3, best.z);
+        const audible = s.under || bd < 40;
+        this.subG.gain.setTargetAtTime(best && audible ? 0.08 + best.v * 0.03 : 0, t, 0.4);
+        this.subF.frequency.setTargetAtTime(140 + (best ? best.v * 30 : 0), t, 0.4);
+        for (const ev of sub.events.splice(0)) {
+          if (!s.under) continue;
+          if (['approach', 'doorsOpen', 'melody', 'doorsClose'].includes(ev.e)) this.stationChime(ev.e, 252, -2, -14);
+        }
+      }
+      if (s.crosswalks && !s.under) {
+        this.walkT -= dt;
+        if (this.walkT <= 0) {
+          this.walkT = 0.75;
+          for (const c of s.crosswalks) {
+            if (Math.hypot(c.x - s.x, c.z - s.z) > 28 || !c.walk) continue;
+            this.crosswalkTone(c.axis === 1 ? 'piyo' : 'kakko', c.x, 4, c.z);
+          }
+        }
       }
     }
     if (this.music) this.music.update(t);

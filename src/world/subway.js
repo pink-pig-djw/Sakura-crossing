@@ -887,6 +887,7 @@ export function buildSubway(ctx, scene) {
         for (const e of tr.events) sub.events.push({ e, train: tr });
         tr.events.length = 0;
       }
+      if (sub.events.length > 24) sub.events.splice(0, sub.events.length - 24);
       // platform doors follow the train at their edge
       doors.sides[0].open = trains[1].state === 'dwell' ? trains[1].open : 0;
       doors.sides[1].open = trains[0].state === 'dwell' ? trains[0].open : 0;

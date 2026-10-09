@@ -16,6 +16,7 @@ import { buildStation, buildPlaza, buildShotengai, buildPark, buildShrine, lante
 import { buildRiver } from './river.js';
 import { buildCommercial } from './commercial.js';
 import { buildSubway } from './subway.js';
+import { buildInteriors } from './interiors.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -165,7 +166,9 @@ export async function buildWorld(scene, opts = {}) {
 
   progress(0.68, '街をつくっています');
   await tick();
-  buildCommercial(ctx, {});
+  const interiors = buildInteriors(ctx, scene);
+  buildCommercial(ctx, interiors.specials);
+  ctx.autoDoors = interiors.doors;
   const subway = buildSubway(ctx, scene);
   ctx.updaters.push((t, dt) => subway.update(dt));
   for (const v of ctx.vending) buildVending(ctx, v.x, v.z, v.ry, v.seed, v.n ?? (new RNG(v.seed).chance(0.5) ? 2 : 1));
@@ -191,6 +194,7 @@ export async function buildWorld(scene, opts = {}) {
   group.name = 'static';
   ctx.builders.build(materials, group);
   scene.add(group);
+  interiors.finalize();
 
   // dynamic / special meshes
   const wireMat = createWireMaterial(1.35);

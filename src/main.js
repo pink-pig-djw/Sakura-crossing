@@ -11,7 +11,8 @@ import { AudioEngine } from './systems/audio.js';
 import { buildWorld } from './world/world.js';
 import { updateCrossings } from './world/railway.js';
 import { createPetals, createCats, createBirds, createShells, createSmallAnimations, createTraffic } from './world/life.js';
-import { areaAt, AREAS, shoreZ, STATION, groundH } from './world/layout.js';
+import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY } from './world/layout.js';
+import { walkState } from './world/commercial.js';
 import { UI } from './ui/ui.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
@@ -121,7 +122,7 @@ const birds = createBirds(world.materials);
 scene.add(birds);
 const shells = createShells(world, world.materials);
 const anims = createSmallAnimations(world, world.materials);
-const traffic = createTraffic(world, world.materials, 5);
+const traffic = createTraffic(world, world.materials, 8);
 if (matchMedia('(prefers-reduced-motion: reduce)').matches) player.bobAmount = 0;
 const placesMax = new Set(AREAS.map((a) => a.name)).size;
 
@@ -172,6 +173,19 @@ const SHOP_LINES = {
   stationery: 'ノートと色鉛筆。少しだけ文化祭の匂い。',
   closed: '「貸店舗」の貼り紙。シャッターに花びらが一枚。',
 };
+const KONBINI_LINES = {
+  drink: ['冷たいお茶を一本買った。', 'いちごミルクを買った。春の味がする。', '炭酸水を一本。シュワっと冷たい。'],
+  onigiri: ['鮭とツナマヨで迷って……鮭にした。', '梅おにぎりと緑茶。いい組み合わせ。'],
+  sweets: ['桜もちプリンを見つけた。春限定らしい。', 'シュークリームを一つ。ふわふわ。'],
+  magazine: ['街の情報誌に「桜川 夜桜ライトアップ」の特集が載っている。', '旅行雑誌の表紙は、海の見える町の特集だった。'],
+  register: ['「温めますか？」「お願いします」——からあげを一つ。', '「レシートはご利用ですか？」「大丈夫です」'],
+  coffee: ['ホットコーヒー。紙カップから湯気がのぼる。'],
+  atm: ['ATMの画面に「お取引を選んでください」。今日はやめておこう。'],
+  shelf: ['棚をゆっくり眺める。新商品のポップがかわいい。', 'カップ麺の新作が並んでいる。'],
+};
+const BOOKS = ['『海辺の町の小さな本屋』', '『桜の下で待ち合わせ』', '『鉄道のある風景』', '『ねこと歩く散歩道』', '『はじめての天体観測』', '『港町レシピ帖』', '『川をのぼる魚たち』', '『夜行列車の窓から』'];
+const GACHA = ['ミニチュアの踏切', 'ねこのフィギュア', 'さくらのキーホルダー', '駅名標のストラップ', 'ちいさな灯台', '電車のマグネット'];
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
 let focus = null;
 function findInteractable() {
@@ -256,7 +270,45 @@ function interact() {
       ui.toast(it.text);
       break;
     case 'shop':
-      ui.toast(SHOP_LINES[it.shopKind] || 'のんびりした店先。');
+      ui.toast(it.shopKind === 'city' ? `${it.shop}。店内から明るい声が聞こえる。` : SHOP_LINES[it.shopKind] || 'のんびりした店先。');
+      break;
+    case 'konbini': {
+      const lines = KONBINI_LINES[it.what] || KONBINI_LINES.shelf;
+      ui.toast(pick(lines));
+      audio.sfx(it.what === 'register' || it.what === 'drink' || it.what === 'onigiri' || it.what === 'sweets' ? 'register' : it.what === 'magazine' ? 'page' : 'ui');
+      if (it.what === 'drink') state.drinks++;
+      break;
+    }
+    case 'cafe':
+      ui.toast('桜ラテを注文した。ほんのり桜の香りがする。');
+      audio.sfx('register');
+      break;
+    case 'book':
+      ui.toast(`${pick(BOOKS)}を手にとって、数ページめくった。`);
+      audio.sfx('page');
+      break;
+    case 'library':
+      ui.toast('「返却は2週間後です」——本を一冊借りた。');
+      audio.sfx('beep');
+      break;
+    case 'mallshop':
+      ui.toast(`${it.shop}のショーウィンドウ。${it.sub}がきれいに並んでいる。`);
+      break;
+    case 'crepe':
+      ui.toast('いちごクリームのクレープを買った。');
+      audio.sfx('register');
+      break;
+    case 'gacha':
+      audio.sfx('gacha');
+      setTimeout(() => ui.toast(`ガチャガチャ……「${pick(GACHA)}」が出た！`), 800);
+      break;
+    case 'ticket':
+      audio.sfx('ticket');
+      ui.toast('桜ヶ浜中央 → 汐見、180円のきっぷを買った。');
+      break;
+    case 'gate':
+      audio.sfx('beep');
+      ui.toast('ICカードをタッチ。ピッ。');
       break;
     default:
       break;
@@ -529,6 +581,7 @@ function frame() {
     }
   }
   for (const u of world.updaters) u(t, dt);
+  world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
   birds.userData.update(t);
@@ -549,7 +602,7 @@ function frame() {
     areaCheck -= dt;
     if (areaCheck <= 0) {
       areaCheck = 0.4;
-      const a = areaAt(player.pos.x, player.pos.z);
+      const a = areaAt(player.pos.x, player.pos.z, player.pos.y);
       const name = a ? a.name : null;
       if (name && name !== state.lastArea) {
         ui.showArea(a);
@@ -574,15 +627,26 @@ function frame() {
         chime = s;
       }
     }
+    const cx = camera.position.x, cz = camera.position.z, feet = player.pos.y;
+    const under = state.mode === 'play' && feet < groundH(cx, cz) - 2.5 && cx > SUBWAY.x0 - 6 && cx < SUBWAY.x1 + 6 && cz > SUBWAY.z0 - 100 && cz < SUBWAY.z1 + 70;
+    const inside = state.mode === 'play' && (world.indoorRects || []).some((r) => cx > r.x0 && cx < r.x1 && cz > r.z0 && cz < r.z1 && feet > r.y0 && feet < r.y1);
+    const rz = Math.min(Math.max(cz, RIVER.zHead), 100), rx = Math.min(Math.max(cx, RIVER.x - RIVER.inner), RIVER.x + RIVER.inner);
+    const river = { x: rx, y: 2, z: rz, d: Math.hypot(cx - rx, cz - rz), weir: WEIRS.some((w) => Math.abs(rz - w.z - 1) < 5) };
+    for (const c of world.crosswalkSounds || []) c.walk = walkState(G.uTime.value, c.axis) === 'walk';
     audio.update(dt, {
-      x: camera.position.x,
+      x: cx,
       y: camera.position.y,
-      z: camera.position.z,
+      z: cz,
       fx: fwd.x,
       fz: fwd.z,
-      shoreZ: shoreZ(camera.position.x),
+      shoreZ: shoreZ(cx),
       night: G.uNight.value,
-      inTown: camera.position.z < 60,
+      inTown: cz < 60,
+      indoor: under || inside ? 1 : 0,
+      under,
+      river,
+      subway: world.subway,
+      crosswalks: world.crosswalkSounds,
       crossings: world.crossings,
       train,
       chime,

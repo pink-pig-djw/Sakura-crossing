@@ -308,7 +308,7 @@ export function car(kit, x, y, z, ry, rng, kind = null, o = {}) {
   const d = kit.d;
   const spec = CAR_SPECS[type === 'truck' ? 'kei' : type];
   const L = spec.L, W = spec.W;
-  const glass = (pts, center, seed = 40) => kit.w.quadOut(pts[0], pts[1], pts[2], pts[3], center, 0xffffff, seed, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
+  const glass = (pts, center, seed = 236) => kit.w.quadOut(pts[0], pts[1], pts[2], pts[3], center, 0xffffff, seed, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
   // wheels with hubcaps and dark arches
   const wx = L / 2 - (type === 'sedan' ? 0.85 : 0.62);
   for (const sx of [-1, 1]) {
@@ -405,13 +405,13 @@ export function car(kit, x, y, z, ry, rng, kind = null, o = {}) {
     };
     const front = [B[0], B[1], T[1], T[0]];
     const back = [B[3], B[2], T[2], T[3]];
-    glass(inset(front, 0.07, 0.93, 0.06, 0.93, nrm(front)), center, 41);
-    glass(inset(back, 0.12, 0.88, 0.12, 0.9, nrm(back)), center, 42);
+    glass(inset(front, 0.07, 0.93, 0.06, 0.93, nrm(front)), center, 237);
+    glass(inset(back, 0.12, 0.88, 0.12, 0.9, nrm(back)), center, 238);
     for (const side of [[B[3], B[0], T[0], T[3]], [B[1], B[2], T[2], T[1]]]) {
       const n = nrm(side);
       // two door windows with a B pillar between them
-      glass(inset(side, 0.05, 0.47, 0.08, 0.9, n), center, 43);
-      glass(inset(side, 0.53, 0.94, 0.08, 0.9, n), center, 44);
+      glass(inset(side, 0.05, 0.47, 0.08, 0.9, n), center, 239);
+      glass(inset(side, 0.53, 0.94, 0.08, 0.9, n), center, 239);
     }
     // door lines, handles and mirrors on both sides
     const doorX = [xb1 - 0.05, (xb0 + xb1) / 2 + 0.05, xb0 + 0.25];

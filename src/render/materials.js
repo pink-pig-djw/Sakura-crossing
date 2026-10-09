@@ -293,8 +293,8 @@ export function createWindowMaterial() {
         float streak = smoothstep(0.08, 0.0, abs(fract(sx * 0.9) - 0.35) - 0.04) * 0.6;
         streak += smoothstep(0.03, 0.0, abs(fract(sx * 0.9) - 0.5) - 0.01) * 0.4;
         col += streak * uHorizon * 0.35 * (1.0 - curtain * 0.7) * (0.4 + 0.6 * sh) * (1.0 - uNight * 0.8);
-        // night: some windows glow warm
-        float lit = step(fract(seed * 13.7), 0.55) * uNight;
+        // night: some windows glow warm (never vehicle glass)
+        float lit = step(fract(seed * 13.7), 0.55) * uNight * step(vPattern, 235.5);
         vec3 warm = mix(vec3(1.0, 0.72, 0.4), vec3(1.0, 0.86, 0.66), fract(seed * 2.9));
         vec3 litCol = warm * (curtain > 0.0 ? mix(1.3, 0.9, curtain) : 1.1);
         // silhouettes of furniture / curtain folds
