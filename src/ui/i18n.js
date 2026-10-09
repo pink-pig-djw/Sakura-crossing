@@ -8,15 +8,16 @@ export const LANGS = [
   { id: 'zh', label: '中文' },
 ];
 
+// ?lang=zh / ?lang=ja in a shared link wins, then the viewer's last choice, then the browser
 function detect() {
+  const q = new URLSearchParams(location.search).get('lang');
+  if (q === 'ja' || q === 'zh') return q;
   try {
     const saved = localStorage.getItem('sakura-lang');
     if (saved === 'ja' || saved === 'zh') return saved;
   } catch {
     /* storage unavailable */
   }
-  const q = new URLSearchParams(location.search).get('lang');
-  if (q === 'ja' || q === 'zh') return q;
   return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'ja';
 }
 
