@@ -22,10 +22,13 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const X = V(1, 0, 0), Y = V(0, 1, 0), Z = V(0, 0, 1);
 
 // [Mixamo joint, VRM bone, ideal axis A, reference R, child joint giving the bone axis]
+// The trunk, neck and head carry no axis: their rotations are taken relative to the rest
+// T-pose instead, so the model keeps its own posture (the X Bot's bones there do not run
+// straight up when it stands and looks ahead: its head-top end sits 19° forward of the head).
 function buildMap() {
   const m = [
-    ['Hips', 'hips', Y, Z, 'Spine'], ['Spine', 'spine', Y, Z, 'Spine1'], ['Spine1', 'chest', Y, Z, 'Spine2'],
-    ['Spine2', 'upperChest', Y, Z, 'Neck'], ['Neck', 'neck', Y, Z, 'Head'], ['Head', 'head', Y, Z, 'HeadTop_End'],
+    ['Hips', 'hips', null, null], ['Spine', 'spine', null, null], ['Spine1', 'chest', null, null],
+    ['Spine2', 'upperChest', null, null], ['Neck', 'neck', null, null], ['Head', 'head', null, null],
   ];
   const seg = ['Proximal', 'Intermediate', 'Distal'];
   const thumbSeg = ['Metacarpal', 'Proximal', 'Distal'];
@@ -65,11 +68,13 @@ const basis = (a, r) => {
   return new THREE.Matrix4().makeBasis(a, r2, a.clone().cross(r2));
 };
 
-// per-bone Q (ideal VRM bone frame -> Mixamo joint frame) from the rest T-pose
+// per-bone Q (ideal VRM bone frame -> Mixamo joint frame) from the rest T-pose; for bones
+// without an axis, the inverse rest rotation (so the rest pose maps to the model's rest)
 function calibrate({ g, joint }) {
   g.updateMatrixWorld(true);
   return MAP.map(([jn, , A, R, child]) => {
     const j = joint(jn);
+    if (!A) return j.getWorldQuaternion(new THREE.Quaternion()).invert();
     const a = joint(child).position.clone().normalize(); // bone axis in the joint's frame
     const wq = j.getWorldQuaternion(new THREE.Quaternion());
     const dir = a.clone().applyQuaternion(wq);
@@ -275,6 +280,15 @@ function kneesTogether(frames, gap) {
   }
 }
 
+// Some takes hold the head tipped back the whole time: level it (by its mean pitch) so she
+// looks at whoever she is talking to.
+function levelHead(frames) {
+  const h = BONE.head;
+  const pitch = frames.reduce((s, f) => s + Math.asin(-new THREE.Vector3(0, 0, 1).applyQuaternion(f.rot[h]).y), 0) / frames.length;
+  const fix = new THREE.Quaternion().setFromAxisAngle(X, -pitch);
+  for (const f of frames) f.rot[h].premultiply(fix);
+}
+
 function pack(frames, o) {
   const nb = MAP.length, nf = frames.length;
   const rot = new Int16Array(nf * nb * 4);
@@ -308,18 +322,19 @@ function pack(frames, o) {
 // loop: cycles (the last sample repeats the first and is dropped)
 // reps: a short cycle played that many times as a one-shot
 // range: [from, to] seconds of the take
+// level: the take holds the head tipped back: level it
 // root: keep the hips' travel (sitting down / standing up move onto and off the seat)
 // after: start where that clip ends
 // knees: sitting, knees brought together this far apart
 export const CLIPS = {
   idle: { file: '01_Idle/Breathing Idle.fbx', loop: true },
-  happy: { file: '01_Idle/Happy Idle.fbx', loop: true },
+  happy: { file: '01_Idle/Happy Idle.fbx', loop: true, level: true },
   walk: { file: '02_Locomotion/Walking.fbx', loop: true, walk: true },
   stretch: { file: '08_Daily/Arm Stretching.fbx' },
   yawn: { file: '01_Idle/Yawn.fbx' },
   phone: { file: '08_Daily/Texting While Standing.fbx', range: [0, 9] },
   bored: { file: '01_Idle/Bored.fbx' },
-  wave: { file: '06_Emote/Waving.fbx', loop: true, reps: 3 },
+  wave: { file: '06_Emote/Waving.fbx', loop: true, reps: 3, level: true },
   nod: { file: '06_Emote/Head Nod Yes.fbx' },
   think: { file: '06_Emote/Thinking.fbx' },
   laugh: { file: '06_Emote/Laughing.fbx' },
@@ -340,7 +355,7 @@ function convert(dir, only) {
     fps,
     source: 'Mixamo (X Bot rig)',
     bones: MAP.map((m) => m[1]),
-    axes: Object.fromEntries(MAP.map(([, b, A]) => [b, A.toArray().map((v) => +v.toFixed(4))])),
+    axes: Object.fromEntries(MAP.map(([, b, A]) => [b, A ? A.toArray().map((v) => +v.toFixed(4)) : null])),
     clips: {},
   };
   let standFrame = null;
@@ -351,6 +366,7 @@ function convert(dir, only) {
     let frames = sample(fbx, Q, fps);
     if (c.range) frames = frames.slice(Math.round(c.range[0] * fps), Math.round(c.range[1] * fps) + 1);
     if (c.knees) kneesTogether(frames, c.knees);
+    if (c.level) levelHead(frames);
     const N = frames.length;
     let speed = 0;
     if (c.walk) speed = inPlaceSpeed(frames, fps);

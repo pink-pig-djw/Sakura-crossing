@@ -17,6 +17,14 @@ from PIL import Image
 
 MAX_TEX = 1024
 
+# Expressions added to VRoid models (built from its separate face parts): a smile and a
+# worried look that keep the eyes open, unlike the whole-face presets (happy / relaxed close
+# the eyes into arcs, sad droops them), so she can smile while she talks to you.
+VROID_CUSTOM = {
+    'smile': [('Fcl_MTH_Fun', 1.0), ('Fcl_BRW_Fun', 0.7)],
+    'worried': [('Fcl_BRW_Sorrow', 1.0), ('Fcl_MTH_Sorrow', 0.5)],
+}
+
 
 def read_glb(path):
     b = open(path, 'rb').read()
@@ -57,6 +65,22 @@ def encode_image(img):
 def main(src, dst):
     j, bin_ = read_glb(src)
     vrm = j['extensions']['VRMC_vrm']
+
+    # --- extra expressions (VRoid face) -----------------------------------------------------
+    for ni, node in enumerate(j['nodes']):
+        mesh = j['meshes'][node['mesh']] if 'mesh' in node else None
+        names = mesh and ((mesh.get('extras') or {}).get('targetNames') or (mesh['primitives'][0].get('extras') or {}).get('targetNames'))
+        if not names or 'Fcl_MTH_Fun' not in names:
+            continue
+        custom = vrm['expressions'].setdefault('custom', {})
+        for name, parts in VROID_CUSTOM.items():
+            if name in custom or not all(p in names for p, _ in parts):
+                continue
+            custom[name] = {
+                'morphTargetBinds': [{'node': ni, 'index': names.index(p), 'weight': w} for p, w in parts],
+                'isBinary': False, 'overrideBlink': 'none', 'overrideLookAt': 'none', 'overrideMouth': 'none',
+            }
+        break
 
     # --- morph targets: keep the ones the expressions bind, positions only -----------------
     binds = [b for e in vrm['expressions'].get('preset', {}).values() for b in e.get('morphTargetBinds', [])]

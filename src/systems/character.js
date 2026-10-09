@@ -56,8 +56,13 @@ function materialFor(m) {
   const shade = m.shadeColorFactor ? m.shadeColorFactor.clone() : new THREE.Color(0xb9b4d8);
   // cut-out (MASK) and blended (BLEND) parts as the model sets them up
   const base = { map, name: 'char:' + name, side: THREE.DoubleSide, alphaTest: m.alphaTest || 0, transparent: !!m.transparent };
-  if (/EYE|FaceMouth|FaceEyeline|FaceEyelash|FaceBrow/.test(name)) {
-    // eyes, lashes, brows and mouth: flat, no ink lines, no cast shadows on them
+  if (/FaceMouth/.test(name)) {
+    // the inside of the mouth is painted in greys and takes its colour from the shade colour
+    // in MToon: tint it (tongue pink, the throat dark red), leaving the teeth white
+    return createCharacterMaterial({ ...base, unlit: 0.7, outline: 0, selfShadow: 0, soft: 0.3, tint: new THREE.Color(1.0, 0.47, 0.44) });
+  }
+  if (/EYE|FaceEyeline|FaceEyelash|FaceBrow/.test(name)) {
+    // eyes, lashes and brows: flat, no ink lines, no cast shadows on them
     return createCharacterMaterial({ ...base, unlit: /Highlight/.test(name) ? 1 : 0.7, outline: 0, selfShadow: 0, soft: 0.3 });
   }
   if (/Face_00_SKIN/.test(name)) return createCharacterMaterial({ ...base, shade, shadeMix: 0.85, soft: 0.22, wrap: 0.12, selfShadow: 0.55, outline: 0.5, rim: 0.12 });
@@ -118,12 +123,12 @@ export class Character {
     this.hipsHeight = rest.hips.y;
     this.ankleHeight = (rest.leftFoot.y + rest.rightFoot.y) / 2;
     // per-bone correction: the model's own rest bone direction -> the motion file's ideal
-    // T-pose bone axis
+    // T-pose bone axis (none for the trunk, neck and head)
     const AXIS = motions.axes;
     this.D = {};
     for (const b of Object.keys(AXIS)) {
       this.D[b] = new THREE.Quaternion();
-      if (!rest[b]) continue;
+      if (!rest[b] || !AXIS[b]) continue; // no axis: rotations relative to the rest pose
       const c = CHILD[b] && (rest[CHILD[b]] ? CHILD[b] : b === 'chest' && rest.neck ? 'neck' : null);
       let dir;
       if (c) dir = rest[c].clone().sub(rest[b]);
@@ -166,6 +171,7 @@ export class Character {
     this.blink = 0;
     this.blinkPhase = -1;
     this.mood = { happy: 0, relaxed: 0.25, sad: 0, surprised: 0 };
+    this.openSmile = !!(vrm.expressionManager?.getExpression('smile') && vrm.expressionManager.getExpression('worried'));
     this.moodTarget = { ...this.mood };
     this.mouth = 0;
     this.ground = opts.ground || (() => 0);
@@ -337,12 +343,19 @@ export class Character {
       }
       const M = this.mood;
       for (const k in M) M[k] += (this.moodTarget[k] - M[k]) * Math.min(1, dt * (k === 'surprised' ? 9 : 4));
-      em.setValue('happy', M.happy * (1 - M.surprised));
-      em.setValue('relaxed', M.relaxed * (1 - M.happy) * (1 - M.sad) * (1 - M.surprised));
-      em.setValue('sad', M.sad * (1 - M.happy));
+      if (this.openSmile) {
+        // a smile and a worried look that keep the eyes open (see tools/chars/optimize_vrm.py)
+        em.setValue('smile', Math.min(1, M.happy + M.relaxed * 0.5) * (1 - M.sad) * (1 - M.surprised));
+        em.setValue('worried', M.sad * (1 - M.surprised));
+        em.setValue('blink', this.blink * (1 - M.surprised));
+      } else {
+        em.setValue('happy', M.happy * (1 - M.surprised));
+        em.setValue('relaxed', M.relaxed * (1 - M.happy) * (1 - M.sad) * (1 - M.surprised));
+        em.setValue('sad', M.sad * (1 - M.happy));
+        // happy eyes are already closed into arcs, wide eyes stay open: blink less
+        em.setValue('blink', this.blink * (1 - M.happy * 0.8) * (1 - M.surprised));
+      }
       em.setValue('surprised', M.surprised);
-      // happy eyes are already closed into arcs, wide eyes stay open: blink less
-      em.setValue('blink', this.blink * (1 - M.happy * 0.8) * (1 - M.surprised));
       // speech: mostly "a", drifting toward "o" and "e" so the mouth does not just flap
       const m = this.mouth, v = Math.sin(this.t * 5.3) * 0.5 + 0.5, w = Math.sin(this.t * 3.1 + 1) * 0.5 + 0.5;
       em.setValue('aa', m * (0.75 - 0.3 * v));

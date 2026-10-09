@@ -971,6 +971,7 @@ export function createCharacterMaterial(opts = {}) {
     uRim: { value: opts.rim ?? 0.22 },
     uUnlit: { value: opts.unlit ?? 0 },
     uSelfShadow: { value: opts.selfShadow ?? 1 },
+    uTint: { value: opts.tint || new THREE.Color(1, 1, 1) },
   });
   uniforms.uOutline.value = opts.outline ?? 1;
   uniforms.uSoft.value = opts.soft ?? 0.04;
@@ -992,6 +993,7 @@ export function createCharacterMaterial(opts = {}) {
       }
     : {};
   if (opts.transparent) defines.BLEND = '';
+  if (opts.tint) defines.TINT = '';
   const cut = opts.alphaTest || (opts.transparent ? 0.02 : 0);
   if (cut) defines.ALPHA_TEST = cut.toFixed(3);
   return new THREE.ShaderMaterial({
@@ -1036,6 +1038,7 @@ export function createCharacterMaterial(opts = {}) {
       uniform float uRim;
       uniform float uUnlit;
       uniform float uSelfShadow;
+      uniform vec3 uTint;
       #ifdef USE_TEXMAP
         uniform sampler2D map;
       #endif
@@ -1048,6 +1051,11 @@ export function createCharacterMaterial(opts = {}) {
             if (tx.a < ALPHA_TEST) discard;
           #endif
           albedo *= tx.rgb;
+        #endif
+        #ifdef TINT
+          // greyscale paint: tint all but the near-white parts
+          float lum = dot(albedo, vec3(0.299, 0.587, 0.114));
+          albedo = mix(albedo * uTint, albedo, smoothstep(0.72, 0.92, lum));
         #endif
         vec3 N = normalize(vNormalW);
         if (!gl_FrontFacing) N = -N;
