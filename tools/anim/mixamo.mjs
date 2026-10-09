@@ -2,9 +2,9 @@
 //
 //   node tools/anim/mixamo.mjs <MixamoLibrary dir> public/chars/motions.json
 //
-// The library: Mixamo clips on the standard X Bot rig, exported as FBX Binary at 30 fps,
-// "Without Skin". The FBX files are not part of this repository; only the converted
-// motions are.
+// The library (https://github.com/pink-pig-djw/mixamoLibrary): Mixamo clips on the standard
+// X Bot rig, exported as FBX Binary at 30 fps, "Without Skin". The FBX files are not part of
+// this repository; only the converted motions are.
 //
 // Every Mixamo joint carries its own local axes, so rotations are not copied over. For each
 // bone we find the rotation Q that maps an ideal VRM T-pose bone frame (bone axis A plus a
@@ -127,43 +127,6 @@ const envelope = (t0, t1, t2, t3) => (t) => (t < t0 ? 0 : t < t1 ? smooth((t - t
 // world rotation that turns ideal axis A into direction d, given as [x, y, z]
 const aim = (A, d) => new THREE.Quaternion().setFromUnitVectors(A, V(...d).normalize());
 const isFinger = (b) => /Thumb|Index|Middle|Ring|Little/.test(b);
-
-// A Japanese bow (the library has none), over a standing frame: hands come together in front
-// of the thighs while the body bends forward from the hips, the head lowered a little
-// further; the arms hang more upright than the torso.
-function synthBow(stand, fps) {
-  const env = envelope(0.25, 0.9, 1.5, 2.2);
-  const hands = envelope(0.05, 0.6, 1.75, 2.35);
-  const torso = { hips: 0.2, spine: 0.31, chest: 0.4, upperChest: 0.47, neck: 0.56, head: 0.64 };
-  const target = {
-    leftUpperArm: aim(X, [0.16, -1, 0.2]), leftLowerArm: aim(X, [-0.6, -0.75, 0.45]), leftHand: aim(X, [-0.75, -0.55, 0.35]),
-    rightUpperArm: aim(X.clone().negate(), [-0.16, -1, 0.2]), rightLowerArm: aim(X.clone().negate(), [0.6, -0.75, 0.45]), rightHand: aim(X.clone().negate(), [0.75, -0.55, 0.35]),
-  };
-  const frames = [];
-  for (let k = 0; k <= Math.round(2.6 * fps); k++) {
-    const t = k / fps, e = env(t), h = hands(t);
-    const rot = stand.rot.map((q, i) => q.clone());
-    MAP.forEach(([, b], i) => {
-      if (target[b]) rot[i].slerp(target[b], h);
-    });
-    // fingers keep their pose relative to the hand
-    MAP.forEach(([, b], i) => {
-      if (!isFinger(b)) return;
-      const hand = BONE[b.startsWith('left') ? 'leftHand' : 'rightHand'];
-      rot[i] = rot[hand].clone().multiply(stand.rot[hand].clone().invert().multiply(stand.rot[i]));
-    });
-    MAP.forEach(([, b], i) => {
-      let a = torso[b];
-      if (a === undefined) a = /Shoulder$/.test(b) ? torso.upperChest : /UpperLeg|LowerLeg|Foot|Toes/.test(b) ? 0 : torso.upperChest * 0.5;
-      rot[i].premultiply(new THREE.Quaternion().setFromAxisAngle(X, a * e));
-    });
-    const hips = stand.hips.clone();
-    hips.z -= 0.07 * e;
-    hips.y -= 0.012 * e;
-    frames.push({ rot, hips });
-  }
-  return frames;
-}
 
 // Pointing the way (the library's pointing is crouched): the right arm rises toward the
 // front, a little to her right and up, index finger out, the other fingers curled.
@@ -333,7 +296,7 @@ function pack(frames, o) {
 export const CLIPS = {
   idle: { file: '01_Idle/Breathing Idle.fbx', loop: true },
   happy: { file: '01_Idle/Happy Idle.fbx', loop: true, level: true },
-  walk: { file: '02_Locomotion/Walking.fbx', loop: true, walk: true },
+  walk: { file: '09_Female_Locomotion/Female Walk.fbx', loop: true, walk: true, level: true },
   run: { file: '02_Locomotion/Running.fbx', loop: true, walk: true },
   fall: { file: '03_Jump_Climb/Falling Idle.fbx', loop: true },
   jump: { file: '03_Jump_Climb/Jumping.fbx', range: [0.5, 1.15], airborne: true, legs: 0.55 }, // in the air
@@ -341,12 +304,17 @@ export const CLIPS = {
   yawn: { file: '01_Idle/Yawn.fbx' },
   phone: { file: '08_Daily/Texting While Standing.fbx', range: [0, 9] },
   bored: { file: '01_Idle/Bored.fbx' },
+  // greetings and goodbyes
+  bow: { file: '13_Japanese/Quick Formal Bow.fbx' },
+  greet: { file: '13_Japanese/Standing Greeting.fbx', range: [1.0, 4.6], level: true }, // a hand raised: hi!
   wave: { file: '06_Emote/Waving.fbx', loop: true, reps: 3, level: true },
-  nod: { file: '06_Emote/Head Nod Yes.fbx' },
-  think: { file: '06_Emote/Thinking.fbx' },
-  laugh: { file: '06_Emote/Laughing.fbx' },
-  shy: { file: '06_Emote/Bashful.fbx' },
-  shrug: { file: '06_Emote/Shrugging.fbx' },
+  // reactions while talking
+  agree: { file: '12_Dialogue/Agreeing.fbx' },
+  acknowledge: { file: '12_Dialogue/Acknowledging.fbx' },
+  thank: { file: '12_Dialogue/Thankful.fbx' },
+  lookAway: { file: '12_Dialogue/Look Away Gesture.fbx' },
+  disappointed: { file: '12_Dialogue/Disappointed.fbx' },
+  // sitting on a bench
   sitDown: { file: '05_Interact/Stand To Sit.fbx', root: true, knees: 0.11 },
   sit: { file: '05_Interact/Sitting Idle.fbx', loop: true, after: 'sitDown', knees: 0.11 },
   standUp: { file: '05_Interact/Sit To Stand.fbx', root: true, after: 'sitDown', knees: 0.11 },
@@ -423,10 +391,9 @@ function convert(dir, only) {
     out.clips[name] = pack(frames, { ...c, speed, hipsHeight });
     console.log(name.padEnd(10), String(frames.length).padStart(4), 'frames', (frames.length / fps).toFixed(2).padStart(6), 's', c.loop ? `loop seam ${THREE.MathUtils.radToDeg(seam).toFixed(1)}°` : '', speed ? `speed ${speed.toFixed(2)} m/s` : '');
   }
-  out.clips.bow = pack(synthBow(standFrame, fps), { hipsHeight });
   out.clips.point = pack(synthPoint(standFrame, fps), { hipsHeight });
   out.clips.startle = pack(synthStartle(standFrame, fps), { hipsHeight });
-  console.log('bow, point, startle synthesized from the idle pose');
+  console.log('point, startle synthesized from the idle pose');
   return out;
 }
 

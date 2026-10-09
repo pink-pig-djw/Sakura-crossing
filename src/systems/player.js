@@ -10,7 +10,7 @@ const EYE = 1.58;
 const RADIUS = 0.32;
 const STEP = 0.55;
 // third person: walking and running pace (the protagonist's own stride), boom pivot height
-const TP_WALK = 1.9, TP_RUN = 5.0;
+const TP_WALK = 1.45, TP_RUN = 5.0;
 const PIVOT = 1.32, PIVOT_SIT = 1.0;
 const BOOM_MIN = 1.4, BOOM_MAX = 6;
 

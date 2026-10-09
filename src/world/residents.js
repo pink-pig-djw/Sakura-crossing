@@ -9,8 +9,9 @@ import { VOICE_LINES } from '../systems/voiceLines.js';
 // her walk she stops for a while (checks her phone, stretches, yawns in the early morning,
 // looks up at the blossoms) and now and then sits on the bench by the garden wall.
 // With you: she notices you, turns, looks at you and bows the first time you meet (later
-// she waves), chats when you talk to her (with gestures: pointing the way to the sea,
-// thinking, getting shy), jumps if you run into her and waves goodbye when you leave.
+// she raises a hand), chats when you talk to her (with gestures: glancing away shyly,
+// pointing the way to the sea, slumping at the thought of a math test, nodding along, a hand
+// on her heart), jumps if you run into her and waves goodbye when you leave.
 // After dark she has gone home; she is back in the morning.
 
 const HOURS = [6.5, 19]; // out on the street
@@ -18,15 +19,15 @@ const HOURS = [6.5, 19]; // out on the street
 // talk topics in order (the introduction once); face: heading to turn to for the gesture,
 // gaze: what she looks at while saying it; mood: [happy, relaxed, sad]
 const TALK = [
-  { line: 'mei_intro', clip: 'shy', mood: [0.5], once: true },
+  { line: 'mei_intro', clip: 'lookAway', mood: [0.5], once: true }, // a shy glance away
   { line: 'mei_sakura', gaze: 'blossoms', mood: [0.75] },
   { line: 'mei_club', clip: 'happy', mood: [0.85] },
   // the point is to her front right: facing a little east of south, it points down the slope
   { line: 'mei_sea', clip: 'point', face: 0.31, gaze: 'sea', mood: [0.45] },
-  { line: 'mei_test', clip: 'think', mood: [0, 0.1, 0.6] },
-  { line: 'mei_shrine', clip: 'nod', mood: [0.45] },
-  { line: 'mei_sento', clip: 'nod', mood: [0.6] },
-  { line: 'mei_shy', clip: 'shy', mood: [0.9] },
+  { line: 'mei_test', clip: 'disappointed', mood: [0, 0.1, 0.6] }, // shoulders drop: math...
+  { line: 'mei_shrine', clip: 'agree', mood: [0.45] },
+  { line: 'mei_sento', clip: 'acknowledge', mood: [0.6] },
+  { line: 'mei_shy', clip: 'thank', mood: [0.9] }, // a hand on her heart: glad you talked to her
 ];
 
 // what she does when she stops at the end of her walk: [action, weight(hour)]
@@ -69,7 +70,7 @@ export class Resident {
     this.solid.off = false;
     this.interact = { kind: 'resident', label: '芽衣に話しかける', x: 0, z: 0, y: 0, r: 2.0, resident: this };
     world.interactables.push(this.interact);
-    this.walkRate = 0.8; // the clip is a brisk walk: a stroll
+    this.walkRate = 1; // the clip is a stroll
     this.walkSpeed = ch.info.walk.speed * this.walkRate;
     this.phone = makePhone();
     this.meter = { node: null, until: 0 };
@@ -446,7 +447,8 @@ export class Resident {
           ch.setMood(0.7);
           const first = !this.met;
           this.met = true;
-          this.act(first ? 'bow' : 'wave', this.say(first ? 'mei_hello' : 'mei_again'), true);
+          // a bow the first time; later a raised hand
+          this.act(first ? 'bow' : 'greet', this.say(first ? 'mei_hello' : 'mei_again'), true);
         }
         break;
       }
