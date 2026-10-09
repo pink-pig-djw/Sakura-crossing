@@ -7,16 +7,18 @@ import { VOICE_LINES } from './voiceLines.js';
 //   room     a clerk behind a counter: close, a touch of room tone
 //   machine  vending / ticket machine: tiny speaker
 //   narrator the town guide: dry and centred
+//   person   a resident talking to you: dry, from where she stands
 // Each line plays on one channel; music ducks under any voice; subtitles follow the
 // interface language.
 
-const FX = { station: 'pa', clerk: 'room', cafe: 'room', narrator: 'narrator', townpa: 'townpa', machine: 'machine' };
+const FX = { station: 'pa', clerk: 'room', cafe: 'room', narrator: 'narrator', townpa: 'townpa', machine: 'machine', friend: 'person' };
 const PRESET = {
   st_approach_w: 'station', st_approach_e: 'station', st_arrive: 'station', st_close: 'station',
   sw_approach_1: 'station', sw_approach_2: 'station', sw_arrive: 'station', sw_close: 'station', sw_info: 'station',
   ml_pa: 'station', kb_welcome: 'clerk', kb_thanks: 'clerk', kb_warm: 'clerk', kb_receipt: 'clerk', ml_crepe: 'clerk',
   cf_welcome: 'cafe', cf_order: 'cafe', lb_lend: 'narrator', nr_welcome: 'narrator', nr_map: 'narrator',
   vd_thanks: 'machine', vd_win: 'machine', tk_buy: 'machine', cw_green: 'machine', pa_evening: 'townpa',
+  hr_hello: 'friend', hr_weather: 'friend', hr_walk: 'friend', hr_sea: 'friend', hr_bye: 'friend',
 };
 
 export class VoiceSystem {
@@ -113,6 +115,14 @@ export class VoiceSystem {
     src.buffer = buf;
     const out = this._chain(FX[PRESET[id]] ?? 'narrator', o);
     src.connect(out);
+    // level meter for lip sync (o.meter.node is read by the speaker)
+    if (o.meter) {
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      o.meter.node = an;
+      o.meter.until = t + buf.duration;
+    }
     src.start(t);
     const until = t + buf.duration;
     this.channels[channel] = { src, until };
@@ -204,6 +214,11 @@ export class VoiceSystem {
       lp.frequency.value = 5200;
       g.connect(hp).connect(lp);
       tail = lp;
+      pan();
+      tail.connect(this.bus);
+      return g;
+    }
+    if (kind === 'person') {
       pan();
       tail.connect(this.bus);
       return g;

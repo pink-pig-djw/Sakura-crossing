@@ -15,6 +15,10 @@
     "tsumugi": {
       "style": 8,
       "credit": "VOICEVOX:春日部つむぎ"
+    },
+    "metan": {
+      "style": 2,
+      "credit": "VOICEVOX:四国めたん"
     }
   },
   "presets": {
@@ -53,6 +57,12 @@
       "intonation": 1.0,
       "pause": 1.0,
       "pauseMax": 0.42
+    },
+    "friend": {
+      "speed": 1.0,
+      "intonation": 1.2,
+      "pause": 1.0,
+      "pauseMax": 0.35
     }
   },
   "lines": [
@@ -268,6 +278,46 @@
       "who": "信号機",
       "ja": "青になりました。左右を、よく確かめて、渡りましょう。",
       "zh": "绿灯亮了，请看清左右再过马路。"
+    },
+    {
+      "id": "hr_hello",
+      "voice": "metan",
+      "preset": "friend",
+      "who": "春香",
+      "ja": "あ、こんにちは。",
+      "zh": "啊，你好。"
+    },
+    {
+      "id": "hr_weather",
+      "voice": "metan",
+      "preset": "friend",
+      "who": "春香",
+      "ja": "今日は、いいお天気ですね。桜も、ちょうど見頃です。",
+      "zh": "今天天气真好呢。樱花也正是最好看的时候。"
+    },
+    {
+      "id": "hr_walk",
+      "voice": "metan",
+      "preset": "friend",
+      "who": "春香",
+      "ja": "わたし、毎朝この坂を、お散歩してるんです。",
+      "zh": "我每天早上都会在这条坡道上散步。"
+    },
+    {
+      "id": "hr_sea",
+      "voice": "metan",
+      "preset": "friend",
+      "who": "春香",
+      "ja": "海に行くなら、この坂をまっすぐ下りていけば、すぐですよ。",
+      "zh": "要去海边的话，顺着这条坡一直往下走，很快就到了。"
+    },
+    {
+      "id": "hr_bye",
+      "voice": "metan",
+      "preset": "friend",
+      "who": "春香",
+      "ja": "またね。気をつけてね。",
+      "zh": "回头见，路上小心哦。"
     }
   ]
 }

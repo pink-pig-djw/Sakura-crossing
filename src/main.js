@@ -18,6 +18,7 @@ import { UI } from './ui/ui.js';
 import { tr, tf, setLang } from './ui/i18n.js';
 import { VoiceSystem } from './systems/voice.js';
 import { TownVoices } from './systems/townVoices.js';
+import { createResidents } from './world/residents.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
@@ -137,6 +138,14 @@ const traffic = createTraffic(world, world.materials, 8);
 if (matchMedia('(prefers-reduced-motion: reduce)').matches) player.bobAmount = 0;
 const placesMax = new Set(AREAS.map((a) => a.name)).size;
 const town = new TownVoices(voice, world);
+// residents load in the background (a 3 MB model): the walk can start before they arrive
+let residents = null;
+createResidents(world, scene, { voice })
+  .then((r) => {
+    residents = r;
+    window.__residents = r;
+  })
+  .catch((e) => console.warn('resident not loaded:', e));
 ui.lots = world.lots;
 ui.minimap.build(world.landmarks, world.lots);
 
@@ -333,6 +342,9 @@ function interact() {
       audio.sfx('ticket');
       ui.toast('桜ヶ浜中央 → 汐見、180円のきっぷを買った。');
       town.onInteract(it);
+      break;
+    case 'resident':
+      it.resident.talk();
       break;
     case 'gate':
       audio.sfx('beep');
@@ -640,6 +652,7 @@ function frame() {
   world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
+  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head: camera.position } : null);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);

@@ -935,3 +935,104 @@ export function createUnlitMaterial(opts = {}) {
     `,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Characters (skinned VRM meshes): the town's toon shading with the model's own colour
+// texture, a per-material shade colour (warm for skin, cool for cloth, as in the model),
+// a soft terminator on the face, a thin rim light, haze and outline weight like the rest
+// of the scene. Supports skinning and morph targets (expressions, blinking).
+// ---------------------------------------------------------------------------
+export function createCharacterMaterial(opts = {}) {
+  const uniforms = makeUniforms({
+    map: { value: opts.map || null },
+    uBase: { value: new THREE.Color(opts.color ?? 0xffffff) },
+    uShade: { value: new THREE.Color(opts.shade ?? 0xb9b4d8) },
+    uShadeMix: { value: opts.shadeMix ?? 0.6 },
+    uRim: { value: opts.rim ?? 0.22 },
+    uUnlit: { value: opts.unlit ?? 0 },
+    uSelfShadow: { value: opts.selfShadow ?? 1 },
+  });
+  uniforms.uOutline.value = opts.outline ?? 1;
+  uniforms.uSoft.value = opts.soft ?? 0.04;
+  uniforms.uWrap.value = opts.wrap ?? 0.0;
+  const defines = {};
+  if (opts.map) defines.USE_TEXMAP = '';
+  if (opts.alphaTest) defines.ALPHA_TEST = opts.alphaTest.toFixed(3);
+  return new THREE.ShaderMaterial({
+    name: opts.name || 'character',
+    lights: true,
+    defines,
+    uniforms,
+    side: opts.side ?? THREE.FrontSide,
+    vertexShader: /* glsl */ `
+      #include <common>
+      #include <morphtarget_pars_vertex>
+      #include <skinning_pars_vertex>
+      #include <shadowmap_pars_vertex>
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      varying vec3 vNormalW;
+      void main() {
+        #include <beginnormal_vertex>
+        #include <morphinstance_vertex>
+        #include <morphnormal_vertex>
+        #include <skinbase_vertex>
+        #include <skinnormal_vertex>
+        #include <defaultnormal_vertex>
+        #include <begin_vertex>
+        #include <morphtarget_vertex>
+        #include <skinning_vertex>
+        #include <project_vertex>
+        #include <worldpos_vertex>
+        #include <shadowmap_vertex>
+        vec4 wpos = modelMatrix * vec4(transformed, 1.0);
+        vWorldPos = wpos.xyz;
+        vNormalW = normalize((vec4(transformedNormal, 0.0) * viewMatrix).xyz);
+        vUv = uv;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD.replace('varying vec3 vColor;', '').replace('varying float vPattern;', '')}
+      uniform vec3 uBase;
+      uniform vec3 uShade;
+      uniform float uShadeMix;
+      uniform float uRim;
+      uniform float uUnlit;
+      uniform float uSelfShadow;
+      #ifdef USE_TEXMAP
+        uniform sampler2D map;
+      #endif
+      void main() {
+        vec3 albedo = uBase;
+        #ifdef USE_TEXMAP
+          vec4 tx = texture2D(map, vUv);
+          #ifdef ALPHA_TEST
+            if (tx.a < ALPHA_TEST) discard;
+          #endif
+          albedo *= tx.rgb;
+        #endif
+        vec3 N = normalize(vNormalW);
+        if (!gl_FrontFacing) N = -N;
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        float sh = mix(1.0, getShadowMask(), uSelfShadow);
+        float ndl = dot(N, uSunDir);
+        float L = smoothstep(-uSoft + uWrap, uSoft + uWrap, ndl) * sh;
+        vec3 amb = mix(uGroundAmb, uSkyAmb, N.y * 0.5 + 0.5);
+        // shadow side: the scene's sky ambient tinted toward the model's shade colour
+        float ambLum = dot(amb, vec3(0.299, 0.587, 0.114));
+        vec3 shadeCol = mix(amb, uShade * ambLum * 1.25, uShadeMix) * 0.85;
+        // model textures are painted at full brightness: keep the lit side below white
+        vec3 col = albedo * mix(shadeCol, (amb + uSunColor) * 0.8, L);
+        float band = L * (1.0 - L) * 4.0;
+        col += albedo * band * uSunColor * vec3(0.16, 0.06, 0.02);
+        // thin rim of sky light on the silhouette, stronger on the lit side
+        float rim = smoothstep(0.62, 0.95, 1.0 - max(dot(N, V), 0.0));
+        col += albedo * rim * uRim * (uSkyAmb * 0.6 + uSunColor * L);
+        // eyes / highlights read clearly in any light
+        col = mix(col, albedo * (0.75 + 0.35 * (1.0 - uNight)), uUnlit);
+        col = applyHaze(col, vWorldPos);
+        gl_FragColor = vec4(col, uOutline);
+      }
+    `,
+  });
+}

@@ -73,6 +73,25 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 - **ひだまり公園**、**汐の湯**（钱汤和烟囱）、**汐見神社**（石阶、鸟居、拝殿、狛犬、绘马、俯瞰小镇的长椅）。
 - 7 只可以摸的猫、8 枚散落在沙滩上的贝壳、能买到 10 种饮料的自动贩卖机（偶尔会中奖再来一瓶）、5 种签运的御神签。
 
+## 镇上的人：春香
+
+桜坂东侧的人行道上，有一位每天散步的居民「春香」（目前是一个原型角色）：
+
+- **动作来自真人动作捕捉**：走路、鞠躬、挥手、点头、指路都来自万代南梦宫研究所公开的动作捕捉数据（女性风格），用 `tools/anim/retarget.mjs` 重定向到 VRM 人物的骨骼上。动捕骨骼的关节坐标轴和 VRM 不同，所以每块骨骼先在一帧自然站姿上做校准，再逐帧换算；走路剪成一个无缝的步态循环，移动速度和脚步严格匹配，不会「滑步」。
+- **叠加的细节**：呼吸起伏、头和眼睛转向你（VRM 视线）、随机眨眼（偶尔连眨两下）、开心时的表情、说话时按语音音量动嘴、头发和衣服的物理摆动（VRM spring bone），以及在坡道上用双骨骼 IK 让两只脚各自踩在地面上。
+- **行为**：在人行道上来回散步，经过行道树时会往路边让一让；你靠近时停下来看着你、转身面对你，走到两三米内会鞠躬说「あ、こんにちは。」；按 E 和她聊天（点头、或者转身为你指向海边）；你离开时挥手说「またね」。配音为 VOICEVOX:四国めたん。
+- **画风统一**：人物不用模型自带的 MToon 着色，而是用小镇同一套卡通光照（硬明暗交界、按材质的阴影色、细轮廓光、大气透视、描边），所以早晨、傍晚、夜里都和场景一致。
+
+素材与许可：
+
+| 素材 | 来源 | 许可 |
+| --- | --- | --- |
+| 人物模型 | pixiv Inc. 的 VRM 1.0 示例模型 `VRM1_Constraint_Twist_Sample`（来自 [three-vrm](https://github.com/pixiv/three-vrm) 仓库），用 `tools/chars/optimize_vrm.py` 去掉法线贴图、缩略图和未用表情后约 3 MB | VRM Public License 1.0（允许商用、修改、再分发） |
+| 动作数据 | [Bandai-Namco-Research-Motiondataset](https://github.com/BandaiNamcoResearchInc/Bandai-Namco-Research-Motiondataset) dataset-1 | **CC BY-NC 4.0（仅限非商业用途，需署名）** |
+| 配音 | VOICEVOX:四国めたん | 按角色使用条款标注 |
+
+> 如果将来要商用，需要把动作数据换成允许商用的来源（例如自己录制或购买的动捕数据），人物模型本身可以继续用。
+
 ## 小地图与语言
 
 - 右上角的圆形小地图随朝向旋转（前方朝上），边缘的「N」指示北方；画出道路、地块、河流、铁路、地铁出入口和主要地名，地名会自动避让、不遮挡玩家箭头。`N` 键 / 手柄 `View` 键 / 菜单里可以关闭。
@@ -129,9 +148,13 @@ src/
   world/               地形与布局、道路、房屋、商店街/车站/公园/神社、铁路与电车、海岸、
                        河流 (river.js)、商业区 (commercial.js)、地铁 (subway.js)、室内 (interiors.js)、
                        树与绿化 (trees.js / greenery.js / grass.js)、碰撞 (collision.js)、猫与鸟
-  systems/             第一人称控制、手柄、昼夜、音频；配音播放 (voice.js) 与触发 (townVoices.js)
+  systems/             第一人称控制、手柄、昼夜、音频；配音播放 (voice.js) 与触发 (townVoices.js)；VRM 人物 (character.js)
+  world/residents.js   居民「春香」的行为
   ui/                  界面、地图与小地图 (ui.js)、语言切换 (i18n.js) 与中文文本 (zh.js)
 public/voice/          VOICEVOX 生成的配音（MP3）
+public/chars/          人物模型（VRM）和重定向后的动作数据
+tools/anim/            动捕 BVH → VRM 的重定向工具
+tools/chars/           VRM 模型瘦身脚本
 tools/voice/           配音台词表与生成脚本
 tools/deploy-pages.sh  发布到 GitHub Pages
 ```
@@ -140,5 +163,7 @@ tools/deploy-pages.sh  发布到 GitHub Pages
 
 - [three.js](https://threejs.org/)（MIT）
 - 字体来自 Google Fonts：Zen Maru Gothic、Zen Old Mincho、Zen Kaku Gothic New、Yuji Syuku、Dela Gothic One、Noto Sans SC、Noto Serif SC（SIL OFL）。离线时会回退到系统字体。
-- 配音：**VOICEVOX:九州そら**、**VOICEVOX:冥鳴ひまり**、**VOICEVOX:春日部つむぎ**（按各角色的使用条款标注；游戏菜单里也有显示）。
+- 配音：**VOICEVOX:九州そら**、**VOICEVOX:冥鳴ひまり**、**VOICEVOX:春日部つむぎ**、**VOICEVOX:四国めたん**（按各角色的使用条款标注；游戏菜单里也有显示）。
+- 人物：pixiv Inc. 的 VRM 示例模型（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
+- 动作：Bandai Namco Research Inc. 的 Bandai-Namco-Research-Motiondataset（CC BY-NC 4.0）。
 - 风格参考：用户提供的樱花小镇演示视频。
