@@ -5,7 +5,7 @@ import { terrainH, STATION, PLAZA, PARK, SHRINE, townH } from './layout.js';
 import { Kit, boxFaces, fp, faceBox, signOnFace, windowUnit, door, koshiDoor, gableRoof, hipRoof, leanTo, bicycle, potPlant, acUnit, FRAME, metalFence } from './kit.js';
 import { lotFrame, WALLS, ROOFS, stoneLantern } from './buildings.js';
 import { buildVending } from './props.js';
-import { bench } from './coast.js';
+import { benchAt } from './coast.js';
 import { FONTS, drawBoard, drawVertical, fitText, weather } from '../render/atlas.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -167,11 +167,8 @@ export function buildStation(ctx) {
     ctx.lamps.push({ x, y: py + 3.0, z: S.platZ0 + 1.6, r: 4, color: 0xeef4ff, ground: true });
   }
   // benches + station board + vending
-  bench(t, r0 + 6, py, S.platZ0 + 0.7, 0, 0x6a8fb8);
-  bench(t, r1 - 6, py, S.platZ0 + 0.7, 0, 0x6a8fb8);
-  ctx.interactables.push({ kind: 'bench', x: r0 + 6, z: S.platZ0 + 1.3, r: 1.3, label: 'ベンチに座る', sit: { x: r0 + 6, y: py + 0.45, z: S.platZ0 + 0.62, yaw: 0 } });
-  ctx.colliders.addBox(r0 + 6, S.platZ0 + 0.7, 0.9, 0.3, 0, py + 0.5);
-  ctx.colliders.addBox(r1 - 6, S.platZ0 + 0.7, 0.9, 0.3, 0, py + 0.5);
+  benchAt(ctx, t, r0 + 6, py, S.platZ0 + 0.7, Math.PI, 0x6a8fb8, 'ホームのベンチに座る');
+  benchAt(ctx, t, r1 - 6, py, S.platZ0 + 0.7, Math.PI, 0x6a8fb8, 'ホームのベンチに座る');
   const sb = stationBoard(ctx);
   for (const bx of [S.platX0 + 8, S.platX1 - 8]) {
     t.cyl(bx - 0.9, py, S.platZ1 - 1.6, 0.05, 0.05, 2.6, 6, 0x5a6066);
@@ -312,12 +309,12 @@ export function buildPlaza(ctx) {
   ctx.trees.push({ kind: 'sakura', x: pcx, z: pcz, seed: 4401, scale: 1.15, y: y(pcx, pcz) + 0.45 });
   ctx.colliders.addBox(pcx, pcz, 3.2, 3.2, 0, y(pcx, pcz) + 0.45);
   ctx.colliders.addSurface(pcx - 3.2, pcz - 3.2, pcx + 3.2, pcz + 3.2, () => y(pcx, pcz) + 0.45, 1);
+  // benches around the planter, backs to the tree
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2;
-    bench(t, pcx + Math.cos(a) * 4.0, y(pcx, pcz), pcz + Math.sin(a) * 4.0, -a + Math.PI / 2, 0xa07a54);
-    ctx.colliders.addBox(pcx + Math.cos(a) * 4.0, pcz + Math.sin(a) * 4.0, 0.9, 0.3, -a + Math.PI / 2, 4.0);
+    const bx = pcx + Math.cos(a) * 4.0, bz = pcz + Math.sin(a) * 4.0;
+    benchAt(ctx, t, bx, y(bx, bz), bz, -a - Math.PI / 2, 0xa07a54, '桜の下のベンチに座る');
   }
-  ctx.interactables.push({ kind: 'bench', x: pcx, z: pcz - 4.6, r: 1.3, label: 'ベンチに座る', sit: { x: pcx, y: y(pcx, pcz) + 0.45, z: pcz - 4.05, yaw: 0 } });
   // clock pole
   const clx = -20, clz = 36;
   t.cyl(clx, y(clx, clz), clz, 0.09, 0.09, 4.2, 8, 0x3f4a44);
@@ -347,9 +344,7 @@ export function buildPlaza(ctx) {
   const shx = -30;
   for (const xx of [shx - 2, shx + 2]) t.cyl(xx, y(xx, bsz), bsz + 1.2, 0.06, 0.06, 2.5, 6, 0xb9bec3);
   t.boxMM(shx - 2.4, y(shx, bsz) + 2.5, bsz + 0.4, shx + 2.4, y(shx, bsz) + 2.6, bsz + 1.8, { color: 0x8fa3b5 });
-  bench(t, shx, y(shx, bsz), bsz + 1.3, 0, 0x5a7a9a);
-  ctx.colliders.addBox(shx, bsz + 1.3, 0.9, 0.3, 0, 4.0);
-  ctx.interactables.push({ kind: 'bench', x: shx, z: bsz + 0.6, r: 1.2, label: 'バス停のベンチに座る', sit: { x: shx, y: y(shx, bsz) + 0.45, z: bsz + 1.25, yaw: 0 } });
+  benchAt(ctx, t, shx, y(shx, bsz), bsz + 1.3, 0, 0x5a7a9a, 'バス停のベンチに座る');
   // koban (police box)
   const kx = -14, kz = 30;
   const ky = y(kx, kz);
@@ -855,10 +850,9 @@ export function buildPark(ctx) {
     ctx.colliders.addCircle(px, pz, 0.45);
   }
   // benches
-  for (const [px, pz, ry] of [[cx - 9, cz + 9.5, Math.PI], [cx + 9, cz + 9.5, Math.PI], [cx, cz - 9.5, 0]]) {
-    bench(t, px, y(px, pz), pz, ry, 0x9a7454);
-    ctx.colliders.addBox(px, pz, 0.9, 0.3, ry, y(px, pz) + 0.5);
-    ctx.interactables.push({ kind: 'bench', x: px, z: pz + (ry === 0 ? -0.7 : 0.7), r: 1.2, label: 'ベンチに座る', sit: { x: px, y: y(px, pz) + 0.45, z: pz + (ry === 0 ? -0.08 : 0.08), yaw: ry } });
+  // benches facing the playground
+  for (const [px, pz, ry] of [[cx - 9, cz + 9.5, 0], [cx + 9, cz + 9.5, 0], [cx, cz - 9.5, Math.PI]]) {
+    benchAt(ctx, t, px, y(px, pz), pz, ry, 0x9a7454, '公園のベンチに座る');
   }
   // toilet hut + clock
   const tx = P.x1 - 3.5, tz = P.z0 + 3.5;
@@ -990,9 +984,7 @@ export function buildShrine(ctx) {
   ctx.trees.push({ kind: 'broadleaf', x: hx + 15, z: hz - 3, seed: 1417, scale: 1.4, y: hy });
   // lookout bench at the terrace edge
   const lbx = S.x + 12, lbz = S.terraceZ0 - 1.2;
-  bench(t, lbx, hy, lbz, Math.PI, 0x8a6a4a);
-  ctx.colliders.addBox(lbx, lbz, 0.9, 0.3, 0, hy + 0.5);
-  ctx.interactables.push({ kind: 'bench', x: lbx, z: lbz - 0.75, r: 1.3, label: '町を見下ろすベンチに座る', sit: { x: lbx, y: hy + 0.45, z: lbz + 0.05, yaw: Math.PI } });
+  benchAt(ctx, t, lbx, hy, lbz, Math.PI, 0x8a6a4a, '町を見下ろすベンチに座る');
   // fence along the terrace edge
   for (const [a, b] of [[S.terraceX0, S.x - 3], [S.x + 3, S.terraceX1]]) {
     metalFence(t, a, S.terraceZ0 + 0.2, b, S.terraceZ0 + 0.2, () => hy, 1.0, 0x8a5a3c);

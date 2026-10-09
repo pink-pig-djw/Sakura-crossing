@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { PAT, MeshBuilder } from '../core/builder.js';
-import { RAIL_Z, CROSSINGS, STATION, TUNNEL_X, ROADS, terrainH } from './layout.js';
+import { RAIL_Z, CROSSINGS, STATION, TUNNEL, ROADS, groundH, RIVER } from './layout.js';
 import { Kit, signOnFace } from './kit.js';
 import { FONTS, fitText } from '../render/atlas.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const RAIL_TOP = 3.26;
 const GAUGE = 1.067;
-const X_END = 262;
+// the line runs between the two headland tunnels; trains wait out of sight inside them
+const X_W = TUNNEL.w - 58, X_E = TUNNEL.e + 58;
+const RIVER_X0 = RIVER.x - RIVER.inner - RIVER.wall, RIVER_X1 = RIVER.x + RIVER.inner + RIVER.wall;
+const onRiverBridge = (x, m = 0) => x > RIVER_X0 - m && x < RIVER_X1 + m;
 
 function crossingHalf(x) {
   const r = ROADS.find((q) => q.axis === 'z' && Math.abs(q.c - x) < 0.1 && q.crossing);
@@ -19,17 +22,26 @@ function crossingHalf(x) {
 // ---------------------------------------------------------------------------
 export function buildTrack(ctx) {
   const zc = RAIL_Z;
-  for (let x = -X_END; x < X_END; x += 10) {
+  for (let x = X_W; x < X_E; x += 10) {
     const x1 = x + 10;
     const b = ctx.builders.get('toon', x + 5, zc);
-    // ballast prism
-    b.quad(V(x, 2.86, zc + 1.9), V(x1, 2.86, zc + 1.9), V(x1, 3.02, zc + 1.25), V(x, 3.02, zc + 1.25), 0x9d9790, PAT.GRAVEL);
-    b.quad(V(x1, 2.86, zc - 1.9), V(x, 2.86, zc - 1.9), V(x, 3.02, zc - 1.25), V(x1, 3.02, zc - 1.25), 0x9d9790, PAT.GRAVEL);
-    b.quad(V(x, 3.02, zc + 1.25), V(x1, 3.02, zc + 1.25), V(x1, 3.02, zc - 1.25), V(x, 3.02, zc - 1.25), 0x8f8a84, PAT.GRAVEL);
+    // ballast prism (the river bridge carries the rails on its own deck)
+    if (!(x1 > RIVER_X0 && x < RIVER_X1)) {
+      b.quad(V(x, 2.86, zc + 1.9), V(x1, 2.86, zc + 1.9), V(x1, 3.02, zc + 1.25), V(x, 3.02, zc + 1.25), 0x9d9790, PAT.GRAVEL);
+      b.quad(V(x1, 2.86, zc - 1.9), V(x, 2.86, zc - 1.9), V(x, 3.02, zc - 1.25), V(x1, 3.02, zc - 1.25), 0x9d9790, PAT.GRAVEL);
+      b.quad(V(x, 3.02, zc + 1.25), V(x1, 3.02, zc + 1.25), V(x1, 3.02, zc - 1.25), V(x, 3.02, zc - 1.25), 0x8f8a84, PAT.GRAVEL);
+    } else {
+      for (const [a, c] of [[x, RIVER_X0], [RIVER_X1, x1]]) {
+        if (c - a < 0.05) continue;
+        b.quad(V(a, 2.86, zc + 1.9), V(c, 2.86, zc + 1.9), V(c, 3.02, zc + 1.25), V(a, 3.02, zc + 1.25), 0x9d9790, PAT.GRAVEL);
+        b.quad(V(c, 2.86, zc - 1.9), V(a, 2.86, zc - 1.9), V(a, 3.02, zc - 1.25), V(c, 3.02, zc - 1.25), 0x9d9790, PAT.GRAVEL);
+        b.quad(V(a, 3.02, zc + 1.25), V(c, 3.02, zc + 1.25), V(c, 3.02, zc - 1.25), V(a, 3.02, zc - 1.25), 0x8f8a84, PAT.GRAVEL);
+      }
+    }
     // sleepers
     for (let sx = x + 0.31; sx < x1; sx += 0.62) {
       if (CROSSINGS.some((c) => Math.abs(sx - c) < crossingHalf(c) + 0.3)) continue;
-      b.box(sx, 3.08, zc, 0.22, 0.12, 2.1, { color: 0xb0aca4, pattern: PAT.CONCRETE, skip: 'y' });
+      b.box(sx, 3.08, zc, 0.22, 0.12, 2.1, { color: onRiverBridge(sx) ? 0x6a5a4a : 0xb0aca4, pattern: onRiverBridge(sx) ? PAT.BOARDS : PAT.CONCRETE, skip: 'y' });
     }
     // rails (with a darker web)
     for (const e of [-1, 1]) {
@@ -59,13 +71,13 @@ export function buildTrack(ctx) {
   });
   void fenceUV;
   for (const fz of [51.55, 60.0]) {
-    let x = -TUNNEL_X + 2;
-    while (x < TUNNEL_X - 2) {
-      const x1 = Math.min(x + 2.5, TUNNEL_X - 2);
+    let x = TUNNEL.w + 2;
+    while (x < TUNNEL.e - 2) {
+      const x1 = Math.min(x + 2.5, TUNNEL.e - 2);
       const mid = (x + x1) / 2;
-      const blocked = CROSSINGS.some((c) => Math.abs(mid - c) < crossingHalf(c) + 1.2) || (fz < 55 && mid > STATION.platX0 - 1 && mid < STATION.platX1 + 1);
+      const blocked = CROSSINGS.some((c) => Math.abs(mid - c) < crossingHalf(c) + 1.2) || (fz < 55 && mid > STATION.platX0 - 1 && mid < STATION.platX1 + 1) || onRiverBridge(mid, 0.2);
       if (!blocked) {
-        const y = terrainH(mid, fz);
+        const y = groundH(mid, fz);
         const b = ctx.builders.get('toon', mid, fz);
         b.box(x, y + 0.7, fz, 0.06, 1.4, 0.06, { color: 0x3f7a55 });
         b.box(mid, y + 1.38, fz, x1 - x, 0.05, 0.05, { color: 0x3f7a55 });
@@ -82,10 +94,11 @@ export function buildTrack(ctx) {
   }
   // catenary poles + wires
   const poles = [];
-  for (let x = -TUNNEL_X + 8; x < TUNNEL_X - 4; x += 42) {
+  for (let x = TUNNEL.w + 8; x < TUNNEL.e - 4; x += 42) {
     if (CROSSINGS.some((c) => Math.abs(x - c) < 8)) continue;
+    if (onRiverBridge(x, 3)) x = RIVER_X1 + 3;
     const pz = 52.3;
-    const y = terrainH(x, pz);
+    const y = groundH(x, pz);
     const b = ctx.builders.get('toon', x, pz);
     b.box(x, y + 4.4, pz, 0.32, 8.8, 0.32, { color: 0x9da2a6, pattern: PAT.CONCRETE });
     b.box(x, y + 8.25, pz + 2.1, 0.12, 0.14, 4.4, { color: 0x7d8286 });
@@ -113,26 +126,73 @@ export function buildTrack(ctx) {
 }
 
 function portal(ctx, side) {
-  const x = side * TUNNEL_X;
+  const x = side > 0 ? TUNNEL.e : TUNNEL.w;
   const b = ctx.builders.get('toon', x, 60);
   const face = x - side * 0.4;
-  // concrete face wall covering the cut
-  b.boxMM(Math.min(face, face + side * 1.2), 2.4, 46, Math.max(face, face + side * 1.2), 12.5, 74, { color: 0xb9b5ab, pattern: PAT.CONCRETE, ao: 0.1 });
-  // dark openings (rail + road)
-  for (const [zc, w, h] of [[RAIL_Z, 5.2, 6.4], [65, 9.0, 6.0]]) {
-    const ins = ctx.builders.get('emissive', x, zc);
-    void ins;
+  const fx0 = Math.min(face, face + side * 1.2), fx1 = Math.max(face, face + side * 1.2);
+  const conc = { color: 0xb9b5ab, pattern: PAT.CONCRETE, ao: 0.1 };
+  const OPEN = [[RAIL_Z, 5.2, 6.4], [65, 9.0, 6.0]];
+  // concrete face wall with two arched openings (rail + road)
+  const wallTop = 15.5;
+  let zPrev = 46;
+  for (const [zc, w] of OPEN) {
+    b.boxMM(fx0, 2.4, zPrev, fx1, wallTop, zc - w / 2, conc);
+    zPrev = zc + w / 2;
+  }
+  b.boxMM(fx0, 2.4, zPrev, fx1, wallTop, 74, conc);
+  b.boxMM(fx0 - 0.15, wallTop, 46, fx1 + 0.15, wallTop + 0.3, 74, { color: 0xc8c4ba, pattern: PAT.CONCRETE });
+  for (const [zc, w, h] of OPEN) {
     const d = ctx.builders.get('toon', x, zc);
-    d.boxMM(Math.min(face, face - side * 0.05) - (side > 0 ? 0 : 0), 2.95, zc - w / 2, Math.max(face, face - side * 0.05), 2.95 + h, zc + w / 2, { color: 0x15161a });
+    const top = 2.95 + h, spring = top - w / 2;
+    d.boxMM(fx0, top, zc - w / 2, fx1, wallTop, zc + w / 2, conc);
+    // spandrels between the arch and the rectangular cut-out (front + back faces)
+    const xs = [face, face + side * 1.2];
+    for (const xx of xs) {
+      for (let k = 0; k < 12; k++) {
+        const a0 = (k / 12) * Math.PI, a1 = ((k + 1) / 12) * Math.PI;
+        const p0 = V(xx, spring + Math.sin(a0) * (w / 2), zc + Math.cos(a0) * (w / 2));
+        const p1 = V(xx, spring + Math.sin(a1) * (w / 2), zc + Math.cos(a1) * (w / 2));
+        const corner = V(xx, top, k < 6 ? zc + w / 2 : zc - w / 2);
+        const towardTown = xx === face ? -side : side;
+        const nrm = new THREE.Vector3().subVectors(p1, p0).cross(new THREE.Vector3().subVectors(corner, p0));
+        if (nrm.x * towardTown > 0) d.tri(p0, p1, corner, 0xb9b5ab, PAT.CONCRETE);
+        else d.tri(p1, p0, corner, 0xb9b5ab, PAT.CONCRETE);
+      }
+    }
     // arch ring
     for (let k = 0; k <= 10; k++) {
       const a = (k / 10) * Math.PI;
       const zz = zc + Math.cos(a) * (w / 2 + 0.3);
-      const yy = 2.95 + h - w / 2 + Math.sin(a) * (w / 2 + 0.3);
+      const yy = spring + Math.sin(a) * (w / 2 + 0.3);
       d.box(face - side * 0.12, yy, zz, 0.3, 0.45, 0.45, { color: 0xa8a49a, pattern: PAT.CONCRETE });
     }
-    // interior tube (dark box, open toward the town)
-    d.boxMM(x + (side > 0 ? 0 : -40), 2.9, zc - w / 2 - 0.1, x + (side > 0 ? 40 : 0), 3.0 + h + 0.5, zc + w / 2 + 0.1, { color: 0x101114, skip: side > 0 ? 'x' : 'X' });
+    // reveal: the arch soffit through the wall thickness
+    for (let k = 0; k < 12; k++) {
+      const a0 = (k / 12) * Math.PI, a1 = ((k + 1) / 12) * Math.PI;
+      const q0 = V(fx0, spring + Math.sin(a0) * (w / 2), zc + Math.cos(a0) * (w / 2));
+      const q1 = V(fx0, spring + Math.sin(a1) * (w / 2), zc + Math.cos(a1) * (w / 2));
+      const r0 = q0.clone().setX(fx1), r1 = q1.clone().setX(fx1);
+      d.quadOut(q0, q1, r1, r0, V(face, spring + 50, zc), 0x9a968c, PAT.CONCRETE);
+    }
+    for (const zz of [zc - w / 2, zc + w / 2]) {
+      d.quadOut(V(fx0, 2.4, zz), V(fx1, 2.4, zz), V(fx1, spring, zz), V(fx0, spring, zz), V(face, spring, zc + (zz > zc ? 50 : -50)), 0x9a968c, PAT.CONCRETE);
+    }
+    // interior tube (faces point inward, open toward the town)
+    const x0 = side > 0 ? x : x - 60, x1 = side > 0 ? x + 60 : x;
+    const y0 = 2.9, y1 = 3.0 + h + 0.5, z0 = zc - w / 2 - 0.1, z1 = zc + w / 2 + 0.1;
+    const xf = side > 0 ? x1 : x0;
+    const inward = (a, bb, c, dd, toward) => {
+      const n = new THREE.Vector3().subVectors(bb, a).cross(new THREE.Vector3().subVectors(dd, a));
+      const f = a.clone().add(bb).add(c).add(dd).multiplyScalar(0.25);
+      if (n.dot(new THREE.Vector3().subVectors(toward, f)) < 0) d.quad(bb, a, dd, c, 0x121316, 0);
+      else d.quad(a, bb, c, dd, 0x121316, 0);
+    };
+    const mid = V((x0 + x1) / 2, (y0 + y1) / 2, zc);
+    inward(V(x0, y0, z0), V(x1, y0, z0), V(x1, y1, z0), V(x0, y1, z0), mid);
+    inward(V(x1, y0, z1), V(x0, y0, z1), V(x0, y1, z1), V(x1, y1, z1), mid);
+    inward(V(x0, y1, z0), V(x1, y1, z0), V(x1, y1, z1), V(x0, y1, z1), mid);
+    inward(V(x0, y0, z1), V(x1, y0, z1), V(x1, y0, z0), V(x0, y0, z0), mid);
+    inward(V(xf, y0, z0), V(xf, y0, z1), V(xf, y1, z1), V(xf, y1, z0), mid);
   }
   const sign = ctx.atlas.draw('tunnel:' + side, 256, 64, (c, w, h) => {
     c.fillStyle = '#e9e5da';
@@ -145,7 +205,7 @@ function portal(ctx, side) {
   });
   const kit = new Kit(ctx, x, 65);
   const f = { o: V(face - side * 0.31, 0, 65 + side * 2.0), r: V(0, 0, -side), n: V(-side, 0, 0), len: 4 };
-  signOnFace(kit, f, 0, 9.4, 3.2, 0.8, 0.0, sign, 0);
+  signOnFace(kit, f, 0, 10.2, 3.2, 0.8, 0.0, sign, 0);
   ctx.colliders.addBox(x, 60, 1.0, 14, 0);
 }
 
@@ -208,7 +268,7 @@ export function buildCrossings(ctx, scene) {
     for (const side of [-1, 1]) {
       const z = side < 0 ? 51.2 : 60.4;
       const px = x + side * -(half + 0.7); // north side: west of road, south side: east of road
-      const y = terrainH(px, z);
+      const y = groundH(px, z);
       const kit = new Kit(ctx, px, z);
       const t = kit.t;
       // signal pole
@@ -414,7 +474,7 @@ export class TrainController {
     this.length = CAR_L * 2 + GAP;
     this.state = 'wait';
     this.dir = -1; // -1 westbound, +1 eastbound
-    this.head = X_END + 30; // x of the front coupler
+    this.head = X_E + 30; // x of the front coupler
     this.v = 0;
     this.timer = 12;
     this.vMax = 12;
@@ -444,8 +504,7 @@ export class TrainController {
         this.timer -= dt;
         if (this.timer <= 0) {
           this.state = 'arrive';
-          this.head = -this.dir * (X_END + 30) + 0; // start inside the far tunnel
-          this.head = this.dir < 0 ? X_END + 20 : -(X_END + 20);
+          this.head = this.dir < 0 ? X_E + 20 : X_W - 20; // start inside the far tunnel
           this.v = this.vMax;
           this.events.push('enter');
         }
@@ -477,7 +536,7 @@ export class TrainController {
         break;
       case 'depart':
         this.v = Math.min(this.vMax, this.v + dt * 0.75);
-        if (this.head * this.dir > X_END + 40) {
+        if (this.dir > 0 ? this.head > X_E + 40 : this.head < X_W - 40) {
           this.state = 'wait';
           this.timer = 26;
           this.dir = -this.dir;
@@ -512,7 +571,7 @@ export class TrainController {
       const car = this.cars[i];
       car.position.set(c, RAIL_TOP - 0.02, RAIL_Z);
       car.rotation.y = this.dir > 0 ? 0 : Math.PI;
-      car.visible = Math.abs(c) < X_END + 25;
+      car.visible = c > X_W - 25 && c < X_E + 25;
     }
   }
 

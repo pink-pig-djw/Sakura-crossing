@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { ChunkedBuilders } from '../core/builder.js';
 import { RNG, fbm2 } from '../core/rng.js';
-import { createToonMaterial, createWindowMaterial, createRoadMaterial } from '../render/materials.js';
+import { createToonMaterial, createWindowMaterial, createRoadMaterial, createInteriorMaterial, createGlassMaterial } from '../render/materials.js';
 import { Atlas } from '../render/atlas.js';
 import { GroundMap, buildTerrain } from './terrain.js';
 import { buildRoads, paintRoadsides } from './roads.js';
-import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA } from './layout.js';
+import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA, TOWN, overRiver } from './layout.js';
 import { buildHouse, buildOldHouse, buildApartment, buildMansion, buildParking, buildField, buildGarden, buildSento } from './buildings.js';
 import { buildTrees } from './trees.js';
 import { Colliders } from './collision.js';
@@ -13,6 +13,7 @@ import { buildPolesAndWires, buildStreetProps, buildVending, buildLightPools, cr
 import { buildTrack, buildCrossings, buildTrain } from './railway.js';
 import { buildCoast, createWater, buildIsland, createSailboats } from './coast.js';
 import { buildStation, buildPlaza, buildShotengai, buildPark, buildShrine, lanternMesh } from './places.js';
+import { buildRiver } from './river.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -35,9 +36,9 @@ function streetTrees(ctx) {
     }
   }
   // along the rail-side lane a few more, and by the coastal road
-  for (let x = -130; x < 140; x += rng.range(22, 34)) {
+  for (let x = TOWN.x0 + 8; x < TOWN.x1 - 8; x += rng.range(22, 34)) {
     if (x > PLAZA.x0 - 4 && x < PLAZA.x1 + 4) continue;
-    if (roadAt(x, 50.8, 3)) continue;
+    if (roadAt(x, 50.8, 3) || overRiver(x, 50.8, 6)) continue;
     ctx.trees.push({ kind: rng.chance(0.75) ? 'sakura' : 'broadleaf', x, z: 50.8, seed: rng.int(1, 1e9), scale: rng.range(0.85, 1.0) });
   }
 }
@@ -45,8 +46,8 @@ function streetTrees(ctx) {
 function forest(ctx) {
   const rng = new RNG(99);
   let n = 0;
-  for (let i = 0; i < 2600 && n < 620; i++) {
-    const x = rng.range(-460, 460);
+  for (let i = 0; i < 4200 && n < 900; i++) {
+    const x = rng.range(-560, 660);
     const z = rng.range(-520, 175);
     const d = outsideDist(x, z);
     if (d < 6) continue;
@@ -59,8 +60,8 @@ function forest(ctx) {
     n++;
   }
   // a few sakura on the hillsides (yamazakura)
-  for (let i = 0; i < 40; i++) {
-    const x = rng.range(-300, 300), z = rng.range(-300, -140);
+  for (let i = 0; i < 56; i++) {
+    const x = rng.range(-380, 460), z = rng.range(-300, -140);
     if (outsideDist(x, z) < 8) continue;
     ctx.trees.push({ kind: 'sakura', x, z, seed: rng.int(1, 1e9), scale: rng.range(1.0, 1.3) });
   }
@@ -78,13 +79,17 @@ export async function buildWorld(scene, opts = {}) {
     road: { material: createRoadMaterial(), castShadow: false },
     sign: { material: createToonMaterial({ name: 'sign', map: signTex, emissiveFlag: true, alphaTest: 0.5 }), castShadow: false },
     emissive: { material: createToonMaterial({ name: 'emissive', emissiveAll: true, noPattern: true }), castShadow: false },
+    // inside shops and stations: lit by ceiling lights, see-through glass in front
+    interior: { material: createInteriorMaterial(), castShadow: false, receiveShadow: false },
+    interiorSign: { material: createInteriorMaterial({ name: 'interiorSign', map: signTex, alphaTest: 0.5, emissiveFlag: true }), castShadow: false, receiveShadow: false },
+    glass: { material: createGlassMaterial(), castShadow: false, receiveShadow: false, renderOrder: 3 },
   };
   materials.detail = { material: materials.toon.material, castShadow: false };
   const ctx = {
     scene,
     materials,
     builders: new ChunkedBuilders(48),
-    ground: new GroundMap(-224, -192, 224, 100, 3),
+    ground: new GroundMap(-300, -192, 380, 100, 3),
     colliders: new Colliders(8),
     atlas,
     rng: new RNG(WORLD_SEED),
@@ -150,6 +155,7 @@ export async function buildWorld(scene, opts = {}) {
   progress(0.64, '海を描いています');
   await tick();
   buildCoast(ctx);
+  buildRiver(ctx);
   for (const v of ctx.vending) buildVending(ctx, v.x, v.z, v.ry, v.seed, v.n ?? (new RNG(v.seed).chance(0.5) ? 2 : 1));
 
   progress(0.7, '桜を植えています');

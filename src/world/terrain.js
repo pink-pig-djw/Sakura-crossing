@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { terrainH, SEAWALL_Z, outsideDist, shoreZ } from './layout.js';
+import { terrainH, SEAWALL_Z, outsideDist, shoreZ, RIVER, HOLES, inRiver } from './layout.js';
 import { fbm2, noise2, smoothstep, clamp } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { createGroundMaterial } from '../render/materials.js';
@@ -122,14 +122,18 @@ const C_SAND = new THREE.Color('#e2d0aa');
 const C_SAND_WET = new THREE.Color('#cdb994');
 const C_SEABED = new THREE.Color('#c9b48e');
 const C_ROCK = new THREE.Color('#9a9086');
+const C_RIVERBED = new THREE.Color('#8f8a7a');
+const C_RIVERBED_DK = new THREE.Color('#6f7466');
 
 export function buildTerrain(groundMap) {
+  // 2 m grid over the town (aligned to even coordinates: stairwell holes and the river
+  // walls sit on grid lines), coarser over the hills and the sea
   const xs = axisSamples([
-    [-900, -260, 20],
-    [-260, -212, 4],
-    [-212, 212, 2],
-    [212, 260, 4],
-    [260, 900, 20],
+    [-1000, -340, 20],
+    [-340, -310, 4],
+    [-310, 390, 2],
+    [390, 420, 4],
+    [420, 1100, 20],
   ]);
   const zs = axisSamples([
     [-900, -260, 20],
@@ -164,7 +168,13 @@ export function buildTerrain(groundMap) {
       // base color / pattern
       const out = outsideDist(x, z);
       let p = PAT.GRASS;
-      if (z > SEAWALL_Z) {
+      if (inRiver(x, z) || (Math.abs(x - RIVER.x) <= RIVER.inner + 0.01 && z >= RIVER.zHead && z <= SEAWALL_Z + 1.4)) {
+        // pebbly river bed, mossier toward the walls
+        const f = noise2(x * 0.3, z * 0.3);
+        tmp.copy(C_RIVERBED).lerp(C_RIVERBED_DK, 0.25 + f * 0.5);
+        if (z > SEAWALL_Z + 2) tmp.lerp(C_SAND_WET, smoothstep(SEAWALL_Z, shoreZ(x), z) * 0.8);
+        p = PAT.GRAVEL;
+      } else if (z > SEAWALL_Z) {
         const s = shoreZ(x);
         const t = smoothstep(s - 3, s + 6, z);
         tmp.copy(C_SAND).lerp(C_SAND_WET, smoothstep(s - 6, s, z) * 0.6).lerp(C_SEABED, t);
@@ -204,8 +214,11 @@ export function buildTerrain(groundMap) {
   }
   const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
   let t = 0;
+  // stairwell openings (subway exits) are cut out of the mesh
+  const inHole = (x, z) => HOLES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1);
   for (let j = 0; j < nz - 1; j++) {
     for (let i = 0; i < nx - 1; i++) {
+      if (inHole((xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2)) continue;
       const a = j * nx + i;
       const b = a + 1;
       const c = a + nx;
@@ -224,7 +237,7 @@ export function buildTerrain(groundMap) {
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setAttribute('pattern', new THREE.BufferAttribute(pat, 1));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.setIndex(new THREE.BufferAttribute(idx.subarray(0, t), 1));
   g.computeBoundingSphere();
 
   const tex = groundMap.toTexture();

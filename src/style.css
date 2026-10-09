@@ -531,6 +531,9 @@ kbd {
 .notebook li span:last-child {
   color: var(--ink-soft);
 }
+.panel.map-panel {
+  width: min(1180px, 100%);
+}
 .map-panel canvas {
   width: 100%;
   height: auto;

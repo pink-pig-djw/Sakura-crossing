@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RNG, noise2 } from '../core/rng.js';
 import { PAT, MeshBuilder } from '../core/builder.js';
-import { terrainH, shoreZ, beachH, SEAWALL_Z, PROM, COAST, BEACH_STAIRS, BREAKWATER } from './layout.js';
+import { terrainH, shoreZ, beachH, SEAWALL_Z, PROM, COAST, BEACH_STAIRS, BREAKWATER, SHORE, RIVER } from './layout.js';
 import { G } from '../render/materials.js';
 import { NOISE } from '../render/glsl.js';
 
@@ -155,11 +155,13 @@ export function createWater() {
 export function buildCoast(ctx) {
   const rng = new RNG(919);
   const B = (x, z) => ctx.builders.get('toon', x, z);
-  const X0 = -198, X1 = 198;
+  const X0 = SHORE.x0 + 6, X1 = SHORE.x1 - 6;
+  const RW0 = RIVER.x - RIVER.inner - RIVER.wall, RW1 = RIVER.x + RIVER.inner + RIVER.wall; // river mouth gap
+  const nearRiver = (x, m = 0) => x > RW0 - m && x < RW1 + m;
   const wallTop = PROM.y;
-  // promenade surface (road material style 9)
-  for (let x = X0; x < X1; x += 24) {
-    const x1 = Math.min(X1, x + 24);
+  // promenade surface (road material style 9); the river is crossed by a footbridge (river.js)
+  for (const [a, bnd] of [[X0, RW0], [RW1, X1]]) for (let x = a; x < bnd; x += 24) {
+    const x1 = Math.min(bnd, x + 24);
     const b = ctx.builders.get('road', (x + x1) / 2, 70);
     const base = b.count;
     const c = new THREE.Color(0.2, 0, 0);
@@ -170,9 +172,10 @@ export function buildCoast(ctx) {
   // curb along the road edge, parapet with gaps for the stairs
   for (let x = X0; x < X1; x += 6) {
     const x1 = Math.min(X1, x + 6);
+    if (nearRiver((x + x1) / 2, 3)) continue;
     B(x, 70).boxMM(x, COAST.y - 0.2, PROM.z0 - 0.12, x1, wallTop + 0.01, PROM.z0 + 0.02, { color: 0xc9c5bb, pattern: PAT.CONCRETE });
   }
-  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]);
+  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0, RW1]]);
   const inGap = (x) => gaps.some(([a, b]) => x > a && x < b);
   let x = X0;
   while (x < X1) {
@@ -189,11 +192,13 @@ export function buildCoast(ctx) {
   // sea wall face down to the beach (stepped concrete)
   for (let x = X0; x < X1; x += 4) {
     const x1 = Math.min(X1, x + 4);
+    if (x1 > RW0 && x < RW1) continue;
     const by = Math.min(beachH(x, SEAWALL_Z + 0.5), beachH(x1, SEAWALL_Z + 0.5));
     B(x, 74).boxMM(x, by - 1.0, SEAWALL_Z, x1, wallTop + 0.01, SEAWALL_Z + 0.6, { color: 0xc4c0b5, pattern: PAT.CONCRETE, ao: 0.15 });
     B(x, 74).boxMM(x, by - 0.6, SEAWALL_Z + 0.6, x1, by + 0.35, SEAWALL_Z + 1.4, { color: 0xbdb9ae, pattern: PAT.CONCRETE, ao: 0.2 });
   }
-  ctx.colliders.addSurface(X0, PROM.z0, X1, SEAWALL_Z + 0.6, () => wallTop, 1);
+  ctx.colliders.addSurface(X0, PROM.z0, RW0, SEAWALL_Z + 0.6, () => wallTop, 1);
+  ctx.colliders.addSurface(RW1, PROM.z0, X1, SEAWALL_Z + 0.6, () => wallTop, 1);
   // stairs down to the beach
   for (const sx of BEACH_STAIRS) {
     const steps = 12;
@@ -221,18 +226,17 @@ export function buildCoast(ctx) {
     }, 2);
   }
   // benches facing the sea on the promenade
-  for (const bx of [-125, -40, 5, 60, 90, 150]) {
-    bench(B(bx, 71), bx, wallTop, 71.6, Math.PI, 0x9a7454);
-    ctx.interactables.push({ kind: 'bench', x: bx, z: 71.0, r: 1.4, label: 'ベンチに座る', sit: { x: bx, y: wallTop + 0.45, z: 71.75, yaw: Math.PI } });
-    ctx.colliders.addBox(bx, 71.6, 0.9, 0.3, 0, wallTop + 0.5);
+  for (const bx of [-270, -225, -125, -40, 5, 60, 90, 150, 236, 280, 340]) {
+    benchAt(ctx, B(bx, 71), bx, wallTop, 71.4, Math.PI, 0x9a7454, '海を眺めるベンチに座る');
   }
   // palms along the promenade
-  for (let px = -185; px < 190; px += rng.range(17, 23)) {
-    if (BEACH_STAIRS.some((s) => Math.abs(s - px) < 4)) continue;
+  for (let px = X0 + 8; px < X1 - 4; px += rng.range(17, 23)) {
+    if (BEACH_STAIRS.some((s) => Math.abs(s - px) < 4) || nearRiver(px, 4)) continue;
     palm(ctx, px, wallTop, 69.6, rng);
   }
   // street lamps on the promenade
-  for (let lx = -180; lx < 190; lx += 30) {
+  for (let lx = X0 + 10; lx < X1 - 4; lx += 30) {
+    if (nearRiver(lx, 2)) continue;
     const b = B(lx, 69);
     b.cyl(lx, wallTop, 69.0, 0.07, 0.06, 4.6, 8, 0x5a6670);
     b.rod(V(lx, wallTop + 4.5, 69.0), V(lx, wallTop + 4.6, 69.9), 0.04, 0.04, 5, 0x5a6670);
@@ -243,8 +247,9 @@ export function buildCoast(ctx) {
   }
 
   // ---- beach props ----
-  for (let i = 0; i < 9; i++) {
-    const dx = rng.range(-180, 175);
+  for (let i = 0; i < 14; i++) {
+    const dx = rng.range(X0 + 10, X1 - 10);
+    if (nearRiver(dx, 14)) continue;
     const dz = rng.range(SEAWALL_Z + 4, shoreZ(dx) - 6);
     const y = terrainH(dx, dz);
     const L = rng.range(1.8, 3.6);
@@ -252,7 +257,8 @@ export function buildCoast(ctx) {
     B(dx, dz).rod(V(dx - Math.cos(a) * L / 2, y + 0.12, dz - Math.sin(a) * L / 2), V(dx + Math.cos(a) * L / 2, y + 0.15, dz + Math.sin(a) * L / 2), 0.16, 0.1, 6, 0x9a8a78, PAT.BOARDS);
   }
   // sand fences (bamboo)
-  for (let fx = -170; fx < 170; fx += rng.range(28, 40)) {
+  for (let fx = X0 + 20; fx < X1 - 20; fx += rng.range(28, 40)) {
+    if (nearRiver(fx, 16) || nearRiver(fx + 10, 16)) continue;
     const fz = SEAWALL_Z + rng.range(4, 7);
     const len = rng.range(6, 10);
     for (let k = 0; k < len / 0.12; k++) {
@@ -272,14 +278,25 @@ export function buildCoast(ctx) {
   breakwater(ctx, rng);
   // shells to collect
   ctx.shells = [];
-  for (let i = 0; i < 8; i++) {
-    const sxp = rng.range(-170, 170);
+  for (let i = 0; i < 10; i++) {
+    let sxp = rng.range(X0 + 20, X1 - 20);
+    if (nearRiver(sxp, 16)) sxp += 40;
     const szp = shoreZ(sxp) - rng.range(1.5, 7);
     ctx.shells.push({ x: sxp, z: szp, y: terrainH(sxp, szp), color: rng.pick([0xffe6dc, 0xf6d2e0, 0xfff4e0, 0xe8d8f0]) });
   }
   // a couple of cats at the beach / promenade
   ctx.catSpots.push({ x: 8, z: 72.6, y: wallTop + 0.86, kind: 'wall', ry: Math.PI });
   ctx.catSpots.push({ x: BREAKWATER.x + 17, z: SEAWALL_Z + 8.5, y: terrainH(BREAKWATER.x + 17, SEAWALL_Z + 8.5) + 0.85, kind: 'boat', ry: 1.2 });
+}
+
+// A bench whose seat faces (-sin ry, -cos ry): the same direction a player with yaw = ry looks.
+// Adds its collider and a sit interaction in front of it.
+export function benchAt(ctx, b, x, y, z, ry, wood = 0x9a7454, label = 'ベンチに座る', interact = true) {
+  bench(b, x, y, z, ry, wood);
+  ctx.colliders.addBox(x, z, 0.9, 0.3, ry, y + 0.5);
+  if (!interact) return;
+  const fx = -Math.sin(ry), fz = -Math.cos(ry);
+  ctx.interactables.push({ kind: 'bench', x: x + fx * 0.75, z: z + fz * 0.75, r: 1.3, label, sit: { x: x - fx * 0.02, y: y + 0.45, z: z - fz * 0.02, yaw: ry } });
 }
 
 export function bench(b, x, y, z, ry, wood = 0x9a7454) {

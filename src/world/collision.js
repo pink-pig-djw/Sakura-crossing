@@ -1,7 +1,9 @@
 import { terrainH } from './layout.js';
 
 // 2D collision world (XZ) with a spatial hash, plus walkable height overrides
-// (platforms, stairs, promenade ...) layered over the terrain.
+// (platforms, stairs, promenade ...) layered over the terrain. Surfaces can be
+// limited to a band of feet heights so floors can stack (bridge decks over the
+// river bed, the subway concourse over its platform, underground under the street).
 
 export class Colliders {
   constructor(cell = 8) {
@@ -37,8 +39,8 @@ export class Colliders {
     return item;
   }
 
-  addCircle(x, z, r, yTop = 99) {
-    const item = { t: 1, cx: x, cz: z, r, yTop, yBottom: -99 };
+  addCircle(x, z, r, yTop = 99, yBottom = -99) {
+    const item = { t: 1, cx: x, cz: z, r, yTop, yBottom };
     this._insert(this.grid, item, x - r, z - r, x + r, z + r);
     return item;
   }
@@ -51,21 +53,31 @@ export class Colliders {
     return this.addBox((x0 + x1) / 2, (z0 + z1) / 2, len / 2, thick / 2, ry, yTop);
   }
 
-  // walkable surface: rect (axis aligned) with height function h(x,z)
-  addSurface(x0, z0, x1, z1, h, priority = 0) {
-    const item = { x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), h, priority };
+  // walkable surface: rect (axis aligned) with height function h(x,z).
+  // level = { min, max, under }: feet-height window in which it applies; `under` surfaces
+  // (below the street) are ignored by placement queries made without a feet height.
+  addSurface(x0, z0, x1, z1, h, priority = 0, level = null) {
+    const item = {
+      x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), h, priority,
+      minFeet: level?.min ?? -Infinity, maxFeet: level?.max ?? Infinity, under: !!level?.under,
+    };
     this.surfaces.push(item);
     this._insert(this.surfGrid, item, item.x0, item.z0, item.x1, item.z1);
     return item;
   }
 
-  groundAt(x, z) {
+  // Height of the walkable ground at (x,z). With feetY, stacked floors resolve to the
+  // one the walker is on; without it, the street-level answer (for placing objects).
+  groundAt(x, z, feetY = null) {
     let h = terrainH(x, z);
     const arr = this.surfGrid.get(Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell));
     if (arr) {
       let best = null;
       for (const s of arr) {
         if (x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) {
+          if (feetY === null) {
+            if (s.under) continue;
+          } else if (feetY < s.minFeet || feetY > s.maxFeet) continue;
           if (!best || s.priority > best.priority) best = s;
         }
       }
@@ -76,6 +88,19 @@ export class Colliders {
       }
     }
     return h;
+  }
+
+  // Street-level colliders above an underground space must not block walkers below:
+  // lift their bottoms to just under the street (items flagged `under` are left alone).
+  liftOver(x0, z0, x1, z1, yBottom) {
+    const c = this.cell;
+    for (let i = Math.floor(x0 / c); i <= Math.floor(x1 / c); i++) {
+      for (let j = Math.floor(z0 / c); j <= Math.floor(z1 / c); j++) {
+        const arr = this.grid.get(i * 100003 + j);
+        if (!arr) continue;
+        for (const it of arr) if (!it.under) it.yBottom = Math.max(it.yBottom, yBottom);
+      }
+    }
   }
 
   // Push a circle (x,z,r) out of solid colliders. feetY lets low objects be stepped over.
@@ -93,7 +118,7 @@ export class Colliders {
           for (const it of arr) {
             if (seen.has(it)) continue;
             seen.add(it);
-            if (it.yTop < feetY + 0.45 || it.yBottom > feetY + 1.7) continue;
+            if (it.off || it.yTop < feetY + 0.45 || it.yBottom > feetY + 1.7) continue;
             if (it.t === 1) {
               const dx = p.x - it.cx, dz = p.z - it.cz;
               const d = Math.hypot(dx, dz);

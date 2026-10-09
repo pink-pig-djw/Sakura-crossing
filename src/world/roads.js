@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROADS, terrainH, PLAZA, COAST } from './layout.js';
+import { ROADS, groundH, townH, PLAZA, COAST, CROSSINGS, TUNNEL, RIVER } from './layout.js';
 import { PAT } from '../core/builder.js';
 
 // Road ribbons with procedural markings (see createRoadMaterial). Roads are
@@ -7,8 +7,11 @@ import { PAT } from '../core/builder.js';
 
 const _c = new THREE.Color();
 
+// Roads follow the uncarved ground (they cross the river on bridges at bank height).
 export function roadSurfaceY(x, z) {
-  let y = terrainH(x, z);
+  // flat through the headland tunnels
+  if (x < TUNNEL.w + 0.5 || x > TUNNEL.e - 0.5) return townH(Math.min(z, 61)) + 0.03;
+  let y = groundH(x, z);
   // level crossings are a little raised (rails flush with the road)
   if (z > 51.2 && z < 60.3) {
     const k = THREE.MathUtils.smoothstep(z, 51.2, 53.2) * (1 - THREE.MathUtils.smoothstep(z, 58.8, 60.3));
@@ -81,10 +84,17 @@ export function buildRoads(ctx) {
 
   // crosswalk segments: [roadId, center along axis]
   const crosswalks = [
-    ['coast', -70], ['coast', 30], ['coast', 115],
+    ...CROSSINGS.map((x) => ['coast', x]),
     ['e20', -35],
     ['sakura', 13.2], ['sakura', -21.8], ['sakura', -91.8], ['sakura', 41.8],
   ];
+  // city crossings around the avenue intersections
+  for (const zc of [-120, -85, -50, -15, 20]) {
+    crosswalks.push(['avenue', zc - 7], ['avenue', zc + 7]);
+    const id = { '-120': 'e-120e', '-85': 'e-85e', '-50': 'e-50e', '-15': 'e-15e', '20': 'e20e' }[zc];
+    crosswalks.push([id, 252 - 11], [id, 252 + 11]);
+  }
+  crosswalks.push(['rail-e', 252 - 11], ['rail-e', 252 + 11]);
 
   for (const r of ROADS) {
     const hf = halfFull(r);
@@ -113,8 +123,8 @@ export function buildRoads(ctx) {
         ribbon(bld, r, s0, s1, r.c - half, r.c + half, style, 0, vBase, half * 2);
         if (!fullWidth && r.sidewalk) {
           // flush paver sidewalks with a low curb line
-          ribbon(bld, r, s0, s1, r.c - hf, r.c - r.w / 2, 7, 0, s0, r.sidewalk);
-          ribbon(bld, r, s0, s1, r.c + r.w / 2, r.c + hf, 7, 0, s0, r.sidewalk);
+          ribbon(bld, r, s0, s1, r.c - hf, r.c - r.w / 2, r.swStyle || 7, 0, s0, r.sidewalk);
+          ribbon(bld, r, s0, s1, r.c + r.w / 2, r.c + hf, r.swStyle || 7, 0, s0, r.sidewalk);
           const tb = builders.get('toon', bx, bz);
           for (const side of [-1, 1]) {
             const sc = r.c + side * (r.w / 2 + 0.06);
@@ -164,9 +174,11 @@ export function paintRoadsides(ctx) {
   const g = ctx.ground;
   // station plaza: stone pavers
   g.rect(PLAZA.x0, PLAZA.z0, PLAZA.x1, PLAZA.z1, 0xcfc6b8, PAT.PAVING, { jitter: 0.05 });
-  // railway corridor gravel strip edges
-  g.rect(-230, 50, 230, 51.6, 0xa9a49a, PAT.GRAVEL);
-  g.rect(-230, 60, 230, 60.5, 0xa9a49a, PAT.GRAVEL);
-  // sidewalk south of the railway (north side of the coastal road)
-  g.rect(-230, 60.0, 230, COAST.z0, 0xc9c4ba, PAT.PAVING);
+  // railway corridor gravel strip edges + sidewalk south of the railway (not over the river)
+  const rw = RIVER.x - RIVER.inner - RIVER.wall, re = RIVER.x + RIVER.inner + RIVER.wall;
+  for (const [x0, x1] of [[TUNNEL.w, rw], [re, TUNNEL.e]]) {
+    g.rect(x0, 50, x1, 51.6, 0xa9a49a, PAT.GRAVEL);
+    g.rect(x0, 60, x1, 60.5, 0xa9a49a, PAT.GRAVEL);
+    g.rect(x0, 60.0, x1, COAST.z0, 0xc9c4ba, PAT.PAVING);
+  }
 }

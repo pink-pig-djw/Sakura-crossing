@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { MeshBuilder } from '../core/builder.js';
 import { G } from '../render/materials.js';
-import { terrainH, shoreZ, COAST, TUNNEL_X } from './layout.js';
+import { terrainH, shoreZ, COAST, TUNNEL } from './layout.js';
 import { car } from './kit.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -411,7 +411,7 @@ export function createTraffic(ctx, materials, count = 5) {
     add(k.w, materials.window.material, false);
     add(k.e, materials.emissive.material, false);
     const dir = i % 2 === 0 ? 1 : -1;
-    const c = { root, dir, x: rng.range(-TUNNEL_X, TUNNEL_X), z: dir > 0 ? laneW : laneE, v: rng.range(8, 11), vMax: rng.range(9, 12), wait: 0 };
+    const c = { root, dir, x: rng.range(TUNNEL.w, TUNNEL.e), z: dir > 0 ? laneW : laneE, v: rng.range(8, 11), vMax: rng.range(9, 12), wait: 0 };
     root.position.set(c.x, COAST.y + 0.03, c.z);
     root.rotation.y = dir > 0 ? 0 : Math.PI;
     group.add(root);
@@ -424,7 +424,7 @@ export function createTraffic(ctx, materials, count = 5) {
         c.wait -= dt;
         c.root.visible = false;
         if (c.wait <= 0) {
-          c.x = -c.dir * (TUNNEL_X + 8);
+          c.x = c.dir > 0 ? TUNNEL.w - 8 : TUNNEL.e + 8;
           c.v = c.vMax;
         }
         continue;
@@ -444,7 +444,7 @@ export function createTraffic(ctx, materials, count = 5) {
       c.x += c.dir * c.v * dt;
       c.root.visible = true;
       c.root.position.x = c.x;
-      if (c.x * c.dir > TUNNEL_X + 10) c.wait = rng.range(4, 18);
+      if (c.dir > 0 ? c.x > TUNNEL.e + 10 : c.x < TUNNEL.w - 10) c.wait = rng.range(4, 18);
     }
   };
   return { cars, update };

@@ -4,7 +4,7 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
-import { ROADS, terrainH, roadAt, PLAZA, CROSSINGS } from './layout.js';
+import { ROADS, terrainH, roadAt, PLAZA, CROSSINGS, RIVER } from './layout.js';
 import { roadSurfaceY } from './roads.js';
 import { Kit, signOnFace } from './kit.js';
 import { FONTS, fitText, roundRect } from '../render/atlas.js';
@@ -175,8 +175,11 @@ export function buildPolesAndWires(ctx) {
   const chains = [];
   let num = 1;
   let ad = 0;
+  // overhead wires in the old town only: the river paths and the newer district east of it are wire-free
+  const wireFree = (x) => x > RIVER.pathW[0] - 1.5;
   for (const r of ROADS) {
-    if (r.id === 'coast' || r.id === 'shotengai') continue;
+    if (r.id === 'coast' || r.id === 'shotengai' || r.path) continue;
+    if (r.axis === 'z' ? wireFree(r.c) : wireFree(r.a + 1)) continue;
     const half = r.w / 2 + (r.sidewalk || 0) + 0.35;
     const side = r.axis === 'x' ? -1 : 1; // north side for E-W, east side for N-S
     const spacing = rng.range(26, 31);
@@ -184,8 +187,9 @@ export function buildPolesAndWires(ctx) {
     for (let t = r.a + 4; t < r.b - 3; t += spacing) {
       const x = r.axis === 'x' ? t : r.c + side * half;
       const z = r.axis === 'x' ? r.c + side * half : t;
-      // keep clear of crossing streets and the plaza
+      // keep clear of crossing streets, the plaza and the river
       if (roadAt(x, z, 0.6, r)) continue;
+      if (wireFree(x)) continue;
       if (x > PLAZA.x0 - 1 && x < PLAZA.x1 + 1 && z > PLAZA.z0 - 1 && z < PLAZA.z1 + 1) continue;
       const lampDir = r.axis === 'x' ? [0, -side] : [-side, 0];
       const p = buildPole(ctx, x, z, {
@@ -465,16 +469,21 @@ export function buildLightPools(ctx) {
   let n = 0;
   const c = new THREE.Color();
   for (const l of ctx.lamps) {
-    const r = l.r ?? 6;
+    const r = l.pool?.r ?? l.r ?? 6;
+    const lx = l.pool?.x ?? l.x, lz = l.pool?.z ?? l.z;
     const gy = (l.ground ? l.y - 0.1 : terrainH(l.x, l.z)) + 0.06;
     c.set(l.color ?? 0xffd9a0);
     const segs = 4;
-    // a small grid that follows the terrain
+    // a small grid that follows the terrain (or a deck / floor at a fixed height)
     for (let j = 0; j <= segs; j++) {
       for (let i = 0; i <= segs; i++) {
-        const x = l.x - r + (2 * r * i) / segs;
-        const z = l.z - r + (2 * r * j) / segs;
-        const y = Math.max(roadSurfaceY(x, z), terrainH(x, z)) + 0.05;
+        let x = lx - r + (2 * r * i) / segs;
+        let z = lz - r + (2 * r * j) / segs;
+        if (l.clip) {
+          x = Math.min(l.clip.x1, Math.max(l.clip.x0, x));
+          z = Math.min(l.clip.z1, Math.max(l.clip.z0, z));
+        }
+        const y = l.floor !== undefined ? l.floor + 0.04 : Math.max(roadSurfaceY(x, z), terrainH(x, z)) + 0.05;
         pos.push(x, y, z);
         colr.push(c.r, c.g, c.b);
         uv.push(i / segs, j / segs);

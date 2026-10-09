@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { outsideDist, terrainH, shoreZ } from '../world/layout.js';
+import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel } from '../world/layout.js';
 
 // First-person walker: keyboard + mouse (pointer lock or drag), touch joystick.
 // Feet position is kept on the walkable height field; colliders push back.
@@ -107,7 +107,7 @@ export class Player {
   sit(spot) {
     this.sitting = spot;
     this.vy = 0;
-    this.yaw = spot.yaw + Math.PI;
+    this.yaw = spot.yaw;
     this.pitch = -0.05;
   }
 
@@ -117,7 +117,7 @@ export class Player {
     this.sitting = null;
     // step forward off the bench
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
-    this.pos.set(s.x + fx * 0.8, this.col.groundAt(s.x + fx * 0.8, s.z + fz * 0.8), s.z + fz * 0.8);
+    this.pos.set(s.x + fx * 0.8, this.col.groundAt(s.x + fx * 0.8, s.z + fz * 0.8, s.y - 0.45), s.z + fz * 0.8);
   }
 
   update(dt) {
@@ -172,7 +172,6 @@ export class Player {
     this.vel.z += (wantZ - this.vel.z) * Math.min(1, dt * acc);
 
     // jump / gravity
-    const ground = this.col.groundAt(this.pos.x, this.pos.z);
     if (this.onGround && (K.has('Space') || this._jumpReq)) {
       this.vy = 4.6;
       this.onGround = false;
@@ -184,7 +183,7 @@ export class Player {
       const nx = this.pos.x + dx, nz = this.pos.z + dz;
       const p = { x: nx, z: nz };
       this.col.resolve(p, RADIUS, this.pos.y);
-      const g = this.col.groundAt(p.x, p.z);
+      const g = this.col.groundAt(p.x, p.z, this.pos.y);
       if (g - this.pos.y > STEP && !(this.vy > 0 && g - this.pos.y < 1.1)) return false;
       if (!this.allowed(p.x, p.z, g)) return false;
       this.pos.x = p.x;
@@ -197,7 +196,7 @@ export class Player {
       if (!tryMove(0, mz)) this.vel.z = 0;
     }
     // vertical
-    const g = this.col.groundAt(this.pos.x, this.pos.z);
+    const g = this.col.groundAt(this.pos.x, this.pos.z, this.pos.y);
     this.vy -= 13 * dt;
     this.pos.y += this.vy * dt;
     if (this.pos.y <= g) {
@@ -213,7 +212,6 @@ export class Player {
     } else {
       this.onGround = false;
     }
-    void ground;
 
     // smooth eye height (stairs feel soft) + head bob
     this.speed = Math.hypot(this.vel.x, this.vel.z);
@@ -233,15 +231,16 @@ export class Player {
   }
 
   allowed(x, z, g) {
-    if (x < -212 || x > 212 || z < -182 || z > 186) return false;
+    if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return false;
     if (outsideDist(x, z) > 18 && g > terrainH(x, z) - 0.01 && g > 22) return false;
-    // deep water
-    if (g < -0.65) return false;
+    // deep sea (the subway lies below sea level, so only out past the shoreline)
+    if (g < -0.65 && z > shoreZ(x) - 4) return false;
     return true;
   }
 
   surface() {
     const { x, z } = this.pos;
+    if (inRiver(x, z) && this.pos.y < riverLevel(z) + 0.02) return 'water';
     if (z > 73.5 && this.pos.y < 2.2) {
       if (z > shoreZ(x) - 0.5) return 'water';
       return 'sand';

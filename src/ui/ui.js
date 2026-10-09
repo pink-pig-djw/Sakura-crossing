@@ -1,4 +1,4 @@
-import { ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS } from '../world/layout.js';
+import { ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks } from '../world/layout.js';
 import { PRESETS } from '../systems/timeofday.js';
 
 const $ = (id) => document.getElementById(id);
@@ -277,18 +277,24 @@ export class UI {
 export function drawMap(canvas, player, landmarks) {
   const c = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
-  const x0 = -215, x1 = 215, z0 = -180, z1 = 125;
+  const x0 = -300, x1 = 382, z0 = -182, z1 = 122;
   const sx = W / (x1 - x0), sz = H / (z1 - z0);
   const s = Math.min(sx, sz);
   const ox = (W - (x1 - x0) * s) / 2, oz = (H - (z1 - z0) * s) / 2;
   const P = (x, z) => [ox + (x - x0) * s, oz + (z - z0) * s];
   c.fillStyle = '#f4efe2';
   c.fillRect(0, 0, W, H);
-  // hills
+  // hills (sampled from the terrain shape)
   c.fillStyle = '#cfe0b8';
-  c.fillRect(0, 0, W, P(0, -127)[1]);
-  c.fillRect(0, 0, P(-146, 0)[0], P(0, 51)[1]);
-  c.fillRect(P(146, 0)[0], 0, W - P(146, 0)[0], P(0, 51)[1]);
+  const step = 4;
+  for (let z = z0; z < z1; z += step) {
+    for (let x = x0; x < x1; x += step) {
+      if (outsideDist(x + step / 2, z + step / 2) > 2) {
+        const [px, pz] = P(x, z);
+        c.fillRect(px, pz, step * s + 0.6, step * s + 0.6);
+      }
+    }
+  }
   // sea + beach
   c.beginPath();
   c.moveTo(0, H);
@@ -302,47 +308,79 @@ export function drawMap(canvas, player, landmarks) {
   c.fill();
   c.fillStyle = '#efe0bc';
   c.beginPath();
-  c.moveTo(0, P(0, SEAWALL_Z)[1]);
-  for (let x = x0; x <= x1; x += 5) {
+  c.moveTo(...P(SHORE.x0, SEAWALL_Z));
+  for (let x = SHORE.x0; x <= SHORE.x1; x += 5) {
     const [px, pz] = P(x, shoreZ(x));
     c.lineTo(px, pz);
   }
-  c.lineTo(W, P(0, SEAWALL_Z)[1]);
+  c.lineTo(...P(SHORE.x1, SEAWALL_Z));
   c.closePath();
   c.fill();
-  // park, plaza, shrine
   const rect = (a, b, d, e, col) => {
     const [ax, az] = P(a, b), [bx, bz] = P(d, e);
     c.fillStyle = col;
     c.fillRect(ax, az, bx - ax, bz - az);
   };
+  // commercial district blocks
+  for (const bl of eastBlocks()) rect(bl.x0, bl.z0, bl.x1, bl.z1, '#ecdcd2');
   rect(PARK.x0, PARK.z0, PARK.x1, PARK.z1, '#bcd9a0');
   rect(PLAZA.x0, PLAZA.z0, PLAZA.x1, PLAZA.z1, '#e8dcc8');
   rect(SHRINE.terraceX0, SHRINE.terraceZ1, SHRINE.terraceX1, SHRINE.terraceZ0, '#e2d8c4');
   // roads
   for (const r of ROADS) {
     const q = roadRect(r);
-    rect(q.x0, q.z0, q.x1, q.z1, r.id === 'sakura' ? '#f2c4d2' : r.id === 'shotengai' ? '#f0d9b0' : '#ffffff');
+    const col = r.id === 'sakura' ? '#f2c4d2' : r.id === 'shotengai' ? '#f0d9b0' : r.path ? '#f6e3e9' : r.id === 'avenue' ? '#fff8ec' : '#ffffff';
+    rect(q.x0, q.z0, q.x1, q.z1, col);
+  }
+  // river
+  rect(RIVER.x - RIVER.inner, RIVER.zHead, RIVER.x + RIVER.inner, SEAWALL_Z, '#8cc4e0');
+  c.fillStyle = '#8cc4e0';
+  c.beginPath();
+  c.moveTo(...P(RIVER.x - RIVER.inner, SEAWALL_Z));
+  c.lineTo(...P(RIVER.x - RIVER.inner - 7, shoreZ(RIVER.x) + 2));
+  c.lineTo(...P(RIVER.x + RIVER.inner + 7, shoreZ(RIVER.x) + 2));
+  c.lineTo(...P(RIVER.x + RIVER.inner, SEAWALL_Z));
+  c.fill();
+  for (const b of BRIDGES) if (b.kind !== 'rail') rect(RIVER.x - RIVER.inner - 2, b.z0, RIVER.x + RIVER.inner + 2, b.z1, b.kind === 'prom' ? '#e9e2d0' : '#ffffff');
+  // sakura along the river
+  c.fillStyle = '#f2b6c8';
+  for (let z = RIVER.zHead + 5; z < 44; z += 8.8) {
+    for (const x of [RIVER.x - RIVER.inner - 1.6, RIVER.x + RIVER.inner + 1.6]) {
+      const [px, pz] = P(x, z);
+      c.beginPath();
+      c.arc(px, pz, 3.2, 0, Math.PI * 2);
+      c.fill();
+    }
   }
   // promenade
-  rect(-200, 68.5, 200, 73, '#e9e2d0');
+  rect(SHORE.x0 + 6, 68.5, SHORE.x1 - 6, 73, '#e9e2d0');
   // railway
   c.strokeStyle = '#5a5f6a';
   c.lineWidth = 3;
   c.beginPath();
-  c.moveTo(...P(-205, RAIL_Z));
-  c.lineTo(...P(205, RAIL_Z));
+  c.moveTo(...P(TUNNEL.w, RAIL_Z));
+  c.lineTo(...P(TUNNEL.e, RAIL_Z));
   c.stroke();
   c.setLineDash([6, 6]);
   c.strokeStyle = '#ffffff';
   c.lineWidth = 1.5;
   c.beginPath();
-  c.moveTo(...P(-205, RAIL_Z));
-  c.lineTo(...P(205, RAIL_Z));
+  c.moveTo(...P(TUNNEL.w, RAIL_Z));
+  c.lineTo(...P(TUNNEL.e, RAIL_Z));
   c.stroke();
   c.setLineDash([]);
   rect(STATION.platX0, STATION.platZ0, STATION.platX1, STATION.platZ1, '#c9c4ba');
   rect(STATION.x0, STATION.z0, STATION.x1, STATION.z1, '#9aa7b8');
+  // subway (dashed outline under the avenue) and its exits
+  c.setLineDash([4, 4]);
+  c.strokeStyle = '#2f6fb8';
+  c.lineWidth = 1.5;
+  {
+    const [ax, az] = P(SUBWAY.x0, SUBWAY.z0), [bx, bz] = P(SUBWAY.x1, SUBWAY.z1);
+    c.strokeRect(ax, az, bx - ax, bz - az);
+  }
+  c.setLineDash([]);
+  for (const e of SUBWAY.exits) rect(e.x0, e.z0, e.x1, e.z1, '#2f6fb8');
   // breakwater
   rect(BREAKWATER.x - BREAKWATER.w / 2, BREAKWATER.z0, BREAKWATER.x + BREAKWATER.w / 2, BREAKWATER.z1, '#d8d4ca');
   // crossings
@@ -350,11 +388,11 @@ export function drawMap(canvas, player, landmarks) {
   for (const x of CROSSINGS) {
     const [px, pz] = P(x, RAIL_Z);
     c.beginPath();
-    c.arc(px, pz, 5, 0, Math.PI * 2);
+    c.arc(px, pz, 4.5, 0, Math.PI * 2);
     c.fill();
   }
   // labels
-  c.font = `700 15px "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif`;
+  c.font = `700 14px "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif`;
   c.textAlign = 'center';
   const label = (txt, x, z, col = '#273049') => {
     const [px, pz] = P(x, z);
@@ -372,6 +410,13 @@ export function drawMap(canvas, player, landmarks) {
   label('桜ヶ浜海岸', 40, 88, '#2f6fb8');
   label('防波堤', BREAKWATER.x + 18, 150, '#2f6fb8');
   label('海岸通り', 120, 66.5);
+  label('桜川', RIVER.x, -70, '#2f6fb8');
+  label('飛び石', RIVER.x, STEPPING_Z + 6, '#2f6fb8');
+  label('西町', -192, -40);
+  label('桜ヶ浜中央', 270, -70, '#8a4a3a');
+  label('中央通り', 252, -100);
+  label('Ⓜ 桜ヶ浜中央駅', 252, -30, '#2f6fb8');
+  label('さくらモール', 274, 4, '#8a4a3a');
   for (const l of landmarks || []) if (l.id === 'sento') label('汐の湯', l.x, l.z + 6);
   // compass
   c.fillStyle = '#273049';

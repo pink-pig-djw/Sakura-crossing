@@ -427,12 +427,249 @@ export function createRoadMaterial() {
         } else if (style == 9) {
           // promenade: warm stone tiles
           albedo = applyPattern(vec3(0.6, 0.55, 0.49), 16.0, vUv * 2.0, vWorldPos, vNormalW);
+        } else if (style == 10) {
+          // riverside path: warm permeable paving with granite edge bands
+          vec3 earth = vec3(0.72, 0.64, 0.52) * (0.93 + 0.1 * vnoise(vWorldPos.xz * 0.9));
+          float speck = step(0.82, hash12(floor(vWorldPos.xz * 22.0)));
+          earth *= 1.0 - 0.12 * speck;
+          vec3 granite = applyPattern(vec3(0.66, 0.65, 0.62), 22.0, vUv * 1.5, vWorldPos, vNormalW);
+          float edge = 1.0 - band(u, 0.55, W - 0.55);
+          albedo = mix(earth, granite, edge);
+          // tree pit grates every few meters are drawn as geometry; faint wheel ruts here
+          albedo *= 1.0 - 0.05 * band(u, W * 0.5 - 0.9, W * 0.5 - 0.6) - 0.05 * band(u, W * 0.5 + 0.6, W * 0.5 + 0.9);
+        } else if (style == 11) {
+          // four-lane avenue: white edges, dashed lane lines, yellow center
+          float e = band(u, 0.3, 0.45) + band(u, W - 0.45, W - 0.3);
+          albedo = mix(albedo, white, e * wear);
+          float dash = step(fract(v / 10.0), 0.5);
+          float l = band(u, W * 0.25 - 0.07, W * 0.25 + 0.07) + band(u, W * 0.75 - 0.07, W * 0.75 + 0.07);
+          albedo = mix(albedo, white, l * dash * wear);
+          float c = band(u, W * 0.5 - 0.2, W * 0.5 - 0.07) + band(u, W * 0.5 + 0.07, W * 0.5 + 0.2);
+          albedo = mix(albedo, yellow, c * wear);
+        } else if (style == 12) {
+          // urban two-lane street: white edges + dashed center
+          float e = band(u, 0.25, 0.4) + band(u, W - 0.4, W - 0.25);
+          albedo = mix(albedo, white, e * wear);
+          float dash = step(fract(v / 8.0), 0.5);
+          albedo = mix(albedo, white, band(u, W * 0.5 - 0.07, W * 0.5 + 0.07) * dash * wear);
+        } else if (style == 13) {
+          // city sidewalk: two-tone interlocking blocks with a tactile strip
+          float row = floor(v / 0.2);
+          float ux = u + mod(row, 2.0) * 0.1;
+          float cell = hash12(vec2(floor(ux / 0.2), row));
+          vec3 pv = mix(vec3(0.7, 0.68, 0.64), vec3(0.62, 0.5, 0.44), step(0.72, cell));
+          pv *= 1.0 - 0.14 * max(aaLines(v, 0.2, 0.012), aaLines(ux, 0.2, 0.012));
+          pv *= 0.95 + 0.08 * vnoise(vWorldPos.xz * 0.7);
+          albedo = pv;
+          float ts = band(u, W * 0.5 - 0.15, W * 0.5 + 0.15);
+          albedo = mix(albedo, yellow * 0.92, ts * 0.9);
         }
         vec3 N = normalize(vNormalW);
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
         col = applyHaze(col, vWorldPos);
         gl_FragColor = vec4(col, uOutline);
+      }
+    `,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// River water: clear, shallow and flowing toward the sea, with drifting sakura
+// petals (花筏), foam on the weirs and shadows from banks, bridges and trees.
+// color.r = foam, color.g = flow speed scale, color.b = 0 at the walls .. 1 mid-channel
+// ---------------------------------------------------------------------------
+export function createRiverWaterMaterial() {
+  const uniforms = makeUniforms();
+  return new THREE.ShaderMaterial({
+    name: 'river',
+    lights: true,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: true,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.ZeroFactor,
+    blendDstAlpha: THREE.ZeroFactor,
+    uniforms,
+    vertexShader: /* glsl */ `
+      ${VERT_COMMON}
+      void main() {
+        ${VERT_MAIN}
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD}
+      uniform vec3 uZenith;
+      uniform vec3 uHorizon;
+      void main() {
+        vec2 p = vWorldPos.xz;
+        float t = uTime;
+        float speed = 0.45 + 0.9 * vColor.g;
+        float along = p.y - t * speed;
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        // flowing ripples (stretched across the current)
+        vec2 q = vec2(p.x * 0.8, along * 0.45);
+        float nx = vnoise(q * 1.3) - 0.5 + (vnoise(q * 3.3 + 7.1) - 0.5) * 0.5;
+        float nz = vnoise(q * 1.6 + 3.3) - 0.5 + (vnoise(q * 3.9 + 1.7) - 0.5) * 0.5;
+        vec3 N = normalize(vec3(nx * 0.22, 1.0, nz * 0.22));
+        float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+        vec3 R = reflect(-V, N);
+        vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.5));
+        float sh = getShadowMask();
+        float mid = vColor.b;
+        // clear green water: the pebbly bed shows through the shallows
+        vec3 shallow = vec3(0.3, 0.44, 0.38);
+        vec3 deep = vec3(0.1, 0.24, 0.27);
+        vec3 body = mix(shallow, deep, smoothstep(0.0, 1.0, mid));
+        body *= mix(uSkyAmb * 1.05, uSkyAmb + uSunColor, 0.3 + 0.7 * sh);
+        vec3 col = mix(body, sky * (0.55 + 0.45 * sh), 0.08 + 0.42 * fres);
+        // painted ripple strokes drifting downstream
+        float rip = vnoise(vec2(p.x * 0.32, along * 0.85));
+        float stroke = smoothstep(0.045, 0.0, abs(fract(rip * 5.0) - 0.5) - 0.455);
+        col = mix(col, col + vec3(0.2, 0.22, 0.22) * (0.4 + 0.6 * sh), stroke * 0.5 * (1.0 - uNight * 0.6));
+        // 花筏: petals drifting with the current, gathering into rafts near the banks
+        vec2 pc = vec2(p.x * 3.4, along * 3.4);
+        vec2 cell = floor(pc);
+        float h = hash12(cell);
+        float raft = smoothstep(0.52, 0.8, vnoise(vec2(p.x * 0.2, along * 0.1)) + (1.0 - mid) * 0.2);
+        float dens = mix(0.965, 0.55, raft);
+        vec2 off = vec2(hash12(cell + 3.1), hash12(cell + 7.7)) - 0.5;
+        float ang = hash12(cell + 11.3) * 6.2832;
+        vec2 lp = fract(pc) - 0.5 - off * 0.45;
+        lp = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * lp;
+        float petal = step(dens, h) * smoothstep(0.17, 0.12, length(lp * vec2(1.0, 1.55)));
+        vec3 petalCol = mix(vec3(1.0, 0.72, 0.82), vec3(1.0, 0.88, 0.92), hash12(cell + 5.5));
+        petalCol *= mix(uSkyAmb * 1.15, uSkyAmb + uSunColor, 0.35 + 0.65 * sh);
+        col = mix(col, petalCol, petal * 0.95);
+        // white water on the weirs: streaks running with the flow
+        float streaks = vnoise(vec2(p.x * 2.4, p.y * 0.35 - t * 1.6)) * 0.65 + vnoise(vec2(p.x * 6.0, p.y * 1.1 - t * 3.0)) * 0.35;
+        float foam = clamp(vColor.r * smoothstep(0.42, 0.82, streaks), 0.0, 0.88);
+        col = mix(col, col * 1.25 + vec3(0.06), vColor.r * 0.5); // aerated water on the slope
+        foam = max(foam, smoothstep(0.08, 0.0, mid) * smoothstep(0.6, 0.85, vnoise(p * 2.2 - vec2(0.0, t))) * 0.45);
+        col = mix(col, vec3(0.94, 0.97, 1.0) * mix(uSkyAmb * 1.25, uSkyAmb + uSunColor, 0.4 + 0.6 * sh), foam);
+        // sun glitter
+        float sd = max(dot(R, uSunDir), 0.0);
+        col += (uSunColor * 1.5 + uSunGlow) * pow(sd, 140.0) * 1.6 * sh * (1.0 - uNight);
+        col = applyHaze(col, vWorldPos);
+        float alpha = mix(0.5, 0.82, mid) + 0.15 * fres;
+        alpha = max(alpha, max(foam, petal * 0.95));
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Interiors: lit by ceiling lights instead of the sun (shops, stations, the
+// subway). Same vertex colors / patterns as the toon material.
+// ---------------------------------------------------------------------------
+export function createInteriorMaterial(opts = {}) {
+  const defines = {};
+  if (opts.map) defines.USE_TEXMAP = '';
+  if (opts.alphaTest) defines.ALPHA_TEST = opts.alphaTest.toFixed(3);
+  if (opts.emissiveFlag) defines.EMISSIVE_FLAG = '';
+  const uniforms = makeUniforms({ map: { value: opts.map || null }, uLight: { value: new THREE.Color(opts.light ?? 0xfff8ee) } });
+  uniforms.uOutline.value = opts.outline ?? 0.85;
+  return new THREE.ShaderMaterial({
+    name: opts.name || 'interior',
+    lights: true,
+    vertexColors: true,
+    defines,
+    uniforms,
+    side: opts.side ?? THREE.FrontSide,
+    vertexShader: /* glsl */ `
+      ${VERT_COMMON}
+      void main() {
+        ${VERT_MAIN}
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD}
+      ${PATTERNS}
+      uniform vec3 uLight;
+      #ifdef USE_TEXMAP
+        uniform sampler2D map;
+      #endif
+      void main() {
+        vec3 albedo = vColor;
+        float emis = 0.0;
+        #ifdef USE_TEXMAP
+          vec4 tx = texture2D(map, vUv);
+          #ifdef ALPHA_TEST
+            if (tx.a < ALPHA_TEST) discard;
+          #endif
+          albedo *= tx.rgb;
+          #ifdef EMISSIVE_FLAG
+            emis = vPattern;
+          #endif
+        #else
+          albedo = applyPattern(albedo, vPattern, vUv, vWorldPos, vNormalW);
+        #endif
+        vec3 N = normalize(vNormalW);
+        if (!gl_FrontFacing) N = -N;
+        // soft top light with a painted two-tone step on faces turned away from it
+        vec3 Ld = normalize(vec3(0.35, 0.85, 0.4));
+        float ndl = dot(N, Ld);
+        float lit = mix(0.74, 1.0, smoothstep(-0.12, 0.12, ndl));
+        float up = N.y * 0.5 + 0.5;
+        vec3 col = albedo * uLight * lit * (0.82 + 0.22 * up);
+        // ceilings slightly cooler / darker, like light bouncing from the floor
+        col *= mix(vec3(1.0), vec3(0.86, 0.88, 0.95), smoothstep(-0.6, -0.95, N.y));
+        col = mix(col, albedo * 1.25, clamp(emis, 0.0, 1.0));
+        col = applyHaze(col, vWorldPos);
+        gl_FragColor = vec4(col, uOutline);
+      }
+    `,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Clear glass (shop fronts, doors): sky reflection over a see-through pane.
+// Keeps the outline mask of whatever is behind it.
+// ---------------------------------------------------------------------------
+export function createGlassMaterial() {
+  const uniforms = makeUniforms();
+  return new THREE.ShaderMaterial({
+    name: 'glass',
+    lights: true,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.ZeroFactor,
+    blendDstAlpha: THREE.OneFactor,
+    uniforms,
+    vertexShader: /* glsl */ `
+      ${VERT_COMMON}
+      void main() {
+        ${VERT_MAIN}
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD}
+      uniform vec3 uZenith;
+      uniform vec3 uHorizon;
+      void main() {
+        vec3 N = normalize(vNormalW);
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        if (dot(N, V) < 0.0) N = -N;
+        float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
+        vec3 refl = mix(uHorizon, uZenith, 0.35 + 0.4 * clamp(vUv.y, 0.0, 1.0));
+        // diagonal highlight streaks across the pane
+        float sx = vWorldPos.x * 0.37 + vWorldPos.z * 0.37 + vWorldPos.y * 0.55;
+        float streak = smoothstep(0.07, 0.0, abs(fract(sx * 0.5) - 0.3) - 0.05) * 0.5 + smoothstep(0.025, 0.0, abs(fract(sx * 0.5) - 0.45) - 0.008) * 0.35;
+        vec3 col = mix(vec3(0.82, 0.9, 0.92), refl, 0.6) + streak * 0.35 * (1.0 - uNight * 0.85);
+        float a = 0.1 + 0.42 * fres + streak * 0.22;
+        a *= 1.0 - 0.55 * uNight;
+        col = applyHaze(col, vWorldPos);
+        gl_FragColor = vec4(col, a);
       }
     `,
   });

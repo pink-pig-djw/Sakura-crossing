@@ -240,7 +240,7 @@ export function buildTrees(ctx, specs) {
       const H = (big ? rng.range(7.5, 9.5) : rng.range(3.8, 4.8)) * s;
       const R = (big ? rng.range(3.8, 4.8) : rng.range(1.8, 2.4)) * s;
       const trunkH = (big ? rng.range(2.4, 3.0) : 1.3) * s;
-      const lean = V(rng.range(-0.15, 0.15), 1, rng.range(-0.15, 0.15));
+      const lean = V(rng.range(-0.15, 0.15) + (sp.lean ?? 0), 1, rng.range(-0.15, 0.15));
       const trunk = branchPath(base, lean, trunkH, 0.08, rng, 4);
       const r0 = (big ? 0.34 : 0.16) * s;
       tb.tube(trunk, trunk.map((_, i) => r0 * (1 - i * 0.08)), 7, 0x7a6660, PAT.BARK);
@@ -261,7 +261,7 @@ export function buildTrees(ctx, specs) {
       canopy(fol.get('blossom', sp.x, sp.z), cc, R, R * 0.58, SAKURA_COLS, rng, { cardSize: big ? [1.3, 2.0] : [0.9, 1.3], puffs: big ? 20 : 8, cardsPer: big ? 7 : 5, puffScale: big ? 1 : 0.65, flatBottom: -0.25 });
       ctx.colliders.addCircle(sp.x, sp.z, r0 + 0.12);
       ctx.ground.petals(sp.x, sp.z, R * 1.15, big ? 0.55 : 0.35);
-      if (sp.z > -135 && Math.abs(sp.x) < 150) emitters.push({ x: cc.x, y: cc.y, z: cc.z, r: R, ground: y0, big });
+      if (sp.z > -135 && sp.x > -245 && sp.x < 325) emitters.push({ x: cc.x, y: cc.y, z: cc.z, r: R, ground: y0, big });
     } else if (sp.kind === 'broadleaf' || sp.kind === 'shrubTree' || sp.kind === 'forest') {
       const small = sp.kind === 'shrubTree';
       const forest = sp.kind === 'forest';
