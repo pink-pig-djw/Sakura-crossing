@@ -3,6 +3,7 @@ import { RNG } from '../core/rng.js';
 import { PAT, MeshBuilder } from '../core/builder.js';
 import { groundH, SUBWAY } from './layout.js';
 import { bookcase, shopShelf, magazineRack } from './furnish.js';
+import { fitOut } from './shopinteriors.js';
 import { Kit, signOnFace, gableRoof, bicycle } from './kit.js';
 import { FONTS, drawBoard, drawVertical, fitText } from '../render/atlas.js';
 import { benchAt, bench } from './coast.js';
@@ -599,10 +600,14 @@ function buildCafe(ctx, block, doors) {
 // さくらモール (block C1): two floors around a skylit atrium with a sakura tree
 // ---------------------------------------------------------------------------
 const MALL_SHOPS = [
-  ['ブックス 汐風', 'BOOKS', '#2f4a3a', '#f6efe0'], ['ファッション Hana', 'FASHION', '#f6e0e8', '#8a2a4a'], ['雑貨 こもれび', 'ZAKKA', '#f3ead6', '#6a4a2a'],
-  ['スポーツ ウミカゼ', 'SPORTS', '#1f5fa8', '#ffffff'], ['靴 ステップ', 'SHOES', '#ffffff', '#2a2a2a'], ['めがね ミナト', 'EYEWEAR', '#e8f4fb', '#1f5fa8'],
-  ['おもちゃ ポップ', 'TOYS', '#ffe14a', '#c0392b'], ['家電 デンキヤ', 'ELECTRONICS', '#2a2a2a', '#ffe14a'], ['アクセサリー Luna', 'ACCESSORY', '#fbe8f0', '#a8325a'],
-  ['ドラッグ ハマ', 'DRUG', '#ffffff', '#2e8a4a'], ['キッチン雑貨 ハル', 'KITCHEN', '#fff6e0', '#c0392b'], ['CD & DVD 音の葉', 'MUSIC', '#20324a', '#9fd0f0'],
+  // 1F north, south, east
+  ['ブックス 汐風', 'BOOKS', '#2f4a3a', '#f6efe0', 'bigbooks'], ['ファッション Hana', 'FASHION', '#f6e0e8', '#8a2a4a', 'fashion'], ['雑貨 こもれび', 'ZAKKA', '#f3ead6', '#6a4a2a', 'zakka'],
+  ['ドラッグ ハマ', 'DRUG', '#ffffff', '#2e8a4a', 'drug'], ['靴 ステップ', 'SHOES', '#ffffff', '#2a2a2a', 'shoes'], ['めがね ミナト', 'EYEWEAR', '#e8f4fb', '#1f5fa8', 'eyewear'],
+  ['ペット ワンダフル', 'PET SHOP', '#fff3d6', '#c86a2a', 'pet'], ['キッチン雑貨 ハル', 'KITCHEN', '#fff6e0', '#c0392b', 'kitchen'], ['スポーツ ウミカゼ', 'SPORTS', '#1f5fa8', '#ffffff', 'sports'],
+  // 2F north, south, east
+  ['おもちゃ ポップ', 'TOYS', '#ffe14a', '#c0392b', 'toys'], ['ゲーム ハッピー', 'AMUSEMENT', '#2a1f4a', '#ffd84a', 'games'], ['家電 デンキヤ', 'ELECTRONICS', '#2a2a2a', '#ffe14a', 'electronics'],
+  ['アクセサリー Luna', 'ACCESSORY', '#fbe8f0', '#a8325a', 'accessory'], ['コスメ ミモザ', 'COSMETICS', '#fff0f4', '#c8507a', 'cosmetics'], ['バッグ 帆布堂', 'BAGS', '#e8dcc8', '#4a3a2a', 'bags'],
+  ['CD & DVD 音の葉', 'MUSIC', '#20324a', '#9fd0f0', 'music'], ['手芸 いとへん', 'CRAFT', '#f6efe0', '#7a4a8a', 'craft'], ['時計 カナエ', 'WATCH', '#1f2a3a', '#e8c86a', 'watch'],
 ];
 
 function mallShopSign(ctx, s) {
@@ -700,7 +705,8 @@ function buildMall(ctx, block, doors) {
     const c = ctx.colliders.addSegment(x, ST.z0, x, ST.z1, 0.15, y2 + 1.1);
     if (c) c.yBottom = y1 - 1;
   }
-  // shop fronts on both floors (fake interiors behind lit glass) with signs
+  // shop units on both floors: glass fronts with an open entrance and a fitted-out interior
+  // behind (every unit a different kind of shop), signs on the bulkhead above
   const fronts = [];
   // the north/south rows start east of the entrance hall so both doors open onto a clear floor
   const RX0 = 268.4;
@@ -708,42 +714,51 @@ function buildMall(ctx, block, doors) {
   const rowS = (yy) => [[RX0, 273.0], [273.4, 278.0], [278.4, M.x1 - D]].map(([a, b]) => ({ axis: 'x', c: M.z1 - D, a0: a, a1: b, dir: -1, y: yy }));
   const rowE = (yy) => [[M.z0 + D + 0.2, -0.6], [-0.2, 5.0], [5.4, M.z1 - D - 0.2]].map(([a, b]) => ({ axis: 'z', c: M.x1 - D, a0: a, a1: b, dir: -1, y: yy }));
   fronts.push(...rowN(y1), ...rowS(y1), ...rowE(y1), ...rowN(y2), ...rowS(y2), ...rowE(y2));
-  let si = 0;
-  for (const f of fronts) {
-    const s = MALL_SHOPS[si++ % MALL_SHOPS.length];
-    const fh = f.y === y1 ? f1 : f2;
+  const GL = 0.1; // the glass line, set back a little behind the pilasters
+  fronts.forEach((f, si) => {
+    const s = MALL_SHOPS[si % MALL_SHOPS.length];
+    const fh = f.y === y1 ? f1 - 0.5 : f2; // up to the slab above / the roof
+    const W = f.a1 - f.a0;
+    const door = W * [0.5, 0.3, 0.7][si % 3];
     const b = IB(f.axis === 'x' ? (f.a0 + f.a1) / 2 : f.c, f.axis === 'x' ? f.c : (f.a0 + f.a1) / 2);
-    // shop box behind the front (dark interior block keeps the gallery tidy)
-    if (f.axis === 'x') {
-      const zIn = f.c - f.dir * (D - 0.05);
-      b.boxMM(f.a0 - 0.2, f.y, Math.min(f.c, zIn), f.a1 + 0.2, f.y + fh - (f.y === y1 ? 0.5 : 0), Math.max(f.c, zIn), { color: 0xeae6dc, skip: f.dir > 0 ? 'Z' : 'z' });
-    } else {
-      const xIn = f.c - f.dir * (D - 0.05);
-      b.boxMM(Math.min(f.c, xIn), f.y, f.a0 - 0.2, Math.max(f.c, xIn), f.y + fh - (f.y === y1 ? 0.5 : 0), f.a1 + 0.2, { color: 0xeae6dc, skip: f.dir > 0 ? 'X' : 'x' });
+    // (a along the front, d behind it) -> world; local x of the shop frame -> a
+    const P = (a, d) => (f.axis === 'x' ? [a, f.c - f.dir * d] : [f.c - f.dir * d, a]);
+    const aOf = (lx) => ((f.axis === 'x') === f.dir > 0 ? f.a0 + lx : f.a1 - lx);
+    const slab = (a0, a1, d0, d1, yb, yt, color) => {
+      const [x0, z0] = P(a0, d0), [x1, z1] = P(a1, d1);
+      b.boxMM(Math.min(x0, x1), yb, Math.min(z0, z1), Math.max(x0, x1), yt, Math.max(z0, z1), { color });
+    };
+    const seg = (a0, d0, a1, d1, r) => {
+      const [x0, z0] = P(a0, d0), [x1, z1] = P(a1, d1);
+      const col = ctx.colliders.addSegment(x0, z0, x1, z1, r, f.y + fh);
+      if (col) col.yBottom = f.y - 0.5;
+    };
+    // pilasters/partitions either side, the bulkhead over the glass, a backing panel on the outer wall
+    slab(f.a0 - 0.2, f.a0, 0, D, f.y, f.y + fh, 0xeae6dc);
+    slab(f.a1, f.a1 + 0.2, 0, D, f.y, f.y + fh, 0xeae6dc);
+    slab(f.a0, f.a1, 0, 0.22, f.y + 2.85, f.y + fh, 0xeae6dc);
+    slab(f.a0, f.a1, D - 0.05, D - 0.02, f.y, f.y + fh, 0xeae6dc);
+    // glazing either side of the entrance: frames, kick plates, clear glass
+    const [e0, e1] = [aOf(door - 0.9), aOf(door + 0.9)].sort((p, q) => p - q);
+    const gb = ctx.builders.get('glass', ...P((f.a0 + f.a1) / 2, GL));
+    for (const [g0, g1] of [[f.a0, e0], [e1, f.a1]]) {
+      if (g1 - g0 < 0.05) continue;
+      const [x0, z0] = P(g0, GL), [x1, z1] = P(g1, GL);
+      gb.quad(V(x0, f.y + 0.12, z0), V(x1, f.y + 0.12, z1), V(x1, f.y + 2.85, z1), V(x0, f.y + 2.85, z0), 0xffffff, 0, { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
+      slab(g0, g1, GL - 0.04, GL + 0.04, f.y, f.y + 0.12, 0x8c9196);
+      const n = Math.max(1, Math.round((g1 - g0) / 1.4));
+      for (let k = 0; k <= n; k++) {
+        const a = g0 + ((g1 - g0) * k) / n;
+        slab(a - 0.03, a + 0.03, GL - 0.04, GL + 0.04, f.y, f.y + 2.85, 0x8c9196);
+      }
+      seg(g0 - (g0 === f.a0 ? 0.2 : 0), GL, g1 + (g1 === f.a1 ? 0.2 : 0), GL, 0.12);
     }
-    // glazing with a lit fake interior
-    const w = ctx.builders.get('window', f.axis === 'x' ? (f.a0 + f.a1) / 2 : f.c, f.axis === 'x' ? f.c : (f.a0 + f.a1) / 2);
-    const gy0 = f.y + 0.05, gy1 = f.y + 2.85;
-    if (f.axis === 'x') {
-      const zc = f.c + f.dir * 0.012;
-      const P = f.dir > 0 ? [V(f.a0, gy0, zc), V(f.a1, gy0, zc), V(f.a1, gy1, zc), V(f.a0, gy1, zc)] : [V(f.a1, gy0, zc), V(f.a0, gy0, zc), V(f.a0, gy1, zc), V(f.a1, gy1, zc)];
-      w.quad(P[0], P[1], P[2], P[3], 0xffffff, 150 + (si % 50), { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
-    } else {
-      const xc = f.c + f.dir * 0.012;
-      const P = f.dir > 0 ? [V(xc, gy0, f.a1), V(xc, gy0, f.a0), V(xc, gy1, f.a0), V(xc, gy1, f.a1)] : [V(xc, gy0, f.a0), V(xc, gy0, f.a1), V(xc, gy1, f.a1), V(xc, gy1, f.a0)];
-      w.quad(P[0], P[1], P[2], P[3], 0xffffff, 150 + (si % 50), { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] });
-    }
-    vsign(ctx, f.axis, f.c + f.dir * 0.02, f.a0 + 0.4, f.a1 - 0.4, f.y + 3.0, f.y + 3.0 + (f.a1 - f.a0 - 0.8) / 5.3, f.dir, mallShopSign(ctx, s), 0.9);
-    const col = f.axis === 'x' ? ctx.colliders.addSegment(f.a0 - 0.2, f.c, f.a1 + 0.2, f.c, 0.2, f.y + fh) : ctx.colliders.addSegment(f.c, f.a0 - 0.2, f.c, f.a1 + 0.2, 0.2, f.y + fh);
-    if (col) col.yBottom = f.y - 0.5;
-    const ix = f.axis === 'x' ? (f.a0 + f.a1) / 2 : f.c + f.dir * 1.0, iz = f.axis === 'x' ? f.c + f.dir * 1.0 : (f.a0 + f.a1) / 2;
-    ctx.interactables.push({ kind: 'mallshop', x: ix, z: iz, y: f.y, r: 1.8, label: `${s[0]}をのぞく`, shop: s[0], sub: s[1] });
-  }
-  // the exposed west ends of the north/south shop rows
-  for (const [za, zb] of [[M.z0, M.z0 + D], [M.z1 - D, M.z1]]) {
-    const col = ctx.colliders.addSegment(RX0 - 0.2, za, RX0 - 0.2, zb, 0.12, y2 + f2);
-    if (col) col.yBottom = y1 - 0.5;
-  }
+    slab(f.a0, f.a1, GL - 0.05, GL + 0.05, f.y + 2.82, f.y + 2.9, 0x8c9196);
+    seg(f.a0 - 0.1, 0, f.a0 - 0.1, D, 0.1);
+    seg(f.a1 + 0.1, 0, f.a1 + 0.1, D, 0.1);
+    vsign(ctx, f.axis, f.c + f.dir * 0.02, f.a0 + 0.4, f.a1 - 0.4, f.y + 3.0, f.y + 3.0 + (W - 0.8) / 5.3, f.dir, mallShopSign(ctx, s), 0.9);
+    fitOut(ctx, s[4], f.axis, f.c - f.dir * GL, f.a0, f.a1, f.dir, f.y, { D: D - 0.05 - GL, H: 3.0, door, v: si % 2, seed: 7100 + si * 31 });
+  });
   // sakura tree in a round planter under the skylight, with benches
   const tx = 273.9, tz = 2.5;
   const pb = IB(tx, tz);
@@ -1088,7 +1103,7 @@ function buildPlaza(ctx, block) {
 // ---------------------------------------------------------------------------
 function buildC2(ctx, block) {
   const lot = { x0: 270.6, x1: block.x1, z0: block.z0, z1: block.z1, front: 'W', seed: 77123 };
-  const res = midrise(ctx, lot, { floors: 6, style: 'panel', color: 0x3c3f58, shop: { name: 'GAME 汐風', sub: 'ゲームセンター・プリクラ', bg: '#2a2a6a', fg: '#ffe14a', font: 'bold' }, blade: false, exposed: { back: false } });
+  const res = midrise(ctx, lot, { floors: 6, style: 'panel', color: 0x3c3f58, shop: { kind: 'games', name: 'GAME 汐風', sub: 'ゲームセンター・プリクラ', bg: '#2a2a6a', fg: '#ffe14a', font: 'bold' }, blade: false, exposed: { back: false } });
   // a big vertical sign for the karaoke upstairs
   const uv = ctx.atlas2.draw('karaoke-blade', 96, 480, (c, w, h) => drawVertical(c, w, h, { text: 'カラオケハルカ', bg: '#c0392b', fg: '#ffe14a', font: FONTS.bold, border: '#ffe14a' }));
   const kit = new Kit(ctx, lot.x0, (lot.z0 + lot.z1) / 2);

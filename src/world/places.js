@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { terrainH, STATION, PLAZA, PARK, SHRINE, townH } from './layout.js';
-import { Kit, boxFaces, fp, faceBox, signOnFace, windowUnit, door, koshiDoor, gableRoof, hipRoof, leanTo, bicycle, potPlant, acUnit, FRAME, metalFence } from './kit.js';
-import { lotFrame, WALLS, ROOFS, stoneLantern } from './buildings.js';
+import { Kit, boxFaces, fp, faceBox, signOnFace, windowUnit, door, gableRoof, hipRoof, leanTo, bicycle, potPlant, acUnit, FRAME, metalFence } from './kit.js';
+import { lotFrame, WALLS, ROOFS, stoneLantern, collide } from './buildings.js';
+import { buildRoom } from './interiors.js';
+import { fitOut, SHOP_STYLE, entrySteps } from './shopinteriors.js';
 import { buildVending } from './props.js';
 import { benchAt } from './coast.js';
 import { FONTS, drawBoard, drawVertical, fitText, weather } from '../render/atlas.js';
@@ -564,10 +566,53 @@ export function buildShop(ctx, lot, index) {
   const f1 = 3.1, f2 = 2.6;
   const old = shop.kind === 'wagashi' || shop.kind === 'tofu' || shop.kind === 'liquor' || rng.chance(0.2);
   const wall = old ? '#e9e1cf' : rng.pick(WALLS);
-  t.box(0, (ymin - 0.4 + y0) / 2, cz, hw, y0 - ymin + 0.4, hd, { color: 0xa9a59c, pattern: PAT.CONCRETE });
+  // every shop but the empty one is a room you can walk into (its floor sits on the foundation)
+  const walkIn = shop.kind !== 'closed';
+  const yF = walkIn ? y0 - 0.02 : y0;
+  t.box(0, (ymin - 0.4 + yF) / 2, cz, hw, yF - ymin + 0.4, hd, { color: 0xa9a59c, pattern: PAT.CONCRETE });
   t.box(0, y0 + f1 + f2 / 2, cz, hw, f2, hd, { color: wall, pattern: old ? PAT.NONE : PAT.SIDING });
-  t.box(0, y0 + f1 / 2, cz + 0.6, hw, f1, hd - 1.2, { color: old ? 0x5d4636 : 0xd9d6cf, pattern: old ? PAT.BOARDS : PAT.TILE });
-  ctx.colliders.addBox(...L.toW(0, cz + 0.6), hw / 2, (hd - 1.2) / 2, L.ry);
+  // the door (local x): under the noren, clear of the terrace, the vending machine and the pole
+  // the shop takes the front ~5 m; the workroom and the family's rooms are behind it
+  const T = 0.15, ix0 = -hw / 2 + T, ix1 = hw / 2 - T, iz0 = 1.55 + T, iz1 = Math.min(cz + hd / 2 - T, iz0 + 5.2), iw = ix1 - ix0;
+  const dl = shop.noren ? 0 : shop.kind === 'cafe' ? -0.27 * iw : shop.kind === 'yorozuya' || shop.kind === 'liquor' || shop.kind === 'barber' ? 0.22 * iw : rng.pick([-0.22, 0, 0.22]) * iw;
+  const sDoor = hw / 2 - dl; // the door's position along F.front
+  // (built once the kit's lot transform is popped: buildRoom works in world space)
+  const room = () => {
+    const W = (lx, lz) => L.toW(lx, lz);
+    const wallQ = (a, b, n) => {
+      const p = W(a[0], a[1]), q = W(b[0], b[1]), o = W(0, 0), m = W(n[0], n[1]);
+      const vx = m[0] - o[0], vz = m[1] - o[1];
+      if (Math.abs(p[1] - q[1]) < 1e-3) return { axis: 'x', c: p[1], a0: Math.min(p[0], q[0]), a1: Math.max(p[0], q[0]), dir: Math.sign(vz) };
+      return { axis: 'z', c: p[0], a0: Math.min(p[1], q[1]), a1: Math.max(p[1], q[1]), dir: Math.sign(vx) };
+    };
+    const Q = wallQ([ix0, iz0], [ix1, iz0], [0, -1]);
+    const side = Q.axis === 'x' ? (Q.dir < 0 ? 'N' : 'S') : Q.dir < 0 ? 'W' : 'E';
+    const along = (lx) => W(lx, iz0)[Q.axis === 'x' ? 0 : 1];
+    const op = (la, lb, yb, yt, kind, extra) => ({ a0: Math.min(along(la), along(lb)), a1: Math.max(along(la), along(lb)), yb, yt, kind, ...extra });
+    const frame = old ? 0x5d4636 : 0x9aa0a6;
+    const open = { N: [], S: [], W: [], E: [] };
+    open[side].push(op(dl - 0.8, dl + 0.8, 0, 2.35, 'door', { frame }));
+    for (const [a, b] of [[ix0 + 0.3, dl - 0.95], [dl + 0.95, ix1 - 0.3]]) if (b - a > 0.6) open[side].push(op(a, b, 0.15, 2.35, 'glass', { frame, pitch: old ? 0.6 : 1.3 }));
+    const [rx0, rz0, rx1, rz1] = L.rectW(ix0, iz0, ix1, iz1);
+    const [floor, floorPat, inC] = SHOP_STYLE[shop.kind];
+    buildRoom(ctx, { name: 'shop', x0: rx0, x1: rx1, z0: rz0, z1: rz1, y: y0, h: f1, t: T, out: old ? 0x5d4636 : 0xd9d6cf, outPat: old ? PAT.BOARDS : PAT.TILE, inC, floor, floorPat, ceil: false, roof: false, base: 0xa9a59c, open });
+    // the porch under the eaves, steps up to it on a slope
+    ctx.colliders.addSurface(...L.rectW(-hw / 2, 0.35, hw / 2, iz0), () => yF, 1);
+    entrySteps(ctx, L, dl, 0.35, 2.0, yF);
+    (ctx.shopDoors ||= []).push({ kind: shop.kind, at: W(dl, iz0 - T / 2), out: [W(dl, -1)[0] - W(dl, 0)[0], W(dl, -1)[1] - W(dl, 0)[1]], y: y0 });
+    const a = along(dl);
+    fitOut(ctx, shop.kind, Q.axis, Q.c, Q.a0, Q.a1, Q.dir, y0, { D: iz1 - iz0, H: f1 - 0.03, door: (Q.axis === 'x') === Q.dir > 0 ? a - Q.a0 : Q.a1 - a, seed: lot.seed, floor: false, walls: 'none' });
+  };
+  if (walkIn) {
+    const zb = iz1 + T, ze = cz + hd / 2;
+    if (ze - zb > 0.3) {
+      t.box(0, y0 + f1 / 2, (zb + ze) / 2, hw, f1, ze - zb, { color: old ? 0x5d4636 : 0xd9d6cf, pattern: old ? PAT.BOARDS : PAT.TILE });
+      collide(ctx, L, 0, (zb + ze) / 2, hw, ze - zb, y0 + f1);
+    }
+  } else {
+    t.box(0, y0 + f1 / 2, cz + 0.6, hw, f1, hd - 1.2, { color: old ? 0x5d4636 : 0xd9d6cf, pattern: old ? PAT.BOARDS : PAT.TILE });
+    ctx.colliders.addBox(...L.toW(0, cz + 0.6), hw / 2, (hd - 1.2) / 2, L.ry);
+  }
   // roof
   if (old) gableRoof(t, 0, cz, hw, hd, y0 + f1 + f2, { color: '#5f6a78', pattern: PAT.KAWARA, wallColor: wall, slope: 0.5, ox: 0.15, oz: 0.6, fascia: 0x5d4636, th: 0.2 });
   else {
@@ -577,13 +622,7 @@ export function buildShop(ctx, lot, index) {
   const F = boxFaces(0, y0, cz + 0.6, hw, hd - 1.2);
   const F2 = boxFaces(0, y0, cz, hw, hd);
   // shop front: glass sliding doors / open front
-  if (shop.kind === 'closed') {
-    faceBox(t, F.front, hw / 2, 0, hw - 0.6, f1 - 0.5, 0.05, 0.03, 0xb8bcc0, PAT.CORRUGATED);
-  } else if (shop.kind === 'wagashi' || shop.kind === 'tofu' || shop.kind === 'liquor') {
-    koshiDoor(kit, F.front, hw / 2, 0, Math.min(3.2, hw - 1.2), 2.3, 0x5d4636);
-  } else {
-    windowUnit(kit, F.front, hw / 2, 0.05, hw - 1.0, 2.35, { seed: 150 + (index % 50), frame: FRAME.silver, fixed: true });
-  }
+  if (shop.kind === 'closed') faceBox(t, F.front, hw / 2, 0, hw - 0.6, f1 - 0.5, 0.05, 0.03, 0xb8bcc0, PAT.CORRUGATED);
   // second floor windows
   windowUnit(kit, F2.front, hw / 2, f1 + 0.7, Math.min(2.2, hw - 1.6), 1.15, { rng, frame: old ? FRAME.wood : FRAME.alu, shutterCase: old && rng.chance(0.5) });
   // overhang/eave over the shop front
@@ -628,15 +667,21 @@ export function buildShop(ctx, lot, index) {
     t.box(p.x, f1 + y0 + 1.27, p.z, 0.06, 1.85, 0.06, { color: 0x555555 });
   }
   // shop interiors: lit at night through the windows (window shader handles), goods outside
-  goods(ctx, t, F.front, 0.6, hw - 0.6, shop.kind, rng);
+  // goods out on the porch either side of the door
+  for (const [s0, s1] of [[0.6, sDoor - 1.15], [sDoor + 1.15, hw - 0.6]]) {
+    if (s1 - s0 < 0.1 || !['grocer', 'florist', 'fish', 'dagashi', 'yorozuya'].includes(shop.kind)) continue;
+    goods(ctx, t, F.front, s0, s1, shop.kind, rng);
+    const e = s0 + Math.floor((s1 - s0) / 0.75) * 0.75;
+    collide(ctx, L, hw / 2 - (s0 + e) / 2, 1.0, e - s0 + 0.6, 0.5, y0 + 0.9);
+  }
   if (shop.kind === 'cafe') {
     // terrace tables
     for (let i = 0; i < 2; i++) {
-      const p = fp(F.front, 1.2 + i * 2.2, 0, 0.9);
+      const p = fp(F.front, 1.1 + i * 1.6, 0, 0.9);
       t.cyl(p.x, p.y, p.z, 0.04, 0.04, 0.72, 6, 0x333);
       t.cyl(p.x, p.y + 0.72, p.z, 0.36, 0.36, 0.04, 12, 0xf0ece4);
       for (const e of [-1, 1]) {
-        const q = fp(F.front, 1.2 + i * 2.2 + e * 0.55, 0, 0.9);
+        const q = fp(F.front, 1.1 + i * 1.6 + e * 0.55, 0, 0.9);
         t.box(q.x, q.y + 0.44, q.z, 0.38, 0.05, 0.38, { color: 0x4a3a2a });
         t.box(q.x, q.y + 0.22, q.z, 0.05, 0.44, 0.05, { color: 0x333 });
       }
@@ -678,8 +723,9 @@ export function buildShop(ctx, lot, index) {
   ctx.lanternAnchors = ctx.lanternAnchors || [];
   ctx.lanternAnchors.push({ x: L.toW(top.x, top.z)[0], y: top.y, z: L.toW(top.x, top.z)[1], street: lot.street });
   if (shop.kind === 'cafe') ctx.landmarks.push({ id: 'cafe', name: shop.name, x: L.ox, z: L.oz });
-  ctx.interactables.push({ kind: 'shop', x: L.toW(0, -0.6)[0], z: L.toW(0, -0.6)[1], r: 1.6, label: shop.kind === 'closed' ? '貸店舗の貼り紙を見る' : `${shop.name}をのぞく`, shop: shop.name, shopKind: shop.kind });
+  if (!walkIn) ctx.interactables.push({ kind: 'shop', x: L.toW(0, -0.6)[0], z: L.toW(0, -0.6)[1], r: 1.6, label: '貸店舗の貼り紙を見る', shop: shop.name, shopKind: shop.kind });
   kit.end();
+  if (walkIn) room();
 }
 
 export function buildShotengai(ctx) {

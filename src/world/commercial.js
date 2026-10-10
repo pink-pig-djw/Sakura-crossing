@@ -9,6 +9,8 @@ import { FONTS, drawBoard, fitText } from '../render/atlas.js';
 import { benchAt } from './coast.js';
 import { roadSurfaceY } from './roads.js';
 import { shrub, AZALEA } from './greenery.js';
+import { buildRoom } from './interiors.js';
+import { fitOut, SHOP_STYLE, entrySteps } from './shopinteriors.js';
 
 // 桜ヶ浜中央: the newer commercial district on the east bank. Mid-rise mixed-use
 // buildings (雑居ビル) with shops on the ground floor, office glazing above, blade
@@ -27,27 +29,43 @@ const FACADES = {
 };
 
 export const GROUND_SHOPS = [
-  { name: 'ベーカリー ひだまり', sub: 'BAKERY', bg: '#f6e7c8', fg: '#7a4a1f', font: 'maru', awning: ['#d98a3a', '#f8f0dc'] },
-  { name: 'ドラッグ ハマ', sub: 'くすり・日用品', bg: '#ffffff', fg: '#1f6fd0', font: 'bold' },
-  { name: '書店 汐風堂', sub: '本・文具・CD', bg: '#2f4a3a', fg: '#f6efe0', font: 'mincho' },
-  { name: 'メガネのミナト', sub: 'EYEWEAR', bg: '#ffffff', fg: '#2a2a2a', font: 'gothic' },
-  { name: 'フラワー ブーケ', sub: 'FLOWER', bg: '#ffffff', fg: '#3a7a4a', font: 'maru', awning: ['#5aa06a', '#ffffff'] },
-  { name: 'らーめん 桜川', sub: '醤油・塩・味噌', bg: '#c0392b', fg: '#fff6dc', font: 'bold' },
-  { name: '牛丼 はま屋', sub: 'うまい・はやい', bg: '#f08a24', fg: '#ffffff', font: 'bold' },
-  { name: 'クレープ 春風', sub: 'CREPE & ICE', bg: '#ffd6e4', fg: '#a8325a', font: 'maru', awning: ['#f39ab8', '#ffffff'] },
-  { name: '生活雑貨 くらしや', sub: '100円〜', bg: '#ffe14a', fg: '#c0392b', font: 'bold' },
-  { name: 'ケーキ工房 ペタル', sub: 'PÂTISSERIE', bg: '#fbf4ee', fg: '#8a5a6a', font: 'mincho', awning: ['#c98aa0', '#fbf4ee'] },
-  { name: '和食 さくら亭', sub: 'お食事処', bg: '#3a2a1f', fg: '#f6e7c0', font: 'brush' },
-  { name: '焼肉 ほむら', sub: '炭火焼肉', bg: '#1f1f1f', fg: '#ff8a3a', font: 'bold' },
-  { name: '靴のサカエ', sub: 'SHOES', bg: '#ffffff', fg: '#2a4a8a', font: 'gothic' },
-  { name: 'セレクト MODE', sub: 'FASHION', bg: '#2a2a2a', fg: '#ffffff', font: 'latin' },
-  { name: 'さくら不動産', sub: '賃貸・売買', bg: '#ffffff', fg: '#2e8a4a', font: 'gothic' },
-  { name: 'コインランドリー', sub: '24h', bg: '#e8f4fb', fg: '#1f5fa8', font: 'gothic' },
-  { name: 'お茶の千代園', sub: '日本茶・茶器', bg: '#2f5a3a', fg: '#f2e6c8', font: 'mincho' },
-  { name: '居酒屋 海まる', sub: '地魚と地酒', bg: '#1d3a6a', fg: '#ffffff', font: 'brush' },
-  { name: 'カフェ ブロッサム', sub: 'COFFEE', bg: '#f3ead6', fg: '#6a3a2a', font: 'maru', awning: ['#6a8a5a', '#f3ead6'] },
-  { name: 'スマホ修理', sub: '即日対応', bg: '#ffffff', fg: '#e8432e', font: 'gothic' },
+  { kind: 'bakery', name: 'ベーカリー ひだまり', sub: 'BAKERY', bg: '#f6e7c8', fg: '#7a4a1f', font: 'maru', awning: ['#d98a3a', '#f8f0dc'] },
+  { kind: 'drug', name: 'ドラッグ ハマ', sub: 'くすり・日用品', bg: '#ffffff', fg: '#1f6fd0', font: 'bold' },
+  { kind: 'books', name: '書店 汐風堂', sub: '本・文具・CD', bg: '#2f4a3a', fg: '#f6efe0', font: 'mincho' },
+  { kind: 'eyewear', name: 'メガネのミナト', sub: 'EYEWEAR', bg: '#ffffff', fg: '#2a2a2a', font: 'gothic' },
+  { kind: 'florist', name: 'フラワー ブーケ', sub: 'FLOWER', bg: '#ffffff', fg: '#3a7a4a', font: 'maru', awning: ['#5aa06a', '#ffffff'] },
+  { kind: 'ramen', name: 'らーめん 桜川', sub: '醤油・塩・味噌', bg: '#c0392b', fg: '#fff6dc', font: 'bold' },
+  { kind: 'gyudon', name: '牛丼 はま屋', sub: 'うまい・はやい', bg: '#f08a24', fg: '#ffffff', font: 'bold' },
+  { kind: 'crepe', name: 'クレープ 春風', sub: 'CREPE & ICE', bg: '#ffd6e4', fg: '#a8325a', font: 'maru', awning: ['#f39ab8', '#ffffff'] },
+  { kind: 'zakka100', name: '生活雑貨 くらしや', sub: '100円〜', bg: '#ffe14a', fg: '#c0392b', font: 'bold' },
+  { kind: 'cake', name: 'ケーキ工房 ペタル', sub: 'PÂTISSERIE', bg: '#fbf4ee', fg: '#8a5a6a', font: 'mincho', awning: ['#c98aa0', '#fbf4ee'] },
+  { kind: 'washoku', name: '和食 さくら亭', sub: 'お食事処', bg: '#3a2a1f', fg: '#f6e7c0', font: 'brush' },
+  { kind: 'yakiniku', name: '焼肉 ほむら', sub: '炭火焼肉', bg: '#1f1f1f', fg: '#ff8a3a', font: 'bold' },
+  { kind: 'shoes', name: '靴のサカエ', sub: 'SHOES', bg: '#ffffff', fg: '#2a4a8a', font: 'gothic' },
+  { kind: 'fashion', name: 'セレクト MODE', sub: 'FASHION', bg: '#2a2a2a', fg: '#ffffff', font: 'latin' },
+  { kind: 'realestate', name: 'さくら不動産', sub: '賃貸・売買', bg: '#ffffff', fg: '#2e8a4a', font: 'gothic' },
+  { kind: 'laundry', name: 'コインランドリー', sub: '24h', bg: '#e8f4fb', fg: '#1f5fa8', font: 'gothic' },
+  { kind: 'tea', name: 'お茶の千代園', sub: '日本茶・茶器', bg: '#2f5a3a', fg: '#f2e6c8', font: 'mincho' },
+  { kind: 'izakaya', name: '居酒屋 海まる', sub: '地魚と地酒', bg: '#1d3a6a', fg: '#ffffff', font: 'brush' },
+  { kind: 'cafe', name: 'カフェ ブロッサム', sub: 'COFFEE', bg: '#f3ead6', fg: '#6a3a2a', font: 'maru', awning: ['#6a8a5a', '#f3ead6'] },
+  { kind: 'phone', name: 'スマホ修理', sub: '即日対応', bg: '#ffffff', fg: '#e8432e', font: 'gothic' },
 ];
+
+// tenants are dealt from a shuffled deck so the district's ground floors rarely repeat;
+// a repeat gets the other layout variant
+let deck = null, dealt = 0;
+const kindCount = new Map();
+function dealShop() {
+  if (!deck) {
+    const r = new RNG(4242);
+    deck = GROUND_SHOPS.slice();
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = r.int(0, i);
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+  }
+  return deck[dealt++ % deck.length];
+}
 
 const UPPER = [
   ['歯科', '#ffffff', '#1f6fd0'], ['学習塾', '#ffe14a', '#c0392b'], ['英会話', '#e8f4fb', '#1f5fa8'], ['整骨院', '#ffffff', '#2e8a4a'],
@@ -146,18 +164,21 @@ function billboardUV(ctx, text, sub, bg, fg) {
 
 // Ground floor shop front: a lit shop window (fake interior in the window shader), a sign
 // band and an awning; the upper floors get a lobby door at one end.
+// A walk-in shop (o.walkIn) has real glazing in its room's front wall instead.
 function storefront(ctx, kit, face, y0rel, g, shop, rng, o = {}) {
   const len = face.len;
   const lobby = o.lobby ?? true;
-  const s0 = 0.35, s1 = lobby ? len - 1.9 : len - 0.35;
+  const s0 = o.s0 ?? 0.35, s1 = o.s1 ?? (lobby ? len - 1.9 : len - 0.35);
   const w = s1 - s0;
   const d = kit.d;
-  // shop glazing with aluminium frame and mullions
-  faceQuad(kit.w, face, (s0 + s1) / 2, y0rel + 0.08, w, g - 1.45, 0.012, 0xffffff, 150 + rng.int(0, 49), [[0, 0], [1, 0], [1, 1], [0, 1]]);
-  faceBox(d, face, (s0 + s1) / 2, y0rel, w + 0.1, 0.1, 0.12, 0.06, 0x9ba1a7);
-  faceBox(d, face, (s0 + s1) / 2, y0rel + g - 1.38, w + 0.1, 0.08, 0.12, 0.06, 0x9ba1a7);
-  const n = Math.max(1, Math.round(w / 2.2));
-  for (let k = 0; k <= n; k++) faceBox(d, face, s0 + (w * k) / n, y0rel, 0.07, g - 1.3, 0.1, 0.06, 0x9ba1a7);
+  if (!o.walkIn) {
+    // shop glazing with aluminium frame and mullions
+    faceQuad(kit.w, face, (s0 + s1) / 2, y0rel + 0.08, w, g - 1.45, 0.012, 0xffffff, 150 + rng.int(0, 49), [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    faceBox(d, face, (s0 + s1) / 2, y0rel, w + 0.1, 0.1, 0.12, 0.06, 0x9ba1a7);
+    faceBox(d, face, (s0 + s1) / 2, y0rel + g - 1.38, w + 0.1, 0.08, 0.12, 0.06, 0x9ba1a7);
+    const n = Math.max(1, Math.round(w / 2.2));
+    for (let k = 0; k <= n; k++) faceBox(d, face, s0 + (w * k) / n, y0rel, 0.07, g - 1.3, 0.1, 0.06, 0x9ba1a7);
+  }
   // sign band: fascia across the front with the shop board centred on it
   const uv = shopBoard(ctx, shop);
   faceBox(kit.t, face, (s0 + s1) / 2, y0rel + g - 1.28, w + 0.2, 1.08, 0.14, 0.14, 0x3a3c40);
@@ -200,15 +221,64 @@ export function midrise(ctx, lot, o = {}) {
   const style = o.style ?? rng.weighted([['tile', 4], ['panel', 2], ['glass', 1.4], ['brick', 1], ['white', 1.5]]);
   const fac = FACADES[style];
   const wall = o.color ?? rng.pick(fac.colors);
-  t.box(cx, (pad.bottom - 0.6 + y0) / 2, cz, hw + 0.1, y0 - pad.bottom + 0.6, hd + 0.1, { color: 0x9e9a92, pattern: PAT.CONCRETE });
-  t.box(cx, y0 + H / 2, cz, hw, H, hd, { color: wall, pattern: fac.pat, ao: 0.05 });
-  collide(ctx, L, cx, cz, hw + 0.1, hd + 0.1);
+  const shop = o.shop ?? dealShop();
+  const lobby = floors > 1;
+  // the ground floor is a shop you can walk into: a room behind the front (the lobby strip
+  // and the back of the floor stay solid), the floors above sit on top of it
+  const walkIn = !!shop.kind && hd > 4;
+  const yF = walkIn ? y0 - 0.02 : y0;
+  t.box(cx, (pad.bottom - 0.6 + yF) / 2, cz, hw + 0.1, yF - pad.bottom + 0.6, hd + 0.1, { color: 0x9e9a92, pattern: PAT.CONCRETE });
+  const T = 0.35, ix0 = -hw / 2 + (lobby ? 1.9 : T), ix1 = hw / 2 - T, iz0 = front + T, iz1 = front + Math.min(hd - 0.8, 7.0), iw = ix1 - ix0;
+  const dl = (ix0 + ix1) / 2 + rng.pick([-0.25, 0, 0.25]) * Math.max(0, iw - 2.4);
+  if (walkIn) {
+    if (H > g) t.box(cx, y0 + g + (H - g) / 2, cz, hw, H - g, hd, { color: wall, pattern: fac.pat, ao: 0.05 });
+    const solid = (x0, z0, x1, z1) => {
+      if (x1 - x0 < 0.05 || z1 - z0 < 0.05) return;
+      t.box((x0 + x1) / 2, y0 + g / 2, (z0 + z1) / 2, x1 - x0, g, z1 - z0, { color: wall, pattern: fac.pat, ao: 0.05 });
+      collide(ctx, L, (x0 + x1) / 2, (z0 + z1) / 2, x1 - x0 + 0.1, z1 - z0 + 0.1, y0 + H);
+    };
+    solid(-hw / 2, front, ix0 - T, iz1 + T); // the lobby strip
+    solid(-hw / 2, iz1 + T, hw / 2, front + hd); // the back of the floor
+    if (H > g) ctx.colliders.addBox(...L.toW(cx, cz), (hw + 0.1) / 2, (hd + 0.1) / 2, L.ry, y0 + H, y0 + g - 0.3);
+  } else {
+    t.box(cx, y0 + H / 2, cz, hw, H, hd, { color: wall, pattern: fac.pat, ao: 0.05 });
+    collide(ctx, L, cx, cz, hw + 0.1, hd + 0.1);
+  }
   const F = boxFaces(cx, y0, cz, hw, hd);
   const exposed = { front: true, left: true, right: true, back: true, ...(o.exposed || {}) };
   // ground floor
-  const shop = o.shop ?? rng.pick(GROUND_SHOPS);
-  storefront(ctx, kit, F.front, 0, g, shop, rng, { lobby: floors > 1 });
-  if (o.corner) storefront(ctx, kit, o.corner === 'left' ? F.left : F.right, 0, g, rng.pick(GROUND_SHOPS), rng, { lobby: false });
+  storefront(ctx, kit, F.front, 0, g, shop, rng, { lobby, walkIn });
+  // a corner shop round the side, behind the walk-in room
+  const cs0 = walkIn ? iz1 + T + 0.35 - front : 0.35;
+  if (o.corner && hd - 0.35 - cs0 > 2.5) storefront(ctx, kit, o.corner === 'left' ? F.left : F.right, 0, g, rng.pick(GROUND_SHOPS), rng, { lobby: false, s0: o.corner === 'left' ? cs0 : 0.35, s1: o.corner === 'left' ? hd - 0.35 : hd - cs0 });
+  const room = () => {
+    const W = (lx, lz) => L.toW(lx, lz);
+    const wallQ = (a, b, n) => {
+      const p = W(a[0], a[1]), q = W(b[0], b[1]), oo = W(0, 0), m = W(n[0], n[1]);
+      const vx = m[0] - oo[0], vz = m[1] - oo[1];
+      if (Math.abs(p[1] - q[1]) < 1e-3) return { axis: 'x', c: p[1], a0: Math.min(p[0], q[0]), a1: Math.max(p[0], q[0]), dir: Math.sign(vz) };
+      return { axis: 'z', c: p[0], a0: Math.min(p[1], q[1]), a1: Math.max(p[1], q[1]), dir: Math.sign(vx) };
+    };
+    const Q = wallQ([ix0, iz0], [ix1, iz0], [0, -1]);
+    const side = Q.axis === 'x' ? (Q.dir < 0 ? 'N' : 'S') : Q.dir < 0 ? 'W' : 'E';
+    const along = (lx) => W(lx, iz0)[Q.axis === 'x' ? 0 : 1];
+    const op = (la, lb, yb, yt, kind, extra) => ({ a0: Math.min(along(la), along(lb)), a1: Math.max(along(la), along(lb)), yb, yt, kind, ...extra });
+    const open = { N: [], S: [], W: [], E: [] };
+    open[side].push(op(dl - 0.8, dl + 0.8, 0, 2.3, 'door', { frame: 0x9ba1a7 }));
+    for (const [a, b] of [[ix0 + 0.05, dl - 0.85], [dl + 0.85, ix1 - 0.05]]) if (b - a > 0.5) open[side].push(op(a, b, 0.08, 2.83, 'glass', { frame: 0x9ba1a7, pitch: 2.2 }));
+    const [rx0, rz0, rx1, rz1] = L.rectW(ix0, iz0, ix1, iz1);
+    const [floor, floorPat, inC] = SHOP_STYLE[shop.kind];
+    buildRoom(ctx, { name: 'shop', x0: rx0, x1: rx1, z0: rz0, z1: rz1, y: y0, h: g, t: T, out: wall, outPat: fac.pat, inC, floor, floorPat, ceil: false, roof: false, base: 0x9e9a92, open });
+    entrySteps(ctx, L, dl, front, 2.2, y0);
+    (ctx.shopDoors ||= []).push({ kind: shop.kind, at: W(dl, iz0 - T / 2), out: [W(dl, -1)[0] - W(dl, 0)[0], W(dl, -1)[1] - W(dl, 0)[1]], y: y0 });
+    // automatic sliding doors in the entrance
+    const [dx, dz] = W(dl, iz0 - T / 2);
+    ctx.autoDoors?.add(ctx, dx, dz, Q.axis, y0, { chime: false, name: 'shop', w: 1.6, h: 2.3 });
+    const a = along(dl);
+    const nth = kindCount.get(shop.kind) ?? 0;
+    kindCount.set(shop.kind, nth + 1);
+    fitOut(ctx, shop.kind, Q.axis, Q.c, Q.a0, Q.a1, Q.dir, y0, { D: iz1 - iz0, H: 3.0, door: (Q.axis === 'x') === Q.dir > 0 ? a - Q.a0 : Q.a1 - a, v: nth % 2, seed: lot.seed || 7, floor: false, walls: 'none' });
+  };
   // upper floors: one glazing pane per floor and face, piers in front for a punched-window look
   const seed = rng.int(0, 255);
   for (const key of ['front', 'left', 'right', 'back']) {
@@ -275,8 +345,9 @@ export function midrise(ctx, lot, o = {}) {
     const uv = ctx.atlas2.draw('bname:' + nm, 256, 56, (c, w, h) => drawBoard(c, w, h, { text: nm, bg: '#3b3f46', fg: '#e9e2cf', font: FONTS.mincho, weather: false }));
     signOnFace(kit, F.front, hw - 1.05, 2.75, 1.4, 0.32, 0.03, uv, 0.5);
   }
-  ctx.interactables.push({ kind: 'shop', x: L.toW(cx, -0.7)[0], z: L.toW(cx, -0.7)[1], r: 1.6, label: `${shop.name}をのぞく`, shop: shop.name, shopKind: 'city', text: shop.sub });
+  if (!walkIn) ctx.interactables.push({ kind: 'shop', x: L.toW(cx, -0.7)[0], z: L.toW(cx, -0.7)[1], r: 1.6, label: `${shop.name}をのぞく`, shop: shop.name, shopKind: 'city', text: shop.sub });
   kit.end();
+  if (walkIn) room();
   return { L, y0, H, top, hw, hd, cz };
 }
 

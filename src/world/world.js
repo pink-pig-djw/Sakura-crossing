@@ -190,9 +190,9 @@ export async function buildWorld(scene, opts = {}) {
   await tick();
   AUDIT.tag = 'interiors';
   const interiors = buildInteriors(ctx, scene);
+  ctx.autoDoors = interiors.doors;
   AUDIT.tag = 'commercial';
   buildCommercial(ctx, interiors.specials);
-  ctx.autoDoors = interiors.doors;
   AUDIT.tag = 'eastside';
   buildEastside(ctx, interiors.doors);
   AUDIT.tag = 'sento';
@@ -232,14 +232,14 @@ export async function buildWorld(scene, opts = {}) {
   const group = new THREE.Group();
   group.name = 'static';
   const built = ctx.builders.build(materials, group);
-  // shelf and locker contents are only drawn within ~70 m: from further away they are a
-  // few pixels behind glass
+  // shelf and locker contents (and the shops' fittings) are only drawn within ~55 m: from
+  // further away they are a few pixels behind glass
   const rooms = built.filter((m) => m.name.startsWith('props')).map((m) => {
     m.geometry.computeBoundingSphere();
     return { m, c: m.geometry.boundingSphere.center, r: m.geometry.boundingSphere.radius };
   });
   ctx.cullInteriors = (cam) => {
-    for (const it of rooms) it.m.visible = it.c.distanceTo(cam) - it.r < 70;
+    for (const it of rooms) it.m.visible = it.c.distanceTo(cam) - it.r < 55;
   };
   scene.add(group);
   interiors.finalize();

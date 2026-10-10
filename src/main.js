@@ -219,6 +219,56 @@ const SHOP_LINES = {
   stationery: 'ノートと色鉛筆。少しだけ文化祭の匂い。',
   closed: '「貸店舗」の貼り紙。シャッターに花びらが一枚。',
 };
+// up at the counter inside a shop
+const SHOP_IN = {
+  wagashi: '桜もちを二つ包んでもらった。葉っぱのいい香り。',
+  cafe: '「ブレンドをひとつ」——サイフォンがこぽこぽ鳴りはじめた。',
+  yorozuya: '「あら、いらっしゃい。ラムネ冷えてるよ」',
+  bakery: 'メロンパンとクロワッサンをトレーにのせた。まだ温かい。',
+  florist: 'フリージアとかすみ草で小さな花束を作ってもらった。',
+  fish: '「今日はシラスがいいよ。釜揚げもあるよ」',
+  books: '新刊の文庫を一冊買った。カバーをかけてもらう。',
+  grocer: '春キャベツをひと玉買った。ずっしり重い。',
+  ramen: '醤油ラーメンの食券を買った。「はい、醤油一丁！」',
+  dagashi: 'きなこ棒とラムネ菓子。合わせて60円。',
+  barber: '「今日は混んでるから、また夕方においで」',
+  cleaning: 'ビニールに包まれたブラウスを受け取った。アイロンがぴしっとしている。',
+  liquor: '桜ラベルの地酒が並んでいる。……大人になったら飲んでみたい。',
+  pharmacy: '「花粉症ですか？　この目薬がよく効きますよ」',
+  watch: '小さな腕時計を見せてもらった。秒針の音がかすかに聞こえる。',
+  tofu: '絹ごし豆腐を一丁。水槽から手ですくってくれた。',
+  stationery: '桜色のペンで試し書きした。「はるのうみ」',
+  fashion: '春色のカーディガンを鏡の前で合わせてみた。',
+  zakka: '桜の絵のマグカップ。ちょっと欲しくなった。',
+  sports: 'ランニングシューズを手にとった。軽い！',
+  shoes: 'スニーカーを試し履きした。ぴったり。',
+  eyewear: '丸いフレームをかけてみた。鏡の中の自分が少し大人っぽい。',
+  toys: '小さな電車がくるくる走っている。ずっと見ていられる。',
+  electronics: '大きなテレビに海の映像。この町の海のほうがきれいかも。',
+  accessory: '桜モチーフのピアス。光にかざすときらきらする。',
+  kitchen: 'ホーロー鍋のふたを持ち上げてみた。思ったより重い。',
+  music: 'ヘッドホンで新譜を試聴した。春っぽい曲。',
+  pet: '子犬がしっぽを振って、ガラスに鼻をくっつけた。',
+  bags: '帆布のトートバッグ。図書館に行くのにちょうどいい大きさ。',
+  cosmetics: '春の新色リップを手の甲で試した。ほんのり桜色。',
+  games: 'UFOキャッチャーに100円……アームがするっと滑った。',
+  craft: '春色の毛糸を三玉選んだ。何を編もうかな。',
+  gyudon: '「並、お待たせしました！」——早い。',
+  crepe: 'いちごカスタードのクレープ。生地がふわふわ。',
+  zakka100: '便利グッズをいくつか。全部で330円。',
+  cake: 'いちごのショートケーキをひとつ。保冷剤を入れてくれた。',
+  washoku: '「しらす丼、お待ちどおさま」',
+  yakiniku: 'カルビがじゅうっと焼ける音。いい匂い。',
+  realestate: '「海の見える1LDK」の貼り紙。家賃は……見なかったことにした。',
+  laundry: '洗濯機が回りはじめた。あと38分。',
+  tea: '新茶を一杯いただいた。甘くて青い香り。',
+  izakaya: '「今日は桜鯛が入ってるよ」——まだ仕込み中らしい。',
+  phone: '「画面割れなら30分で直りますよ」',
+  bigbooks: '本棚の間をゆっくり歩いた。紙とインクの匂い。',
+  drug: 'はちみつレモンののど飴を見つけた。',
+};
+// shops where going up to the counter means buying something
+const SHOP_BUY = new Set(['wagashi', 'bakery', 'florist', 'books', 'grocer', 'dagashi', 'cleaning', 'tofu', 'crepe', 'zakka100', 'cake', 'craft', 'drug', 'gyudon']);
 const KONBINI_LINES = {
   drink: ['冷たいお茶を一本買った。', 'いちごミルクを買った。春の味がする。', '炭酸水を一本。シュワっと冷たい。'],
   onigiri: ['鮭とツナマヨで迷って……鮭にした。', '梅おにぎりと緑茶。いい組み合わせ。'],
@@ -346,6 +396,11 @@ function interact() {
       audio.sfx(it.what === 'piano' ? 'chime' : it.what === 'shoes' ? 'page' : 'ui');
       break;
     case 'shop':
+      if (it.inside) {
+        ui.toast(SHOP_IN[it.shopKind] || '店内をゆっくり見てまわった。');
+        audio.sfx(SHOP_BUY.has(it.shopKind) ? 'register' : it.shopKind === 'ramen' ? 'beep' : it.shopKind === 'games' ? 'gacha' : 'ui');
+        break;
+      }
       ui.toast(it.shopKind === 'city' ? tf('cityShop', { s: it.shop }) : SHOP_LINES[it.shopKind] || 'のんびりした店先。');
       break;
     case 'konbini': {

@@ -219,8 +219,8 @@ export class Player {
     const running = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
     this.running = running;
     let maxSpeed = this.view === 'third' ? (running ? TP_RUN : TP_WALK) : running ? 6.2 : 3.1;
-    // on stairs she takes one tread a step at a natural pace (about two steps a second)
-    if (this.stairs && this.view === 'third') maxSpeed = THREE.MathUtils.clamp(this.stairs.run * (running ? 3.2 : 1.9), running ? 0.9 : 0.42, running ? 1.9 : 0.9);
+    // on stairs she takes one tread a step, briskly (about three steps a second, five running)
+    if (this.stairs && this.view === 'third') maxSpeed = THREE.MathUtils.clamp(this.stairs.run * (running ? 5.0 : 3.2), running ? 1.3 : 0.75, running ? 2.6 : 1.3);
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
     const wantX = (fx * iz + rx * ix) * maxSpeed;

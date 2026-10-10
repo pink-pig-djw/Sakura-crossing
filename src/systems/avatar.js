@@ -155,7 +155,7 @@ export class Avatar {
         if (this.gait !== 'jump') ch.play('jump', fade, 0.92);
       } else if (gait === 'walk') ch.play('walk', fade, THREE.MathUtils.clamp(sp / ch.info.walk.speed, 0.5, 1.6));
       else if (gait === 'run') ch.play('run', fade, THREE.MathUtils.clamp(sp / ch.info.run.speed, 0.6, 1.3));
-      else if (gait.startsWith('stairs')) ch.play(gait, 0.25, THREE.MathUtils.clamp(sp / st.run / (2 / ch.clips[gait].duration), 0.6, 2.0));
+      else if (gait.startsWith('stairs')) ch.play(gait, 0.2, THREE.MathUtils.clamp(sp / st.run / (2 / ch.clips[gait].duration), 0.6, 2.6));
       else ch.play(gait, fade);
       this.gait = gait;
     }

@@ -14,8 +14,8 @@ import { FONTS } from '../render/atlas.js';
 // standing behind it (z < 0) and its face looking down +z.
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-const hex = (s) => parseInt(s.slice(1), 16);
-const shade = (c, k) => {
+export const hex = (s) => parseInt(s.slice(1), 16);
+export const shade = (c, k) => {
   const r = Math.min(255, Math.round(((c >> 16) & 255) * k)), g = Math.min(255, Math.round(((c >> 8) & 255) * k)), b = Math.min(255, Math.round((c & 255) * k));
   return (r << 16) | (g << 8) | b;
 };
@@ -44,7 +44,7 @@ export function onWall(ctx, axis, c, a0, a1, dir, y, fn) {
 }
 
 // a quad facing +z (local) on builder b; uv = atlas rect for the sign builder
-function face(b, x0, x1, y0, y1, z, color, uv = null, em = 0) {
+export function face(b, x0, x1, y0, y1, z, color, uv = null, em = 0) {
   if (uv) b.quad(V(x0, y0, z), V(x1, y0, z), V(x1, y1, z), V(x0, y1, z), 0xffffff, em, { uvs: [[uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1]] });
   else b.quad(V(x0, y0, z), V(x1, y0, z), V(x1, y1, z), V(x0, y1, z), color, 0);
 }

@@ -6,7 +6,7 @@ every other image (normal, emissive, matcap, outline-width maps, the thumbnail) 
 blanked; the face keeps only the morph targets that the VRM expressions use (and only
 their positions). Colour textures are capped at 1024 px, opaque ones stored as JPEG.
 
-  python3 tools/chars/optimize_vrm.py in.vrm out.vrm
+  python3 tools/chars/optimize_vrm.py in.vrm out.vrm [max texture px, default 1024]
 """
 import io
 import json
@@ -207,4 +207,6 @@ def main(src, dst):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 3:
+        MAX_TEX = int(sys.argv[3])
     main(sys.argv[1], sys.argv[2])

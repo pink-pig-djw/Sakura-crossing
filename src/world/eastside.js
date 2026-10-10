@@ -385,8 +385,8 @@ function buildKoban(ctx, doors) {
 function buildLots(ctx) {
   const rng = new RNG(60601);
   const post = EAST2.post;
-  midrise(ctx, { x0: 435, x1: 451, z0: post.z0 + 2, z1: post.z1, front: 'S', seed: 8811 }, { floors: 2, style: 'white', shop: { name: 'さくら薬局', sub: '処方せん受付', bg: '#ffffff', fg: '#2e8a4a', font: 'bold' }, blade: false });
-  midrise(ctx, { x0: 454, x1: 475, z0: post.z0 + 1, z1: post.z1, front: 'S', seed: 8812 }, { floors: 4, style: 'tile', shop: { name: 'ベーカリー 東町', sub: 'BAKERY', bg: '#f6e7c8', fg: '#7a4a1f', font: 'maru' }, name: 'コーポ東町' });
+  midrise(ctx, { x0: 435, x1: 451, z0: post.z0 + 2, z1: post.z1, front: 'S', seed: 8811 }, { floors: 2, style: 'white', shop: { kind: 'pharmacy', name: 'さくら薬局', sub: '処方せん受付', bg: '#ffffff', fg: '#2e8a4a', font: 'bold' }, blade: false });
+  midrise(ctx, { x0: 454, x1: 475, z0: post.z0 + 1, z1: post.z1, front: 'S', seed: 8812 }, { floors: 4, style: 'tile', shop: { kind: 'bakery', name: 'ベーカリー 東町', sub: 'BAKERY', bg: '#f6e7c8', fg: '#7a4a1f', font: 'maru' }, name: 'コーポ東町' });
   // houses by the railway: a row facing the bridge street, a row facing the lane
   const S2 = EAST2.southE;
   const mid = (S2.z0 + S2.z1) / 2;
