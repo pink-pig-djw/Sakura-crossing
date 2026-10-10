@@ -43,7 +43,7 @@ renderer.info.autoReset = false;
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const QUALITY = {
-  low: { ratio: 0.8, maxRatio: 1, msaa: 0, shadow: 1024, petals: 1800 },
+  low: { ratio: 0.8, maxRatio: 1, msaa: 0, shadow: 1024, petals: 1800, lite: true },
   medium: { ratio: 1, maxRatio: 1.25, msaa: 4, shadow: 2048, petals: 3800 },
   high: { ratio: 1, maxRatio: 1.75, msaa: 4, shadow: 2048, petals: 5200 },
 };
@@ -85,6 +85,7 @@ function applyQuality(q) {
   renderer.setPixelRatio(ratio);
   renderer.setSize(innerWidth, innerHeight, false);
   pipe.msaa = Q.msaa;
+  pipe.lite = !!Q.lite;
   pipe.width = 0;
   pipe.setSize(innerWidth, innerHeight, ratio);
   if (sun.shadow.mapSize.x !== Q.shadow) {
@@ -911,7 +912,8 @@ function frame() {
   }
 
   // render
-  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value);
+  pipe.setIndoor(cameraIndoors(), dt);
+  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value, tod.leak * G.uSunDisk.value, tod.rays * G.uSunDisk.value);
   renderer.info.reset();
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   frames++;
@@ -922,6 +924,13 @@ function frame() {
     if (params.has('still')) return;
   }
   requestAnimationFrame(frame);
+}
+
+// the camera in a room or underground: the compositing's sky gradients and sun effects step back
+function cameraIndoors() {
+  const { x, y, z } = camera.position;
+  if (y < groundH(x, z) - 2.5 && x > SUBWAY.x0 - 6 && x < SUBWAY.x1 + 6 && z > SUBWAY.z0 - 100 && z < SUBWAY.z1 + 70) return true;
+  return (world.indoorRects || []).some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1 && y > r.y0 && y < r.y1);
 }
 
 // ---------------------------------------------------------------------------
@@ -939,16 +948,18 @@ window.__setView = (cam, hour) => {
   if (cam) setCam(cam); // null: keep the camera where the game put it
   if (hour !== undefined && !Number.isNaN(hour)) tod.setHour(hour);
   tod.update(0);
+  window.__tuneHook?.(); // (comparison shots: overrides applied after the time of day)
   clouds.userData.update(camera, G.uTime.value);
   world.grass?.update(camera);
   world.cullInteriors?.(camera.position);
-  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value);
+  pipe.setIndoor(cameraIndoors(), 0);
+  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value, tod.leak * G.uSunDisk.value, tod.rays * G.uSunDisk.value);
   renderer.info.reset();
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, i18n: { tr, tf, setLang } };
+window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, i18n: { tr, tf, setLang } };
 // debug: subway trains standing at the platform with doors open (?subway)
 if (params.has('subway') && world.subway) {
   for (const tr of world.subway.trains) {

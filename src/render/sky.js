@@ -73,6 +73,9 @@ export function createSky() {
         float ns = fbm5(sp * 0.55) + 0.22 * (fbm3(sp * 2.2 + 3.0) - 0.5);
         float lit = clamp(0.62 + (n - ns) * 7.0, 0.0, 1.0);
         lit = mix(lit, 0.35, smoothstep(0.66, 0.85, n) * 0.6);
+        // painted two-tone: a clear split between the sunlit body and the shaded underside,
+        // with a little of the soft gradient left inside each tone
+        lit = mix(smoothstep(0.4, 0.58, lit), lit, 0.55);
         return vec2(cov, lit);
       }
 
@@ -83,10 +86,11 @@ export function createSky() {
         mat2 r = mat2(cos(a), -sin(a), sin(a), cos(a));
         p = r * p;
         p += vec2(t * 0.004, 0.0);
-        vec2 q = vec2(p.x * 0.6, p.y * 5.0);
+        vec2 q = vec2(p.x * 0.6, p.y * 6.5);
         float w = fbm3(vec2(q.x * 1.5, q.y * 0.4));
         float n = fbm5(q + w * 1.5);
-        float c = smoothstep(0.58, 0.75, n) * smoothstep(0.35, 0.65, fbm3(p * 0.7 + 5.0));
+        // fine brushed strands rather than a grey veil
+        float c = smoothstep(0.6, 0.72, n) * smoothstep(0.4, 0.68, fbm3(p * 0.7 + 5.0));
         return c;
       }
 
@@ -194,8 +198,8 @@ export function createSky() {
         if (e > 0.0) {
           // cirrus
           float ci = cirrus(d, t) * smoothstep(0.03, 0.25, e);
-          vec3 ciCol = mix(uCloudLit, uHorizon, 0.25) * 1.02;
-          col = mix(col, ciCol, ci * 0.65);
+          vec3 ciCol = mix(uCloudLit, uHorizon, 0.15) * 1.03;
+          col = mix(col, ciCol, ci * 0.55);
           // cumulus
           vec2 cu = cumulus(d, t);
           float fadeH = smoothstep(0.06, 0.22, e);

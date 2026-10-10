@@ -45,12 +45,17 @@ function canopy(fb, center, R, Ry, cols, rng, o = {}) {
     const cn = pc.clone().sub(center);
     cn.y *= R / Ry;
     cn.normalize();
+    // one colour per clump, its cards only a shade apart: a crown of distinct masses of
+    // blossom or leaves rather than a patchwork of cards
+    const h = Math.sin(pc.x * 12.9898 + pc.y * 4.1414 + pc.z * 78.233) * 43758.5453;
+    const base = cols[Math.floor((h - Math.floor(h)) * cols.length)];
     for (let k = 0; k < n; k++) {
       const p = V(pc.x + rng.range(-pr, pr), pc.y + rng.range(-pr * 0.6, pr * 0.7), pc.z + rng.range(-pr, pr));
       const up = (p.y - center.y) / Ry;
-      tmp.copy(cols[Math.floor(rng.next() * cols.length)]);
+      tmp.copy(base).lerp(cols[Math.floor(rng.next() * cols.length)], 0.25);
       tmp.multiplyScalar(scaleCol * (0.94 + up * 0.08));
-      fb.card4(p, cn, tmp, pc, rng.range(cardSize[0], cardSize[1]), rng.range(0, Math.PI * 2));
+      // turned only a little: the painted light in the texture stays on the upper side
+      fb.card4(p, cn, tmp, pc, rng.range(cardSize[0], cardSize[1]), rng.range(-0.6, 0.6));
     }
   };
   for (let i = 0; i < puffs; i++) {

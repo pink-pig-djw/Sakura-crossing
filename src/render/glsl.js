@@ -267,8 +267,9 @@ vec3 applyPattern(vec3 albedo, float patF, vec2 uv, vec3 wp, vec3 N) {
 }
 `;
 
-// Anime lighting: hard terminator, colored (lavender) shadows, warm band at the
-// light/shadow edge, sky-tinted ambient and aerial perspective.
+// Anime lighting: hard terminator, colored (lavender) shadows that keep the local colour
+// rich, sunlit faces that stay warm, a warm band at the light/shadow edge, sky-tinted
+// ambient and aerial perspective.
 export const LIGHTING = /* glsl */ `
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
@@ -279,6 +280,9 @@ uniform vec3 uSunGlow;
 uniform float uHazeDensity;
 uniform float uNight;
 uniform float uTime;
+uniform vec3 uShadowTint;
+uniform float uShadowSat;
+uniform float uAmbLit;
 
 vec3 hazeColorFor(vec3 viewDir) {
   float s = max(dot(viewDir, uSunDir), 0.0);
@@ -294,14 +298,22 @@ vec3 applyHaze(vec3 col, vec3 wp) {
   return mix(col, hazeColorFor(v / max(dist, 1e-3)), h);
 }
 
+// the shaded side as a painter mixes it: the local colour a little richer rather than
+// greyed, in the cool tint of the hour
+vec3 shadeColor(vec3 albedo, vec3 amb) {
+  return max(mix(vec3(luma(albedo)), albedo, uShadowSat), 0.0) * amb * uShadowTint;
+}
+
 vec3 toonShade(vec3 albedo, vec3 N, float shadow, float softness, float wrap) {
   float ndl = dot(N, uSunDir);
   float lam = smoothstep(-softness + wrap, softness + wrap, ndl);
   float L = lam * shadow;
   vec3 amb = mix(uGroundAmb, uSkyAmb, N.y * 0.5 + 0.5);
-  vec3 col = albedo * (amb + uSunColor * L);
+  // sunlit: the sun dominates the sky fill, so lit faces stay warm and clear
+  vec3 lit = albedo * (amb * uAmbLit + uSunColor);
   // second (highlight) tone on faces turned to the sun
-  col += albedo * uSunColor * 0.10 * smoothstep(0.55, 0.65, ndl) * shadow;
+  lit += albedo * uSunColor * 0.10 * smoothstep(0.55, 0.65, ndl);
+  vec3 col = mix(shadeColor(albedo, amb), lit, L);
   // saturated warm band where light meets shadow (painted look)
   float band = L * (1.0 - L) * 4.0;
   col += albedo * band * uSunColor * vec3(0.20, 0.08, 0.02);

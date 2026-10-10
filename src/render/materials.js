@@ -24,6 +24,16 @@ export const G = {
   uWaterShallow: { value: new THREE.Color(0.1, 0.55, 0.6) },
   uTide: { value: 0 },
   uWind: { value: new THREE.Vector2(0.8, 0.3) },
+  // painted light & shade (see LIGHTING): shadow hue and richness, light dominance
+  uShadowTint: { value: new THREE.Color(1, 1, 1) },
+  uShadowSat: { value: 1.2 },
+  uAmbLit: { value: 0.85 },
+  // compositing (see pipeline.js), keyed by the time of day
+  uCornerTint: { value: new THREE.Color(0.62, 0.66, 0.8) },
+  uDiffuse: { value: 0.3 },
+  uTopTint: { value: new THREE.Color(0.88, 0.92, 1.0) },
+  uShadowTone: { value: new THREE.Color(0.012, 0.0, 0.04) },
+  uLightTone: { value: new THREE.Color(0.02, 0.012, -0.015) },
 };
 
 const VERT_COMMON = /* glsl */ `
@@ -757,6 +767,7 @@ const FOLIAGE_VERT = /* glsl */ `
   #endif
   uniform float uTime;
   uniform vec2 uWind;
+  vec3 foliageCenter;
   vec3 foliagePosition(out vec3 nrm) {
     vec3 wp = (modelMatrix * vec4(position, 1.0)).xyz;
     vec3 cw = (modelMatrix * vec4(center, 1.0)).xyz;
@@ -768,6 +779,7 @@ const FOLIAGE_VERT = /* glsl */ `
     vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
     vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
     vec3 p = wp + right * off.x + up * off.y;
+    foliageCenter = wp;
     // blend clump-level roundness with the canopy-level direction: reads as painted clumps
     nrm = normalize(mix(normalize(p - cw), normal, 0.55));
     return p;
@@ -775,7 +787,13 @@ const FOLIAGE_VERT = /* glsl */ `
 `;
 
 export function createFoliageMaterial(tex, opts = {}) {
-  const uniforms = makeUniforms({ map: { value: tex }, uAmbTint: { value: new THREE.Color(opts.ambTint ?? 0xffffff) } });
+  const uniforms = makeUniforms({
+    map: { value: tex },
+    uAmbTint: { value: new THREE.Color(opts.ambTint ?? 0xffffff) },
+    uShadeSat: { value: opts.shadeSat ?? 1.0 },
+    uLift: { value: opts.lift ?? 1.0 },
+    uTrans: { value: opts.trans ?? 0.0 },
+  });
   uniforms.uOutline.value = opts.outline ?? 0.3;
   uniforms.uSoft.value = opts.soft ?? 0.35;
   uniforms.uWrap.value = opts.wrap ?? 0.1;
@@ -789,14 +807,20 @@ export function createFoliageMaterial(tex, opts = {}) {
       #include <common>
       #include <shadowmap_pars_vertex>
       ${FOLIAGE_VERT}
+      uniform vec3 uSunDir;
+      uniform float uLift;
       void main() {
         vec3 nrm;
         vec3 p = foliagePosition(nrm);
         vec3 objectNormal = nrm;
         vec3 transformedNormal = (viewMatrix * vec4(nrm, 0.0)).xyz;
-        vec4 worldPosition = vec4(p, 1.0);
-        vec4 mvPosition = viewMatrix * worldPosition;
+        vec4 mvPosition = viewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
+        // shadow looked up near the card's centre, lifted toward the light by part of the
+        // card's size: a whole clump falls in or out of the shade of a roof or another crown
+        // (shadow edges follow the clumps instead of cutting straight lines through the
+        // canopy), and the outer clumps are not darkened by their own neighbours
+        vec4 worldPosition = vec4(mix(p, foliageCenter, 0.8) + uSunDir * card.z * uLift, 1.0);
         #include <shadowmap_vertex>
         vWorldPos = p;
         vNormalW = nrm;
@@ -809,6 +833,8 @@ export function createFoliageMaterial(tex, opts = {}) {
       ${FRAG_HEAD.replace('varying float vPattern;', '')}
       uniform sampler2D map;
       uniform vec3 uAmbTint;
+      uniform float uShadeSat;
+      uniform float uTrans;
       varying float vSeed;
       void main() {
         vec4 t = texture2D(map, vUv);
@@ -816,21 +842,26 @@ export function createFoliageMaterial(tex, opts = {}) {
         vec3 N = normalize(vNormalW);
         float sh = getShadowMask();
         sh = mix(1.0, sh, 0.8);
-        // texture value carries the painted clump shading
+        // the texture paints the flowers / leaves; the light falls on the clump as a whole,
+        // so the crown reads as clean masses of light and shade rather than a patchwork
         float tv = t.r;
-        vec3 albedo = vColor * mix(0.78, 1.06, tv);
-        float ndl = dot(N, uSunDir) + (tv - 0.8) * 0.5;
+        vec3 albedo = vColor * mix(0.86, 1.05, tv);
+        float ndl = dot(N, uSunDir) + (tv - 0.8) * 0.28;
         float lam = smoothstep(-uSoft + uWrap, uSoft + uWrap, ndl);
         float L = lam * sh;
         vec3 amb = mix(uGroundAmb, uSkyAmb, N.y * 0.5 + 0.5) * uAmbTint;
-        vec3 col = albedo * (amb + uSunColor * L * 1.04);
-        col += albedo * uSunColor * 0.12 * smoothstep(0.5, 0.7, ndl) * sh;
+        vec3 lit = albedo * (amb * uAmbLit + uSunColor * 1.04);
+        lit += albedo * uSunColor * 0.12 * smoothstep(0.5, 0.7, ndl);
+        vec3 shade = max(mix(vec3(luma(albedo)), albedo, uShadeSat), 0.0) * amb * uShadowTint;
+        vec3 col = mix(shade, lit, L);
         float band = L * (1.0 - L) * 4.0;
         col += albedo * band * uSunColor * vec3(0.12, 0.04, 0.05);
         // back-lit translucency
         vec3 V = normalize(cameraPosition - vWorldPos);
         float back = pow(max(dot(-V, uSunDir), 0.0), 4.0);
         col += albedo * uSunColor * back * 0.45 * sh;
+        // thin petals: daylight filtering through keeps the underside of a crown glowing pink
+        col += albedo * uSunColor * uTrans * (1.0 - L) * smoothstep(-0.1, 0.5, uSunDir.y);
         col = applyHaze(col, vWorldPos);
         gl_FragColor = vec4(col, uOutline);
       }
@@ -1109,6 +1140,10 @@ export function createCharacterMaterial(opts = {}) {
         // thin rim of sky light on the silhouette, stronger on the lit side
         float rim = smoothstep(0.62, 0.95, 1.0 - max(dot(N, V), 0.0));
         col += albedo * rim * uRim * (uSkyAmb * 0.6 + uSunColor * L);
+        // back light: with the sun behind the figure, its outline catches the light
+        // (the bright rim of hair and shoulders against a low sun)
+        float backLit = smoothstep(0.05, 0.7, dot(-V, uSunDir)) * smoothstep(-0.25, 0.25, dot(N, uSunDir) + 0.2);
+        col += albedo * rim * uSunColor * backLit * 1.1 * sh * (1.0 - uNight);
         // eyes / highlights read clearly in any light
         col = mix(col, albedo * (0.75 + 0.35 * (1.0 - uNight)), uUnlit);
         col = applyHaze(col, vWorldPos);

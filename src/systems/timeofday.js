@@ -20,6 +20,24 @@ const K = [
   { h: 24.0, zen: '#081230', hor: '#1d2b52', sun: [0.10, 0.12, 0.2], amb: [0.12, 0.145, 0.27], gnd: [0.08, 0.08, 0.13], haze: '#1c2a50', glow: [0.02, 0.03, 0.06], cl: '#36457a', cs: '#151c3a', wd: '#071630', ws: '#16345a', night: 1, exp: 1.25, bloom: 0.9 },
 ];
 
+// The painted light and the compositing through the day: st = tint of the shaded side,
+// al = how much of the sky fill reaches sunlit faces (less keeps them warm), ct = the cool
+// shade in corners and recesses, dif = diffusion glow, top = deepening toward the top of the
+// frame, sht / lt = split toning of shadows / light (sRGB offsets), leak = warm light leak
+// from the sun's side of the frame, rays = light shafts through gaps toward the sun.
+const GRADE = [
+  { h: 0.0, st: [0.98, 0.98, 1.04], al: 1.0, ct: [0.72, 0.74, 0.86], dif: 0.36, top: [0.86, 0.87, 0.96], sht: [0.0, 0.006, 0.03], lt: [0.012, 0.006, -0.01], leak: 0, rays: 0 },
+  { h: 4.8, st: [0.98, 0.98, 1.04], al: 1.0, ct: [0.72, 0.74, 0.86], dif: 0.36, top: [0.86, 0.87, 0.96], sht: [0.0, 0.006, 0.03], lt: [0.012, 0.006, -0.01], leak: 0, rays: 0 },
+  { h: 5.8, st: [1.0, 0.96, 1.04], al: 0.9, ct: [0.68, 0.64, 0.78], dif: 0.34, top: [0.9, 0.86, 0.97], sht: [0.015, 0.0, 0.035], lt: [0.04, 0.02, -0.02], leak: 0.3, rays: 0.55 },
+  { h: 7.6, st: [0.99, 0.99, 1.03], al: 0.85, ct: [0.64, 0.67, 0.8], dif: 0.24, top: [0.88, 0.92, 1.0], sht: [0.004, 0.002, 0.03], lt: [0.022, 0.012, -0.015], leak: 0.16, rays: 0.3 },
+  { h: 15.6, st: [0.99, 0.99, 1.03], al: 0.85, ct: [0.64, 0.67, 0.8], dif: 0.24, top: [0.88, 0.92, 1.0], sht: [0.004, 0.002, 0.03], lt: [0.022, 0.012, -0.015], leak: 0.16, rays: 0.3 },
+  { h: 17.3, st: [1.0, 0.96, 1.03], al: 0.82, ct: [0.68, 0.63, 0.76], dif: 0.32, top: [0.9, 0.87, 0.97], sht: [0.015, 0.0, 0.035], lt: [0.045, 0.02, -0.03], leak: 0.32, rays: 0.6 },
+  { h: 18.3, st: [1.0, 0.95, 1.04], al: 0.86, ct: [0.68, 0.61, 0.76], dif: 0.36, top: [0.86, 0.84, 0.96], sht: [0.02, 0.0, 0.04], lt: [0.05, 0.02, -0.03], leak: 0.34, rays: 0.65 },
+  { h: 19.3, st: [0.97, 0.96, 1.06], al: 0.95, ct: [0.7, 0.7, 0.84], dif: 0.38, top: [0.84, 0.85, 0.96], sht: [0.01, 0.004, 0.045], lt: [0.02, 0.01, -0.01], leak: 0, rays: 0 },
+  { h: 20.2, st: [0.98, 0.98, 1.04], al: 1.0, ct: [0.72, 0.74, 0.86], dif: 0.36, top: [0.86, 0.87, 0.96], sht: [0.0, 0.006, 0.03], lt: [0.012, 0.006, -0.01], leak: 0, rays: 0 },
+  { h: 24.0, st: [0.98, 0.98, 1.04], al: 1.0, ct: [0.72, 0.74, 0.86], dif: 0.36, top: [0.86, 0.87, 0.96], sht: [0.0, 0.006, 0.03], lt: [0.012, 0.006, -0.01], leak: 0, rays: 0 },
+];
+
 const SUNRISE = 5.25;
 const SUNSET = 18.35;
 
@@ -63,6 +81,8 @@ export class TimeOfDay {
     this.exposure = 1;
     this.bloom = 0.7;
     this.lightIntensity = 1;
+    this.leak = 0;
+    this.rays = 0;
     this.sunDir = new THREE.Vector3();
     this.moonDir = new THREE.Vector3();
     this.isNight = false;
@@ -121,6 +141,8 @@ export class TimeOfDay {
     this.exposure = a.exp + (b.exp - a.exp) * t;
     this.bloom = a.bloom + (b.bloom - a.bloom) * t;
 
+    this.applyGrade(h);
+
     TimeOfDay.sunDirection(h, this.sunDir);
     TimeOfDay.moonDirection(h, this.moonDir);
     G.uMoonDir.value.copy(this.moonDir);
@@ -143,14 +165,35 @@ export class TimeOfDay {
     const swapFade = dayK > 0.001 ? THREE.MathUtils.smoothstep(sunUp, -0.02, 0.08) : THREE.MathUtils.smoothstep(-sunUp, 0.02, 0.12);
     G.uSunColor.value.copy(sunCol).multiplyScalar(Math.max(swapFade, 0.0));
     G.uSunDisk.value = THREE.MathUtils.smoothstep(sunUp, -0.03, 0.0);
-    // haze density: a touch thicker at dawn / dusk
-    G.uHazeDensity.value = 0.0008 + 0.0004 * (1 - Math.abs(Math.sin(((h - 6) / 24) * Math.PI * 2)));
+    // haze density: a touch thicker at dawn / dusk (enough to lay the town out in planes
+    // of distance, the far ones paler and bluer)
+    G.uHazeDensity.value = 0.00104 + 0.00052 * (1 - Math.abs(Math.sin(((h - 6) / 24) * Math.PI * 2)));
 
     if (this.sun) {
       this.sun.position.copy(lightDir).multiplyScalar(100);
       this.sun.updateMatrixWorld();
       this.sun.intensity = 1;
     }
+  }
+
+  applyGrade(h) {
+    let i = 0;
+    while (i < GRADE.length - 2 && GRADE[i + 1].h <= h) i++;
+    const a = GRADE[i];
+    const b = GRADE[i + 1];
+    let t = Math.min(1, Math.max(0, (h - a.h) / (b.h - a.h)));
+    t = t * t * (3 - 2 * t);
+    const mix = (x, y) => x + (y - x) * t;
+    const col = (key, target) => target.setRGB(mix(a[key][0], b[key][0]), mix(a[key][1], b[key][1]), mix(a[key][2], b[key][2]));
+    col('st', G.uShadowTint.value);
+    col('ct', G.uCornerTint.value);
+    col('top', G.uTopTint.value);
+    col('sht', G.uShadowTone.value);
+    col('lt', G.uLightTone.value);
+    G.uAmbLit.value = mix(a.al, b.al);
+    G.uDiffuse.value = mix(a.dif, b.dif);
+    this.leak = mix(a.leak, b.leak);
+    this.rays = mix(a.rays, b.rays);
   }
 
   get label() {

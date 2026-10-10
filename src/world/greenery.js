@@ -507,7 +507,7 @@ export function buildFoliageMeshes(fs, scene) {
   };
   tex.forest = tex.leaf;
   const opts = {
-    blossom: { outline: 0.3, soft: 0.22, wrap: 0.12, ambTint: 0xffd2e4 },
+    blossom: { outline: 0.3, soft: 0.22, wrap: 0.2, ambTint: 0xf8d6e4, shadeSat: 0.85, trans: 0.14 },
     leaf: { outline: 0.3, soft: 0.2, wrap: 0.05, ambTint: 0xd8ecd8 },
     forest: { outline: 0.15, soft: 0.2, wrap: 0.05, ambTint: 0xd8ecd8 },
     pine: { outline: 0.3, soft: 0.2, wrap: 0.05, ambTint: 0xc8dcd0 },
