@@ -628,5 +628,10 @@ export async function createResidents(world, scene, { voice } = {}) {
     update(dt, player, hour) {
       for (const p of this.list) p.update(dt, player, hour);
     },
+    // where everyone stands (feet), for the train to look out for
+    positions(out = []) {
+      for (const p of this.list) if (!p.home) out.push({ x: p.x, y: p.ground(p.x, p.z), z: p.z });
+      return out;
+    },
   };
 }

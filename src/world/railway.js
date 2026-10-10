@@ -473,6 +473,12 @@ export function buildTrain(ctx, scene) {
 const CAR_L = 17.6;
 const GAP = 0.6;
 const STOP_CENTER = (STATION.platX0 + STATION.platX1) / 2;
+// someone on the track: half the car width plus a walker's radius and a little room
+const CLEARANCE = 1.38 + 0.45;
+const STOP_GAP = 7; // the train halts this far short of them
+const TOUCH_GAP = 1.2; // and never closer than this
+const SERVICE_BRAKE = 1.3; // m/s²
+const EMERGENCY_BRAKE = 4.0;
 
 export class TrainController {
   constructor(cars, group, colliders = null) {
@@ -506,7 +512,8 @@ export class TrainController {
     return STOP_CENTER + this.dir * (this.length / 2);
   }
 
-  update(dt, player) {
+  // people: positions (feet) of everyone walking about; the train stops for those on the track
+  update(dt, people = []) {
     const prevState = this.state;
     switch (this.state) {
       case 'wait':
@@ -554,24 +561,53 @@ export class TrainController {
         }
         break;
     }
-    // stop for a player standing on the track
+    // stop for anyone on the track: brake to halt short of them, and never run into them
     this.blocked = false;
-    if (player && this.v > 0 && Math.abs(player.z - RAIL_Z) < 2.0) {
-      const ahead = (player.x - this.head) * this.dir;
-      if (ahead > 0 && ahead < 45) {
-        this.blocked = true;
-        const brake = Math.max(0, ahead - 6);
-        this.v = Math.min(this.v, Math.sqrt(2 * 2.5 * brake));
-        if (this.horn <= 0) {
+    let move = this.dir * this.v * dt;
+    if (this.v > 0 || this.state === 'arrive' || this.state === 'depart') {
+      const near = this.nearestOnTrack(people);
+      if (near !== null) {
+        this.blocked = near < 150;
+        // service brake toward a stop STOP_GAP short of them, harder when they stepped in late
+        const room = near - STOP_GAP;
+        const vAllowed = Math.sqrt(2 * SERVICE_BRAKE * Math.max(0, room));
+        if (this.v > vAllowed) this.v = Math.max(vAllowed, this.v - EMERGENCY_BRAKE * dt);
+        move = this.dir * this.v * dt;
+        // last resort: the nose stops a body length short of them whatever the speed
+        const limit = Math.max(0, near - TOUCH_GAP);
+        if (Math.abs(move) > limit) {
+          move = this.dir * limit;
+          this.v = 0;
+        }
+        if (this.blocked && near < 120 && this.horn <= 0) {
           this.events.push('horn');
-          this.horn = 4;
+          this.horn = this.v > 0.5 ? 6 : 9;
         }
       }
     }
     this.horn -= dt;
-    this.head += this.dir * this.v * dt;
+    this.head += move;
     if (prevState !== this.state) this.stateTime = 0;
     this.place();
+  }
+
+  // distance from the nose to the nearest person on the track ahead (0 when someone is
+  // already alongside the train), or null. On the track: within the clearance of the car
+  // bodies and down at rail level (not up on the platform beside it).
+  nearestOnTrack(people) {
+    let best = null;
+    const list = Array.isArray(people) ? people : people ? [people] : [];
+    for (const p of list) {
+      if (!p || Math.abs(p.z - RAIL_Z) > CLEARANCE) continue;
+      // up on the platform, beside the track
+      if (p.y > RAIL_TOP + 0.4 && p.x > STATION.platX0 - 0.5 && p.x < STATION.platX1 + 0.5 && p.z < STATION.platZ1 + 0.05) continue;
+      const ahead = (p.x - this.head) * this.dir;
+      const behindTail = (this.tail - p.x) * this.dir;
+      if (behindTail > 0) continue; // behind the train: it is moving away
+      const d = Math.max(0, ahead);
+      if (best === null || d < best) best = d;
+    }
+    return best;
   }
 
   place() {

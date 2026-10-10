@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ChunkedBuilders, AUDIT } from '../core/builder.js';
+import { ChunkedBuilders, AUDIT, SOLIDS } from '../core/builder.js';
 import { RNG, fbm2 } from '../core/rng.js';
 import { createToonMaterial, createWindowMaterial, createRoadMaterial, createInteriorMaterial, createGlassMaterial } from '../render/materials.js';
 import { Atlas } from '../render/atlas.js';
@@ -8,7 +8,7 @@ import { buildRoads, paintRoadsides } from './roads.js';
 import { generateLots, WORLD_SEED, ROADS, roadAt, outsideDist, terrainH, SHRINE, PLAZA, TOWN, overRiver, SUBWAY } from './layout.js';
 import { buildHouse, buildOldHouse, buildApartment, buildMansion, buildParking, buildField, buildGarden, buildSento } from './buildings.js';
 import { buildTrees, fitTrees } from './trees.js';
-import { FoliageSet, useFoliage, buildFoliageMeshes } from './greenery.js';
+import { FoliageSet, useFoliage, buildFoliageMeshes, fitFoliage } from './greenery.js';
 import { buildGrass } from './grass.js';
 import { Colliders } from './collision.js';
 import { buildPolesAndWires, buildStreetProps, buildVending, buildLightPools, createWireMaterial, WireSet } from './props.js';
@@ -84,8 +84,8 @@ export async function buildWorld(scene, opts = {}) {
     detail: null,
     window: { material: createWindowMaterial(), castShadow: false },
     road: { material: createRoadMaterial(), castShadow: false },
-    sign: { material: createToonMaterial({ name: 'sign', map: signTex, emissiveFlag: true, alphaTest: 0.5 }), castShadow: false },
-    sign2: { material: createToonMaterial({ name: 'sign2', map: signTex2, emissiveFlag: true, alphaTest: 0.5 }), castShadow: false },
+    sign: { material: createToonMaterial({ name: 'sign', map: signTex, emissiveFlag: true, alphaTest: 0.5, alphaToCoverage: true }), castShadow: false },
+    sign2: { material: createToonMaterial({ name: 'sign2', map: signTex2, emissiveFlag: true, alphaTest: 0.5, alphaToCoverage: true }), castShadow: false },
     emissive: { material: createToonMaterial({ name: 'emissive', emissiveAll: true, noPattern: true }), castShadow: false },
     // inside shops and stations: lit by ceiling lights, see-through glass in front
     interior: { material: createInteriorMaterial(), castShadow: false, receiveShadow: false },
@@ -117,6 +117,8 @@ export async function buildWorld(scene, opts = {}) {
   // leaf cards from every builder (trees, hedges, shrubs, flowers) gather here
   ctx.foliage = new FoliageSet(64);
   useFoliage(ctx.foliage);
+  SOLIDS.on = true;
+  SOLIDS.list.length = 0;
 
   progress(0.04, '道を描いています');
   await tick();
@@ -198,6 +200,10 @@ export async function buildWorld(scene, opts = {}) {
   ctx.treeFit = fitTrees(ctx);
   const trees = buildTrees(ctx, ctx.trees);
   ctx.petalEmitters = trees.emitters;
+  // leaves stay on their side of walls, gate posts and floors
+  SOLIDS.on = false;
+  if (opts.fitFoliage !== false) ctx.foliageFit = fitFoliage(ctx.foliage, SOLIDS.list);
+  SOLIDS.list.length = 0;
   buildFoliageMeshes(ctx.foliage, scene);
   useFoliage(null);
   // street-level colliders above the subway must not block anyone walking below

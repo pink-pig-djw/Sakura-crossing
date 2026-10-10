@@ -30,7 +30,10 @@ const debug = params.has('cam') || params.has('still');
 // renderer / scene
 // ---------------------------------------------------------------------------
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+// reversed depth (where the browser has EXT_clip_control): a float depth buffer then keeps the
+// same relative precision out to the horizon, so walls, windows and signs a few millimetres
+// apart stop fighting (flickering) on buildings far away
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false, reversedDepthBuffer: true });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.info.autoReset = false;
@@ -51,7 +54,7 @@ try {
 if (QUALITY[params.get('q')]) quality = params.get('q');
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 5000);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.15, 5000);
 camera.rotation.order = 'YXZ';
 
 const sun = new SunLight(0xffffff, 1);
@@ -123,7 +126,8 @@ if (params.has('audit')) {
 }
 ui.setProgress(0.02, '町をつくっています');
 const t0 = performance.now();
-const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l) });
+// (?nofit: leaves as planted, without keeping them out of walls; for comparisons)
+const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l), fitFoliage: !params.has('nofit') });
 const buildMs = Math.round(performance.now() - t0);
 const player = new Player(camera, world.colliders, canvas);
 player.indoors = world.indoorRects || [];
@@ -657,6 +661,7 @@ let gust = 0, gustT = 4;
 let frames = 0;
 let lastTrainState = 'wait';
 let rumbleT = 0;
+const walkers = []; // feet positions of everyone the train must not run into
 let prevHour = tod.hour;
 const fwd = new THREE.Vector3();
 const headPos = new THREE.Vector3(), focusAt = new THREE.Vector3();
@@ -692,10 +697,15 @@ function frame() {
 
   // town life
   const train = world.train;
-  train.update(dt, state.mode === 'play' ? player.pos : null);
+  // the train looks out for everyone on the track, also while a menu is open over the walk
+  const walking = state.mode !== 'title' && state.mode !== 'loading';
+  walkers.length = 0;
+  if (walking) walkers.push(player.pos);
+  residents?.positions(walkers);
+  train.update(dt, walkers);
   if (lastTrainState === 'depart' && train.state === 'wait') state.trains++;
   lastTrainState = train.state;
-  updateCrossings(world.crossings, train, dt, t, state.mode === 'play' ? player.pos : null);
+  updateCrossings(world.crossings, train, dt, t, walking ? player.pos : null);
   if (padOn && train.v > 2 && Math.abs(player.pos.z - 56) < 12) {
     const [a, b] = train.span();
     const dx = Math.max(a - player.pos.x, 0, player.pos.x - b);
@@ -842,7 +852,7 @@ window.__setView = (cam, hour) => {
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, i18n: { tr, tf, setLang } };
+window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, i18n: { tr, tf, setLang } };
 // debug: subway trains standing at the platform with doors open (?subway)
 if (params.has('subway') && world.subway) {
   for (const tr of world.subway.trains) {

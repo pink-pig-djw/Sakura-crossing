@@ -380,6 +380,120 @@ export function hedgeLeaves(x0, z0, x1, z1, yFn, h, w, rng, o = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// keeping leaves out of walls
+// ---------------------------------------------------------------------------
+// Leaf cards turn to face the camera, so a card nearer to a wall than its own size swings
+// through it when seen at a slant: leaves show on the far side of a garden wall, out of a
+// gate post or inside a shop. Once the town is built (solids: the boxes noted while
+// building, see SOLIDS), cards near thin walls, posts and slabs are pulled back to their own
+// side and made a little smaller, and cards inside a building's body are dropped.
+const FIT = { reach: 0.85, minScale: 0.6, cell: 2 };
+
+export function fitFoliage(fs, solids) {
+  const cell = FIT.cell, key = (i, j) => i * 100003 + j, grid = new Map();
+  const walls = [];
+  for (const w of solids) {
+    const h = w.y1 - w.y0;
+    const slab = h < 0.6 && w.T >= 0.6;
+    // walls and posts at least waist high, floor and roof slabs; not curbs or thin poles
+    if (!slab && (h < 0.5 || w.L < 0.06)) continue;
+    w.slab = slab;
+    const idx = walls.push(w) - 1;
+    const ex = Math.abs(w.ux) * w.L + Math.abs(w.uz) * w.T, ez = Math.abs(w.uz) * w.L + Math.abs(w.ux) * w.T;
+    for (let i = Math.floor((w.cx - ex) / cell); i <= Math.floor((w.cx + ex) / cell); i++) {
+      for (let j = Math.floor((w.cz - ez) / cell); j <= Math.floor((w.cz + ez) / cell); j++) {
+        const k = key(i, j);
+        let arr = grid.get(k);
+        if (!arr) grid.set(k, (arr = []));
+        arr.push(idx);
+      }
+    }
+  }
+  const stats = { cards: 0, moved: 0, dropped: 0 };
+  const seen = new Set();
+  for (const fb of fs.map.values()) {
+    const P = fb.pos, C = fb.card, Ctr = fb.center;
+    for (let v = 0; v < fb.count; v += 4) {
+      stats.cards++;
+      let px = P[v * 3], py = P[v * 3 + 1], pz = P[v * 3 + 2];
+      const size0 = C[v * 4 + 2];
+      let size = size0, drop = false;
+      const ccx = Ctr[v * 3], ccy = Ctr[v * 3 + 1], ccz = Ctr[v * 3 + 2];
+      for (let pass = 0; pass < 3 && !drop; pass++) {
+        const R = size * 0.95; // the painted clump fills most of the card
+        seen.clear();
+        for (let i = Math.floor((px - R) / cell); i <= Math.floor((px + R) / cell) && !drop; i++) {
+          for (let j = Math.floor((pz - R) / cell); j <= Math.floor((pz + R) / cell) && !drop; j++) {
+            const arr = grid.get(key(i, j));
+            if (!arr) continue;
+            for (const wi of arr) {
+              if (seen.has(wi)) continue;
+              seen.add(wi);
+              const w = walls[wi];
+              const dx = px - w.cx, dz = pz - w.cz;
+              const u = dx * w.ux + dz * w.uz, n = -dx * w.uz + dz * w.ux;
+              const eu = Math.abs(u) - w.L, en = Math.abs(n) - w.T;
+              const Rn = size * 0.95;
+              if (w.slab) {
+                // a floor or roof: keep the card above or below it, on its clump's side
+                if (eu > -0.05 || en > -0.05) continue;
+                const up = ccy >= (w.y0 + w.y1) / 2;
+                const d = up ? py - w.y1 : w.y0 - py;
+                if (d >= FIT.reach * Rn) continue;
+                const r = Math.max(FIT.minScale * size0, Math.min(size, d / (FIT.reach * 0.95)));
+                const shift = Math.max(0, FIT.reach * r * 0.95 - d);
+                py += up ? shift : -shift;
+                size = r;
+                continue;
+              }
+              // leaves over the top of a low wall are fine; it has to reach down past it
+              if (py - 0.6 * Rn > w.y1 || py + Rn < w.y0 || w.y1 - (py - Rn) < 0.25) continue;
+              const inside = eu < 0 && en < 0;
+              if (inside && w.T > 0.3 && py < w.y1 + 0.05 && py > w.y0 - 0.2) {
+                drop = true; // inside a building's body
+                break;
+              }
+              if (w.T > 0.3) continue; // reaching into a solid body is hidden by it
+              const d = inside ? -Math.min(-eu, -en) : Math.hypot(Math.max(eu, 0), Math.max(en, 0));
+              if (d >= FIT.reach * Rn) continue;
+              // push out through the nearest face (inside: the face on the clump's side)
+              let nu = 0, nn = 0;
+              if (inside) {
+                const cu = (ccx - w.cx) * w.ux + (ccz - w.cz) * w.uz, cn = -(ccx - w.cx) * w.uz + (ccz - w.cz) * w.ux;
+                if (-en <= -eu) nn = Math.sign(Math.abs(cn) > w.T ? cn : n) || 1;
+                else nu = Math.sign(Math.abs(cu) > w.L ? cu : u) || 1;
+              } else if (eu > 0 && en > 0) {
+                const k = Math.hypot(eu, en);
+                nu = (Math.sign(u) * eu) / k;
+                nn = (Math.sign(n) * en) / k;
+              } else if (eu > en) nu = Math.sign(u);
+              else nn = Math.sign(n);
+              const r = Math.max(FIT.minScale * size0, Math.min(size, Math.max(0, d) / (FIT.reach * 0.95)));
+              const shift = Math.max(0, FIT.reach * r * 0.95 - d);
+              px += (nu * w.ux - nn * w.uz) * shift;
+              pz += (nu * w.uz + nn * w.ux) * shift;
+              size = r;
+            }
+          }
+        }
+      }
+      if (drop) {
+        size = 0;
+        stats.dropped++;
+      } else if (size !== size0 || px !== P[v * 3] || pz !== P[v * 3 + 2] || py !== P[v * 3 + 1]) stats.moved++;
+      else continue;
+      for (let k = v; k < v + 4; k++) {
+        P[k * 3] = px;
+        P[k * 3 + 1] = py;
+        P[k * 3 + 2] = pz;
+        C[k * 4 + 2] = size;
+      }
+    }
+  }
+  return stats;
+}
+
+// ---------------------------------------------------------------------------
 // meshes
 // ---------------------------------------------------------------------------
 export function buildFoliageMeshes(fs, scene) {

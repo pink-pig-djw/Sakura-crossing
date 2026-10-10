@@ -87,6 +87,7 @@ const FINAL = /* glsl */ `
   uniform vec2 uRes;
   uniform float uNear;
   uniform float uFar;
+  uniform float uReversed;
   uniform float uLineScale;
   uniform float uLineStrength;
   uniform float uLineFar;
@@ -111,6 +112,11 @@ const FINAL = /* glsl */ `
     return fract((p3.x + p3.y) * p3.z);
   }
   float lin(float d) { return uNear * uFar / (uFar - d * (uFar - uNear)); }
+  // scene depth in the usual 0 (near) .. 1 (far) sense, also with a reversed depth buffer
+  float depthAt(vec2 p) {
+    float d = texture2D(tDepth, p).r;
+    return uReversed > 0.5 ? 1.0 - d : d;
+  }
   vec3 toSRGB(vec3 c) {
     c = max(c, vec3(0.0));
     vec3 lo = c * 12.92;
@@ -135,11 +141,11 @@ const FINAL = /* glsl */ `
 
     // ---- ink lines from the depth laplacian (near side only) ----
     vec2 px = uLineScale / uRes;
-    float dc = texture2D(tDepth, uv).r;
-    float dl = texture2D(tDepth, uv - vec2(px.x, 0.0)).r;
-    float dr = texture2D(tDepth, uv + vec2(px.x, 0.0)).r;
-    float du = texture2D(tDepth, uv + vec2(0.0, px.y)).r;
-    float dd = texture2D(tDepth, uv - vec2(0.0, px.y)).r;
+    float dc = depthAt(uv);
+    float dl = depthAt(uv - vec2(px.x, 0.0));
+    float dr = depthAt(uv + vec2(px.x, 0.0));
+    float du = depthAt(uv + vec2(0.0, px.y));
+    float dd = depthAt(uv - vec2(0.0, px.y));
     float zc = lin(dc);
     float K = (uFar - uNear) / (uNear * uFar);
     float rel = (dl + dr + du + dd - 4.0 * dc) * K * zc;
@@ -159,7 +165,7 @@ const FINAL = /* glsl */ `
       for (int i = 0; i < 6; i++) {
         float a = float(i) * 1.0472;
         vec2 o = i == 0 ? vec2(0.0) : vec2(cos(a), sin(a)) * 0.008;
-        vis += step(0.99999, texture2D(tDepth, clamp(sp + o, 0.0, 1.0)).r);
+        vis += step(0.99999, depthAt(clamp(sp + o, 0.0, 1.0)));
       }
       vis /= 6.0;
       vec2 asp = vec2(uRes.x / uRes.y, 1.0);
@@ -236,9 +242,10 @@ export class Pipeline {
       uRes: { value: new THREE.Vector2() },
       uNear: { value: 0.1 },
       uFar: { value: 5000 },
+      uReversed: { value: 0 },
       uLineScale: { value: 1 },
       uLineStrength: { value: 0.75 },
-      uLineFar: { value: 260 },
+      uLineFar: { value: 200 }, // 1-pixel lines on far-off buildings only shimmer
       uLineTint: { value: new THREE.Color(0.22, 0.2, 0.3) },
       uBloom: { value: 0.7 },
       uExposure: { value: 1 },
@@ -363,6 +370,7 @@ export class Pipeline {
     u.tBloom.value = this.mips[0].texture;
     u.uNear.value = camera.near;
     u.uFar.value = camera.far;
+    u.uReversed.value = r.state.buffers.depth.getReversed() ? 1 : 0;
     u.uLineStrength.value = this.outlines ? params.lineStrength ?? 0.75 : 0;
     if (params.exposure !== undefined) u.uExposure.value = params.exposure;
     if (params.bloom !== undefined) u.uBloom.value = params.bloom;

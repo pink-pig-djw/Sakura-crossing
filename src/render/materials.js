@@ -103,6 +103,9 @@ export function createToonMaterial(opts = {}) {
   const defines = {};
   if (opts.map) defines.USE_TEXMAP = '';
   if (opts.alphaTest) defines.ALPHA_TEST = opts.alphaTest.toFixed(3);
+  // cut-outs (signs, wire mesh) blend into the multisampled coverage instead of popping on
+  // and off pixel by pixel, which made fine mesh shimmer in the distance
+  if (opts.alphaTest && opts.alphaToCoverage) defines.ALPHA_COVERAGE = '';
   if (opts.emissiveFlag || opts.emissiveAll) defines.EMISSIVE_FLAG = '';
   if (opts.emissiveAll) defines.EMISSIVE_ALL = '';
   if (opts.noPattern) defines.NO_PATTERN = '';
@@ -115,6 +118,7 @@ export function createToonMaterial(opts = {}) {
 
   const mat = new THREE.ShaderMaterial({
     name: opts.name || 'toon',
+    alphaToCoverage: !!(opts.alphaTest && opts.alphaToCoverage),
     lights: true,
     vertexColors: true,
     defines,
@@ -142,10 +146,16 @@ export function createToonMaterial(opts = {}) {
             emis = vPattern;
           #endif
         #endif
+        float cov = 1.0;
         #ifdef USE_TEXMAP
           vec4 tx = texture2D(map, vUv);
           #ifdef ALPHA_TEST
-            if (tx.a < ALPHA_TEST) discard;
+            #ifdef ALPHA_COVERAGE
+              cov = clamp((tx.a - ALPHA_TEST) / max(fwidth(tx.a), 1e-4) + 0.5, 0.0, 1.0);
+              if (cov <= 0.0) discard;
+            #else
+              if (tx.a < ALPHA_TEST) discard;
+            #endif
           #endif
           albedo *= tx.rgb;
         #else
@@ -164,7 +174,7 @@ export function createToonMaterial(opts = {}) {
           col += albedo * max(glow - 1.0, 0.0) * 0.8;
         #endif
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        gl_FragColor = vec4(col, uOutline * cov);
       }
     `,
   });

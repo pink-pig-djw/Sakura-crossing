@@ -63,6 +63,13 @@ export const PAT = {
 export const AUDIT = { on: false, tag: '', rec: [] };
 const _ap = new THREE.Vector3();
 
+// While the town is built, every box (walls, posts, building bodies, slabs) is also noted in
+// world space, so leafy cards can be kept from swinging through them (see fitFoliage).
+// A record: bottom centre (cx, y0, cz), long axis (ux, uz) with half length L, half
+// thickness T, top y1.
+export const SOLIDS = { on: false, list: [] };
+const _sp = new THREE.Vector3(), _sq = new THREE.Vector3();
+
 export class MeshBuilder {
   constructor() {
     this.pos = [];
@@ -211,7 +218,8 @@ export class MeshBuilder {
   // o.color, o.pattern, o.ry, o.ao (bottom darkening 0..1), o.top (top face color),
   // o.skip: string of faces to skip among 'xXyYzZ' (lower = negative side)
   box(cx, cy, cz, sx, sy, sz, o = {}) {
-    if (AUDIT.on) this._audit('b', cx, cy - sy / 2, cz, cx, cy + sy / 2, cz, Math.abs(sx) / 2, Math.abs(sz) / 2, o.ry || 0);
+    if (AUDIT.on) this._audit('b', cx, cy - sy / 2, cz, cx, cy + sy / 2, cz, Math.abs(sx) / 2, Math.abs(sz) / 2, o.ry || 0, o.pattern ?? 0);
+    if (SOLIDS.on && o.pattern !== PAT.LEAVES) this._solid(cx, cy, cz, Math.abs(sx) / 2, Math.abs(sy) / 2, Math.abs(sz) / 2, o.ry || 0);
     const color = col(o.color ?? 0xcccccc);
     const pattern = o.pattern ?? 0;
     const hx = sx / 2, hy = sy / 2, hz = sz / 2;
@@ -252,9 +260,26 @@ export class MeshBuilder {
     return this;
   }
 
+  _solid(cx, cy, cz, hx, hy, hz, ry) {
+    const m = this.identity ? null : this.matrix;
+    _sp.set(cx, cy - hy, cz);
+    _sq.set(cx, cy + hy, cz);
+    if (m) {
+      _sp.applyMatrix4(m);
+      _sq.applyMatrix4(m);
+    }
+    // the long axis in world space
+    const along = hx >= hz;
+    const cs = Math.cos(ry), sn = Math.sin(ry);
+    _ap.set(along ? cs : sn, 0, along ? -sn : cs);
+    if (m) _ap.transformDirection(m);
+    const ul = Math.hypot(_ap.x, _ap.z) || 1;
+    SOLIDS.list.push({ cx: _sp.x, cz: _sp.z, ux: _ap.x / ul, uz: _ap.z / ul, L: Math.max(hx, hz), T: Math.min(hx, hz), y0: Math.min(_sp.y, _sq.y), y1: Math.max(_sp.y, _sq.y) });
+  }
+
   // world-space record of a box (kind 'b': half extents hx, hz about (x,z)) or a cylinder
   // ('c': axis from p0 to p1, radius hx); bottom/top points are the axis ends
-  _audit(kind, x0, y0, z0, x1, y1, z1, hx, hz, ry) {
+  _audit(kind, x0, y0, z0, x1, y1, z1, hx, hz, ry, pat = 0) {
     const m = this.identity ? null : this.matrix;
     const pt = (x, y, z) => {
       _ap.set(x, y, z);
@@ -275,7 +300,7 @@ export class MeshBuilder {
     // the long axis of a box in world space (for walls on slopes)
     const long = hx >= hz ? [cs, -sn, hx] : [sn, cs, hz];
     const e0 = pt(x0 - long[0] * long[2], y0, z0 - long[1] * long[2]), e1 = pt(x0 + long[0] * long[2], y0, z0 + long[1] * long[2]);
-    AUDIT.rec.push({ k: kind, tag: AUDIT.tag, a, b, e0, e1, hx, hz, x0: mnx, x1: mxx, y0: mny, y1: mxy, z0: mnz, z1: mxz });
+    AUDIT.rec.push({ k: kind, tag: AUDIT.tag, a, b, e0, e1, hx, hz, pat, x0: mnx, x1: mxx, y0: mny, y1: mxy, z0: mnz, z1: mxz });
   }
 
   // Box defined by min/max corners (local axis aligned).

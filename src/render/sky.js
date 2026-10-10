@@ -33,7 +33,12 @@ export function createSky() {
       void main() {
         vDir = position;
         vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        gl_Position = p.xyww;
+        // on the far plane (z = 0 with a reversed depth buffer)
+        #ifdef USE_REVERSED_DEPTH_BUFFER
+          gl_Position = vec4(p.xy, 0.0, p.w);
+        #else
+          gl_Position = p.xyww;
+        #endif
       }
     `,
     fragmentShader: /* glsl */ `

@@ -122,7 +122,12 @@ export function createClouds() {
         void main() {
           vUv = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          gl_Position.z = gl_Position.w * 0.99999;
+          // just in front of the far plane (the sky), behind everything else
+          #ifdef USE_REVERSED_DEPTH_BUFFER
+            gl_Position.z = gl_Position.w * 0.00001;
+          #else
+            gl_Position.z = gl_Position.w * 0.99999;
+          #endif
         }
       `,
       fragmentShader: /* glsl */ `
