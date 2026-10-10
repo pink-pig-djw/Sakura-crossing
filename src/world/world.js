@@ -95,6 +95,9 @@ export async function buildWorld(scene, opts = {}) {
     glass: { material: createGlassMaterial(), castShadow: false, receiveShadow: false, renderOrder: 3 },
   };
   materials.detail = { material: materials.toon.material, castShadow: false };
+  // shelf and locker contents (furnish.js): their own batches so they can be culled by distance
+  materials.props = { ...materials.interior };
+  materials.propsSign = { ...materials.interiorSign };
   const ctx = {
     scene,
     materials,
@@ -228,7 +231,16 @@ export async function buildWorld(scene, opts = {}) {
   signTex2.needsUpdate = true;
   const group = new THREE.Group();
   group.name = 'static';
-  ctx.builders.build(materials, group);
+  const built = ctx.builders.build(materials, group);
+  // shelf and locker contents are only drawn within ~70 m: from further away they are a
+  // few pixels behind glass
+  const rooms = built.filter((m) => m.name.startsWith('props')).map((m) => {
+    m.geometry.computeBoundingSphere();
+    return { m, c: m.geometry.boundingSphere.center, r: m.geometry.boundingSphere.radius };
+  });
+  ctx.cullInteriors = (cam) => {
+    for (const it of rooms) it.m.visible = it.c.distanceTo(cam) - it.r < 70;
+  };
   scene.add(group);
   interiors.finalize();
 

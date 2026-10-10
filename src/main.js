@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { SunLight } from 'three/addons/lights/SunLight.js';
+import { steadyShadows } from './render/shadowfix.js';
 import { G } from './render/materials.js';
 import { AUDIT } from './core/builder.js';
 import { createSky } from './render/sky.js';
@@ -29,6 +30,7 @@ const debug = params.has('cam') || params.has('still');
 // ---------------------------------------------------------------------------
 // renderer / scene
 // ---------------------------------------------------------------------------
+steadyShadows();
 const canvas = document.getElementById('scene');
 // reversed depth (where the browser has EXT_clip_control): a float depth buffer then keeps the
 // same relative precision out to the horizon, so walls, windows and signs a few millimetres
@@ -737,6 +739,7 @@ function frame() {
   }
   for (const u of world.updaters) u(t, dt);
   world.grass?.update(camera);
+  world.cullInteriors?.(camera.position);
   world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
   catSys.update(t, dt, player.pos);
   traffic.update(dt, state.mode === 'play' ? player.pos : null);
@@ -866,6 +869,7 @@ window.__setView = (cam, hour) => {
   tod.update(0);
   clouds.userData.update(camera, G.uTime.value);
   world.grass?.update(camera);
+  world.cullInteriors?.(camera.position);
   pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value);
   renderer.info.reset();
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });

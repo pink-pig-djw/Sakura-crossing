@@ -4,7 +4,8 @@ import { PAT } from '../core/builder.js';
 import { EAST2, ROADS, groundH } from './layout.js';
 import { Kit, boxFaces, signOnFace, faceBox, car, parkedCar, bicycle, hedge } from './kit.js';
 import { FONTS, drawBoard, fitText } from '../render/atlas.js';
-import { buildRoom, vsign, hrect, ceilingLights, productTex } from './interiors.js';
+import { buildRoom, vsign, hrect, ceilingLights } from './interiors.js';
+import { shopShelf, lockers, numberPlates } from './furnish.js';
 import { midrise, officeGlass, cityLamp } from './commercial.js';
 import { buildHouse, buildOldHouse, buildApartment } from './buildings.js';
 import { roadSurfaceY } from './roads.js';
@@ -113,13 +114,15 @@ function buildHospital(ctx, doors) {
   b.boxMM(381, y, -6.8, 389.4, y + 1.0, -6.2, { color: 0xc9b493 });
   b.boxMM(380.9, y + 1.0, -6.9, 389.5, y + 1.05, -6.1, { color: 0xf2efe6 });
   solid(ctx, 381, H.z0, 389.4, -6.1, y - 0.5, y + 2.5);
-  vsign(ctx, 'x', H.z0 + 0.01, 381.5, 389.0, y + 1.3, y + 2.6, 1, productTex(ctx, 'daily'), 0.2, 2.0);
+  // medicine shelves on the wall behind the window
+  shopShelf(ctx, 'x', H.z0 + 0.35, 381.5, 389.0, 1, y + 1.1, 1.5, 0.35, ['daily', 'daily', 'daily', 'daily'], { color: 0xf2f2ee, back: 0xe6eaec, plinth: 0.04, bay: 1.25, seed: 101 });
   hangingSign(ctx, 385.2, -5.6, y + 2.75, 2.6, 0.55, label(ctx, 'kusuri', 'お薬お渡し', { sub: 'PHARMACY' }));
   ctx.interactables.push({ kind: 'hospital', what: 'pharmacy', x: 385.2, z: -5.4, y, r: 1.8, label: '薬の窓口をのぞく', text: '電光掲示板に番号が並んでいる。「12番の方、どうぞ」' });
   // shop (売店) in the south-east corner
   for (const sz of [1.2, 3.2]) {
-    b.boxMM(381.0, y, sz - 0.3, 389.2, y + 1.5, sz + 0.3, { color: 0xe8e6e0 });
-    vsign(ctx, 'x', sz - 0.31, 381.1, 389.1, y + 0.1, y + 1.45, -1, productTex(ctx, sz < 2 ? 'snacks' : 'drinks'), 0.2, 1.4);
+    const k = sz < 2 ? ['snacks', 'snacks', 'sweets', 'bread'] : ['drinks', 'drinks', 'noodles', 'daily'];
+    shopShelf(ctx, 'x', sz - 0.3, 381.0, 389.2, -1, y, 1.5, 0.3, k, { bay: 1.03, seed: 110 + sz * 10 });
+    shopShelf(ctx, 'x', sz + 0.3, 381.0, 389.2, 1, y, 1.5, 0.3, sz < 2 ? ['sweets', 'snacks', 'snacks', 'daily'] : ['drinks', 'sweets', 'daily', 'daily'], { bay: 1.03, seed: 111 + sz * 10 });
     solid(ctx, 381.0, sz - 0.3, 389.2, sz + 0.3, y - 0.5, y + 1.5);
   }
   hangingSign(ctx, 385.2, -0.4, y + 2.75, 1.8, 0.5, label(ctx, 'baiten', '売店', { sub: 'SHOP' }));
@@ -276,6 +279,19 @@ function buildPostOffice(ctx, doors) {
   for (const lx of [P.x0 + 4.2, P.x0 + 7.3]) b.boxMM(lx - 0.04, y, 0.7, lx + 0.04, y + 0.85, 1.3, { color: 0x8a8f94 });
   solid(ctx, P.x0 + 4, 0.6, P.x0 + 7.5, 1.4, y - 0.5, y + 0.9);
   ctx.interactables.push({ kind: 'post', what: 'counter', x: 419.5, z: -2.2, y, r: 1.8, label: '窓口で切手を買う', text: '桜の記念切手を一枚買った。' });
+  // parcel lockers (宅配ロッカー) on the east wall, the touch panel in the middle column
+  {
+    const fx = P.x1 - 0.55, za = -2.2, zb = 3.6;
+    lockers(ctx, 'z', fx, za, zb, -1, y, 1.9, 0.55, { style: 'parcel', cols: 7, rows: 6, frame: 0xd9dcdf, colors: ['#e8eaec', '#e4e6e8'], numbers: numberPlates(ctx, 'white'), plinth: 0.08, seed: 131 });
+    const pz = (za + zb) / 2, pb = IB(ctx, fx, pz);
+    pb.boxMM(fx - 0.03, y + 0.95, pz - 0.3, fx + 0.01, y + 1.55, pz + 0.3, { color: 0x3a3c40 });
+    EB(ctx, fx, pz).box(fx - 0.035, y + 1.3, pz, 0.01, 0.3, 0.42, { color: 0x9fd0f0 });
+    pb.boxMM(fx - 0.06, y + 1.0, pz - 0.12, fx - 0.03, y + 1.08, pz + 0.12, { color: 0x2a2a2a });
+    pb.boxMM(fx - 0.05, y + 1.9, za, P.x1, y + 2.2, zb, { color: 0xc0392b });
+    vsign(ctx, 'z', fx - 0.051, za + 0.3, zb - 0.3, y + 1.93, y + 2.17, -1, label(ctx, 'post-locker', '宅配ロッカー', { w: 384, h: 48, fg: '#ffffff', bg: '#c0392b' }), 0.4);
+    solid(ctx, fx, za, P.x1, zb, y - 0.5, y + 2.2);
+    ctx.interactables.push({ kind: 'post', what: 'locker', x: fx - 0.9, z: pz, y, r: 1.6, label: '宅配ロッカーを見る', text: '宅配ロッカー。届いた荷物を、好きな時間に暗証番号で受け取れる。' });
+  }
   // the name over the door, the red post box out front
   const kit = new Kit(ctx, dx, P.z1);
   const nm = ctx.atlas2.draw('east:post-name', 512, 96, (c, w, hh) => {

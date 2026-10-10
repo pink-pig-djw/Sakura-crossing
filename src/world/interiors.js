@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { PAT, MeshBuilder } from '../core/builder.js';
 import { groundH, SUBWAY } from './layout.js';
+import { bookcase, shopShelf, magazineRack } from './furnish.js';
 import { Kit, signOnFace, gableRoof, bicycle } from './kit.js';
-import { FONTS, drawBoard, drawVertical, fitText, roundRect } from '../render/atlas.js';
+import { FONTS, drawBoard, drawVertical, fitText } from '../render/atlas.js';
 import { benchAt, bench } from './coast.js';
 import { midrise, bladeSign, GROUND_SHOPS } from './commercial.js';
 import { parkedCar } from './kit.js';
@@ -269,67 +270,6 @@ export class AutoDoors {
 // ---------------------------------------------------------------------------
 // product textures (atlas page 2)
 // ---------------------------------------------------------------------------
-export function productTex(ctx, kind) {
-  return ctx.atlas2.draw('prod:' + kind, 256, 128, (c, w, h) => {
-    const rng = new RNG(kind.length * 977 + kind.charCodeAt(0));
-    c.fillStyle = kind === 'drinks' ? '#e8eef2' : '#f4f2ee';
-    c.fillRect(0, 0, w, h);
-    const rows = kind === 'magazines' ? 2 : kind === 'drinks' ? 4 : 3;
-    const rh = h / rows;
-    const pal = {
-      drinks: ['#3a8a4a', '#e8432e', '#f6c341', '#2f6fd0', '#ffffff', '#8a4a2a', '#f08ab0', '#b8d870'],
-      chilled: ['#f2efe6', '#2a2a2a', '#d84a3a', '#f6c341', '#7ab04a', '#e8a070'],
-      snacks: ['#e8432e', '#f6c341', '#2f6fd0', '#48a860', '#f08a24', '#9a4ac0', '#f08ab0'],
-      noodles: ['#f6c341', '#e8432e', '#ffffff', '#2f6fd0', '#f08a24'],
-      daily: ['#9fd0f0', '#ffffff', '#f6e7c8', '#48a860', '#f08ab0', '#2f6fd0'],
-      sweets: ['#fff1d8', '#f6c0d0', '#d8a060', '#ffffff', '#c86a8a'],
-      bread: ['#d9a05a', '#e8c080', '#c8803a', '#f6e7c8'],
-      magazines: ['#e8432e', '#2f6fd0', '#f6c341', '#f08ab0', '#48a860', '#2a2a2a', '#ffffff'],
-      cards: ['#2f6fd0', '#e8432e', '#f6c341', '#48a860', '#9a4ac0', '#ffffff'],
-      books: ['#5a3a2a', '#2a4a6a', '#8a2a2a', '#2f5a3a', '#c9a24a', '#e8e0d0', '#6a4a8a', '#3a6a8a'],
-    }[kind] || ['#cccccc'];
-    for (let r = 0; r < rows; r++) {
-      const y0 = r * rh;
-      // shelf lip with price tags
-      c.fillStyle = '#d9dcdf';
-      c.fillRect(0, y0 + rh - 7, w, 7);
-      let x = 3;
-      while (x < w - 4) {
-        const iw = kind === 'books' ? rng.range(5, 10) : kind === 'drinks' ? rng.range(12, 16) : kind === 'magazines' ? rng.range(26, 34) : rng.range(14, 24);
-        const ih = kind === 'books' ? rh * rng.range(0.7, 0.92) : kind === 'drinks' ? rh * rng.range(0.72, 0.88) : kind === 'magazines' ? rh * 0.85 : rh * rng.range(0.45, 0.8);
-        const col = pal[Math.floor(rng.next() * pal.length)];
-        c.fillStyle = col;
-        if (kind === 'drinks') {
-          roundRect(c, x, y0 + rh - 7 - ih, iw, ih, 3);
-          c.fill();
-          c.fillStyle = 'rgba(255,255,255,0.75)';
-          c.fillRect(x + 1, y0 + rh - 7 - ih * 0.62, iw - 2, ih * 0.22);
-        } else if (kind === 'chilled' && rng.next() < 0.5) {
-          // onigiri triangles
-          c.beginPath();
-          c.moveTo(x, y0 + rh - 8);
-          c.lineTo(x + iw, y0 + rh - 8);
-          c.lineTo(x + iw / 2, y0 + rh - 8 - ih);
-          c.closePath();
-          c.fillStyle = '#f2efe6';
-          c.fill();
-          c.fillStyle = '#1f2a22';
-          c.fillRect(x + iw * 0.25, y0 + rh - 8 - ih * 0.35, iw * 0.5, ih * 0.35);
-        } else {
-          c.fillRect(x, y0 + rh - 7 - ih, iw, ih);
-          c.fillStyle = 'rgba(255,255,255,0.45)';
-          if (kind !== 'books') c.fillRect(x + 2, y0 + rh - 7 - ih * 0.7, iw - 4, ih * 0.18);
-          else c.fillRect(x + 1, y0 + rh - 7 - ih * 0.85, iw - 2, 2);
-        }
-        if (kind !== 'books' && rng.next() < 0.3) {
-          c.fillStyle = '#ffe14a';
-          c.fillRect(x, y0 + rh - 6, 9, 5);
-        }
-        x += iw + (kind === 'books' ? 0.5 : 2);
-      }
-    }
-  });
-}
 
 function brandSign(ctx) {
   return ctx.atlas2.draw('sakuramart', 512, 96, (c, w, h) => {
@@ -428,21 +368,19 @@ function buildKonbini(ctx, block, doors) {
   const IB = (x, z) => ctx.builders.get('interior', x, z);
   ceilingLights(ctx, K.x0, K.z0, K.x1, K.z1, y + h, 2.6, [1.6, 0.25]);
   // walk-in fridges along the back wall (glowing, glass doors)
-  const drinks = productTex(ctx, 'drinks');
   const fz = K.z1 - 0.85;
-  IB(230, fz).boxMM(K.x0 + 0.6, y, fz, 234.2, y + 2.3, K.z1, { color: 0xdfe3e6 });
-  vsign(ctx, 'x', fz - 0.01, K.x0 + 0.75, 234.05, y + 0.2, y + 2.05, -1, drinks, 1.6, 1.7);
+  IB(230, fz).boxMM(K.x0 + 0.6, y + 2.05, fz, 234.2, y + 2.3, K.z1, { color: 0xdfe3e6 });
+  shopShelf(ctx, 'x', fz - 0.02, K.x0 + 0.6, 234.2, -1, y, 2.05, 0.8, ['drinks', 'drinks', 'drinks', 'drinks', 'drinks'], { color: 0xdfe3e6, back: 0x5a6068, bay: 0.86, plinth: 0.2, seed: 7 });
+  for (let x = K.x0 + 0.95; x < 234.0; x += 1.5) ctx.builders.get('emissive', x, fz).box(x, y + 2.02, fz + 0.1, 0.9, 0.02, 0.05, { color: 0xffffff });
   glassRect(ctx, 'x', fz - 0.06, K.x0 + 0.7, 234.1, y + 0.15, y + 2.1);
   for (let x = K.x0 + 0.7; x <= 234.2; x += 0.86) IB(x, fz).boxMM(x - 0.03, y + 0.1, fz - 0.1, x + 0.03, y + 2.15, fz - 0.02, { color: 0x9aa0a6 });
   ctx.colliders.addBox((K.x0 + 0.6 + 234.2) / 2, fz + 0.42, (234.2 - K.x0 - 0.6) / 2, 0.45, 0, y + 2.3, y - 1);
   ctx.interactables.push({ kind: 'konbini', what: 'drink', x: 229.5, z: fz - 1.0, y, r: 2.6, label: '飲み物を選ぶ' });
   // open chiller on the west wall: onigiri, bento, sweets
-  const chilled = productTex(ctx, 'chilled');
-  const sweets = productTex(ctx, 'sweets');
   const cx = K.x0 + 0.85;
-  IB(cx, 38).boxMM(K.x0, y, 36.2, cx, y + 1.9, 42.4, { color: 0xdfe3e6 });
-  vsign(ctx, 'z', cx + 0.01, 36.4, 39.4, y + 0.3, y + 1.7, 1, chilled, 1.2, 1.5);
-  vsign(ctx, 'z', cx + 0.01, 39.4, 42.2, y + 0.3, y + 1.7, 1, sweets, 1.2, 1.4);
+  IB(cx, 38).boxMM(K.x0, y + 1.75, 36.2, cx, y + 1.9, 42.4, { color: 0xdfe3e6 });
+  shopShelf(ctx, 'z', cx, 36.2, 39.4, 1, y, 1.75, 0.85, ['chilled', 'chilled', 'chilled', 'chilled'], { color: 0xdfe3e6, back: 0x5a6068, plinth: 0.3, bay: 1.6, seed: 8 });
+  shopShelf(ctx, 'z', cx, 39.4, 42.4, 1, y, 1.75, 0.85, ['sweets', 'sweets', 'chilled', 'sweets'], { color: 0xdfe3e6, back: 0x5a6068, plinth: 0.3, bay: 1.5, seed: 9 });
   ctx.builders.get('emissive', cx, 39).box(cx - 0.1, y + 1.82, 39.3, 0.08, 0.04, 5.9, { color: 0xffffff });
   ctx.colliders.addBox(K.x0 + 0.45, 39.3, 0.5, 3.1, 0, y + 1.9, y - 1);
   ctx.interactables.push({ kind: 'konbini', what: 'onigiri', x: cx + 1.0, z: 38, y, r: 1.8, label: 'おにぎりを選ぶ' });
@@ -451,18 +389,16 @@ function buildKonbini(ctx, block, doors) {
   const kinds = [['snacks', 'noodles'], ['daily', 'bread'], ['snacks', 'cards']];
   [228.4, 231.0].forEach((gx, i) => {
     const z0 = 36.0, z1 = 41.6;
-    IB(gx, 38.8).boxMM(gx - 0.45, y, z0, gx + 0.45, y + 1.45, z1, { color: 0xeeeeea });
-    IB(gx, 38.8).boxMM(gx - 0.5, y, z0 - 0.05, gx + 0.5, y + 0.12, z1 + 0.05, { color: 0x9aa0a6 });
     const [a, b] = kinds[i];
-    vsign(ctx, 'z', gx - 0.46, z0 + 0.1, z1 - 0.1, y + 0.16, y + 1.38, -1, productTex(ctx, a), 0.4, 1.8);
-    vsign(ctx, 'z', gx + 0.46, z0 + 0.1, z1 - 0.1, y + 0.16, y + 1.38, 1, productTex(ctx, b), 0.4, 1.8);
+    const four = (k) => (k === 'cards' ? ['cards', 'cards', 'cards', 'cards'] : k === 'noodles' ? ['noodles', 'noodles', 'noodles', 'snacks'] : k === 'bread' ? ['bread', 'bread', 'sweets', 'bread'] : [k, k, k, k]);
+    shopShelf(ctx, 'z', gx - 0.45, z0, z1, -1, y, 1.45, 0.45, four(a), { bay: 1.1, seed: 20 + i * 2 });
+    shopShelf(ctx, 'z', gx + 0.45, z0, z1, 1, y, 1.45, 0.45, four(b), { bay: 1.1, seed: 21 + i * 2 });
+    IB(gx, 38.8).boxMM(gx - 0.05, y + 1.45, z0, gx + 0.05, y + 1.5, z1, { color: 0xdfe1e4 });
     ctx.colliders.addBox(gx, (z0 + z1) / 2, 0.5, (z1 - z0) / 2, 0, y + 1.45, y - 1);
     ctx.interactables.push({ kind: 'konbini', what: a, x: gx - 1.0, z: 38.8, y, r: 1.4, label: '棚を眺める' });
   });
   // magazine rack under the front window
-  const mags = productTex(ctx, 'magazines');
-  IB(228, K.z0 + 0.3).boxMM(225.6, y, K.z0 + 0.05, 232.6, y + 0.95, K.z0 + 0.55, { color: 0xe6e6e2 });
-  vsign(ctx, 'x', K.z0 + 0.56, 225.7, 232.5, y + 0.15, y + 0.9, 1, mags, 0.4, 1.7);
+  magazineRack(ctx, 'x', K.z0 + 0.55, 225.6, 232.6, 1, y, 0.95, 0.5);
   ctx.colliders.addBox(229.1, K.z0 + 0.3, 3.5, 0.28, 0, y + 1, y - 1);
   ctx.interactables.push({ kind: 'konbini', what: 'magazine', x: 229, z: K.z0 + 1.3, y, r: 1.6, label: '雑誌を立ち読みする' });
   // counter with registers, hot snack case and the coffee machine
@@ -489,7 +425,7 @@ function buildKonbini(ctx, block, doors) {
   ctx.colliders.addBox((cx0 + cx1) / 2, (cz0 + cz1) / 2, 0.55, (cz1 - cz0) / 2, 0, y + 1.05, y - 1);
   ctx.interactables.push({ kind: 'konbini', what: 'register', x: cx0 - 0.9, z: 38.8, y, r: 1.6, label: 'レジで会計する' });
   // shelves behind the counter (gift cards / tickets) and the staff door
-  vsign(ctx, 'z', K.x1 - 0.02, 36.6, 41.6, y + 0.9, y + 2.2, -1, productTex(ctx, 'cards'), 0.5, 1.7);
+  shopShelf(ctx, 'z', K.x1 - 0.32, 36.6, 41.6, -1, y + 0.9, 1.3, 0.3, ['cards', 'cards', 'cards'], { plinth: 0.04, bay: 1.25, seed: 30 });
   IB(K.x1, 42.5).boxMM(K.x1 - 0.05, y, 42.0, K.x1, y + 2.1, 43.1, { color: 0xc9ced3 });
   // coffee machine near the entrance
   IB(K.x1 - 0.5, 35.3).boxMM(K.x1 - 1.0, y, 34.6, K.x1 - 0.05, y + 1.0, 36.0, { color: 0x8a6a4c, pattern: PAT.PLANKS });
@@ -647,9 +583,7 @@ function buildCafe(ctx, block, doors) {
     ctx.interactables.push({ kind: 'bench', x: sx, z: sz - e * 0.45, y, r: 0.8, label: '席に座る', sit: { x: sx, y: y + 0.45, z: sz, yaw: e > 0 ? 0 : Math.PI } });
   }
   // bookshelf on the south wall + plants
-  const books = productTex(ctx, 'books');
-  IB(206, C.z1 - 0.2).boxMM(204.6, y, C.z1 - 0.35, 208.4, y + 2.0, C.z1, { color: 0x6a4a36 });
-  vsign(ctx, 'x', C.z1 - 0.36, 204.7, 208.3, y + 0.1, y + 1.9, -1, books, 0.3, 1.2);
+  bookcase(ctx, 'x', C.z1 - 0.35, 204.6, 208.4, -1, y, 2.0, 0.35, { color: 0x6a4a36, paperbacks: true, seed: 5 });
   ctx.colliders.addBox(206.5, C.z1 - 0.2, 1.9, 0.2, 0, y + 2, y - 1);
   ctx.interactables.push({ kind: 'book', x: 206.5, z: C.z1 - 1.1, y, r: 1.4, label: '本を手にとる' });
   for (const [px, pz] of [[C.x1 - 0.5, C.z1 - 0.5], [C.x0 + 0.5, C.z0 + 0.5]]) {
@@ -989,20 +923,16 @@ function buildLibrary(ctx, block, doors) {
   signOnFace(kit, { o: V(L.x1 + 0.27, 0, -62.0), r: V(0, 0, 1), n: V(1, 0, 0), len: 10 }, -12.6, y + h - 1.0, 5.0, 0.94, 0.0, name, 0.6);
   // ---- interior ----
   ceilingLights(ctx, L.x0, L.z0, L.x1, L.z1, y + h, 3.0, [1.8, 0.2]);
-  const books = productTex(ctx, 'books');
-  // shelf rows (E-W), both faces filled with spines
+  // shelf rows (E-W), books on both faces, call-number labels on the spines
   for (let i = 0; i < 5; i++) {
     const z = -75.2 + i * 2.4;
     const xa = 226.6, xb = 233.6;
-    IB(230, z).boxMM(xa, y, z - 0.28, xb, y + 1.95, z + 0.28, { color: 0x8a6a4c, pattern: PAT.PLANKS });
-    vsign(ctx, 'x', z - 0.29, xa + 0.05, xb - 0.05, y + 0.08, y + 1.88, -1, books, 0.25, 1.2);
-    vsign(ctx, 'x', z + 0.29, xa + 0.05, xb - 0.05, y + 0.08, y + 1.88, 1, books, 0.25, 1.2);
+    for (const e of [-1, 1]) bookcase(ctx, 'x', z + e * 0.28, xa, xb, e, y, 1.95, 0.28, { color: 0x8a6a4c, label: true, seed: i * 2 + (e > 0 ? 1 : 0) + 11 });
     ctx.colliders.addBox((xa + xb) / 2, z, (xb - xa) / 2, 0.3, 0, y + 1.95, y - 1);
     ctx.interactables.push({ kind: 'book', x: (xa + xb) / 2, z: z + 1.2, y, r: 2.2, label: '本棚を眺める' });
   }
   // wall shelves along the west wall under the high windows
-  IB(L.x0 + 0.3, -68).boxMM(L.x0, y, -76.8, L.x0 + 0.45, y + 2.6, -59.0, { color: 0x8a6a4c });
-  vsign(ctx, 'z', L.x0 + 0.46, -76.6, -59.2, y + 0.1, y + 2.5, 1, books, 0.25, 1.5);
+  bookcase(ctx, 'z', L.x0 + 0.45, -76.8, -59.0, 1, y, 2.6, 0.45, { color: 0x8a6a4c, label: true, seed: 31 });
   ctx.colliders.addBox(L.x0 + 0.25, -67.9, 0.3, 8.9, 0, y + 2.6, y - 1);
   // circulation counter by the entrance
   IB(238, -71).boxMM(236.6, y, -72.6, 239.6, y + 1.05, -71.6, { color: 0x6a4a36, pattern: PAT.PLANKS });
@@ -1032,8 +962,7 @@ function buildLibrary(ctx, block, doors) {
   const ck = IB(229, -76);
   ck.cyl(236.0, y + 0.002, -66.0, 2.2, 2.2, 0.02, 20, 0xf2b6c8);
   for (const [cx, cz, cc] of [[235.0, -65.4, 0x9fd0f0], [236.8, -66.8, 0xf6c341], [236.6, -64.9, 0x7ac07a]]) ck.cyl(cx, y, cz, 0.38, 0.32, 0.32, 12, cc);
-  ck.boxMM(234.2, y, -68.8, 238.6, y + 0.9, -68.4, { color: 0xe8d8b8 });
-  vsign(ctx, 'x', -68.39, 234.3, 238.5, y + 0.05, y + 0.85, 1, books, 0.25, 0.7);
+  bookcase(ctx, 'x', -68.4, 234.2, 238.6, 1, y, 0.9, 0.4, { color: 0xe8d8b8, paperbacks: true, shelves: 2, bay: 1.1, seed: 41 });
   ctx.colliders.addBox(236.4, -68.6, 2.2, 0.25, 0, y + 0.9, y - 1);
   ctx.landmarks.push({ id: 'library', name: '市立図書館', x: L.x1, z: doorZ });
 }

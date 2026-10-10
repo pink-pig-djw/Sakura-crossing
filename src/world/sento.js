@@ -1,7 +1,8 @@
 import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { FONTS } from '../render/atlas.js';
-import { buildRoom, vsign, hrect, vrect, glassRect, ceilingLights, productTex } from './interiors.js';
+import { buildRoom, vsign, hrect, vrect, glassRect, ceilingLights } from './interiors.js';
+import { lockers, shopShelf, numberPlates } from './furnish.js';
 import { potPlant } from './kit.js';
 
 // 汐の湯, inside. The bath house on 桜坂's east side (buildings.js builds the outside and
@@ -91,25 +92,15 @@ function norenTex(ctx, kind) {
   });
 }
 
-function lockerTex(ctx, key, cols, rows, wood, tag) {
-  return ctx.atlas2.draw('sento:' + key, 256, 128, (c, w, h) => {
-    c.fillStyle = '#3a2a1c';
+function milkSign(ctx) {
+  return ctx.atlas2.draw('sento:milk', 256, 56, (c, w, h) => {
+    c.fillStyle = '#fbf6e8';
     c.fillRect(0, 0, w, h);
-    let n = 1;
-    for (let r = 0; r < rows; r++) {
-      for (let k = 0; k < cols; k++) {
-        const x = (k * w) / cols + 2, y = (r * h) / rows + 2, cw = w / cols - 4, ch = h / rows - 4;
-        c.fillStyle = wood;
-        c.fillRect(x, y, cw, ch);
-        c.fillStyle = tag;
-        c.fillRect(x + cw * 0.3, y + ch * 0.15, cw * 0.4, ch * 0.35);
-        c.fillStyle = '#2a2a2a';
-        c.font = `700 ${ch * 0.22}px ${FONTS.gothic}`;
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        c.fillText(String(n++), x + cw / 2, y + ch * 0.33);
-      }
-    }
+    c.fillStyle = '#7a4a2a';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `700 ${h * 0.5}px ${FONTS.brush}`;
+    c.fillText('牛乳・コーヒー牛乳', w / 2, h * 0.52);
   });
 }
 
@@ -309,10 +300,12 @@ export function buildSentoInterior(ctx) {
   // the entry: a stone floor where shoes come off, a wooden step up, shoe lockers both sides
   floorPatch(-1.5, iz0, 1.5, iz0 + 0.9, 0.006, 0x8f8a80, PAT.STONE);
   box(-1.5, y0, iz0 + 0.88, 1.5, y0 + 0.03, iz0 + 0.98, { color: 0x6a4a32 });
-  const shoe = lockerTex(ctx, 'shoe', 8, 4, '#c9a46a', '#f4ead2');
+  const brass = numberPlates(ctx, 'brass');
+  let shoeNo = 0;
   for (const [a, c] of [[ix0 + 0.1, -1.6], [1.6, ix1 - 0.1]]) {
-    box(a, y0, iz0, c, y0 + 1.5, iz0 + 0.42, { color: 0x8a6a4a });
-    panel([a + 0.05, iz0 + 0.43], [c - 0.05, iz0 + 0.43], [0, 1], y0 + 0.08, y0 + 1.45, shoe, 0.1, 1.4);
+    const Q = wallQ([a, iz0 + 0.42], [c, iz0 + 0.42], [0, 1]), cols = Math.round((c - a) / 0.32);
+    lockers(ctx, Q.axis, Q.c, Q.a0, Q.a1, Q.dir, y0, 1.5, 0.42, { style: 'wood', cols, rows: 4, frame: 0x6a4a32, colors: ['#b8925e', '#b08a58', '#bf9a66'], numbers: brass, start: shoeNo, gap: 0.008, seed: 3 + shoeNo });
+    shoeNo += cols * 4;
     solid(a, iz0, c, iz0 + 0.42, y0 - 0.5, y0 + 1.5);
   }
   IT('shoes', 2.6, iz0 + 0.95, '下足札を取る', '靴を入れて、木の札を抜いた。カチリといい音がした。');
@@ -343,22 +336,29 @@ export function buildSentoInterior(ctx) {
   solid(mc[0] - 0.42, mc[1] - 0.47, mc[0] + 0.42, mc[1] + 0.47, y0 - 0.5, y0 + 0.6);
   seat(mc[0] - 0.05, mc[1], 0.5, [-1, 0], 'マッサージチェアに座る');
   const fr = [ix1 - 0.38, zA - 0.7];
-  box(fr[0] - 0.36, y0, fr[1] - 0.48, fr[0] + 0.36, y0 + 1.85, fr[1] + 0.48, { color: 0xe8e8e2 });
-  panel([fr[0] - 0.37, fr[1] - 0.42], [fr[0] - 0.37, fr[1] + 0.42], [-1, 0], y0 + 0.2, y0 + 1.7, productTex(ctx, 'chilled'), 0.7);
+  {
+    // the milk fridge: glass door, bottles of coffee milk, fruit milk and plain milk
+    const Q = wallQ([fr[0] - 0.36, fr[1] - 0.48], [fr[0] - 0.36, fr[1] + 0.48], [-1, 0]);
+    shopShelf(ctx, Q.axis, Q.c, Q.a0, Q.a1, Q.dir, y0, 1.6, 0.7, ['milk', 'milk', 'milk', 'drinks'], { color: 0xe8e8e2, back: 0x7a8088, plinth: 0.25, bay: 1.0, seed: 77 });
+    box(fr[0] - 0.36, y0 + 1.6, fr[1] - 0.48, fr[0] + 0.36, y0 + 1.85, fr[1] + 0.48, { color: 0xe8e8e2 });
+    glassRect(ctx, Q.axis, Q.c + Q.dir * 0.02, Q.a0 + 0.04, Q.a1 - 0.04, y0 + 0.22, y0 + 1.58);
+    panel([fr[0] - 0.37, fr[1] - 0.4], [fr[0] - 0.37, fr[1] + 0.4], [-1, 0], y0 + 1.64, y0 + 1.82, milkSign(ctx), 0.6);
+  }
   solid(fr[0] - 0.38, fr[1] - 0.5, fr[0] + 0.38, fr[1] + 0.5, y0 - 0.5, y0 + 1.85);
   IT('milk', fr[0] - 1.0, fr[1], 'コーヒー牛乳を飲む', '湯上がりのコーヒー牛乳。腰に手を当てて、一気に飲んだ。');
   // a potted plant on each side of the step
   for (const lx of [-1.9, 1.9]) potPlant(b, ...flat(W(lx, iz0 + 0.75), y0), rng, 1.1);
 
   // ---- the changing rooms (built the same on both sides)
-  const lk = lockerTex(ctx, 'locker', 6, 3, '#b8925e', '#e8dcc0');
   const mirror = { color: 0xdfeef3 };
   for (const s of [-1, 1]) {
     const outer = s < 0 ? ix0 : ix1;
     // lockers along the outer wall
     const la = Math.min(outer, outer - s * 0.45), lc = Math.max(outer, outer - s * 0.45);
-    box(la, y0, zA + 0.3, lc, y0 + 1.8, zB - 1.0, { color: 0x8a6a4a });
-    panel([outer - s * 0.46, zA + 0.35], [outer - s * 0.46, zB - 1.05], [-s, 0], y0 + 0.05, y0 + 1.75, lk, 0.1, 1.2);
+    {
+      const Q = wallQ([outer - s * 0.45, zA + 0.3], [outer - s * 0.45, zB - 1.0], [-s, 0]), cols = Math.max(2, Math.round((zB - 1.3 - zA) / 0.38));
+      lockers(ctx, Q.axis, Q.c, Q.a0, Q.a1, Q.dir, y0, 1.8, 0.45, { style: 'wood', cols, rows: 3, frame: 0x6a4a32, colors: ['#c49a62', '#bb925c', '#c8a26c'], numbers: brass, start: s < 0 ? 0 : 20, gap: 0.01, seed: 90 + s });
+    }
     solid(la, zA + 0.3, lc, zB - 1.0, y0 - 0.5, y0 + 1.8);
     // a vanity on the lobby wall: counter, mirror, a hair dryer
     const va = Math.min(s * 0.25, s * 1.5), vc = Math.max(s * 0.25, s * 1.5);

@@ -3,8 +3,9 @@ import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { SCHOOL, groundH } from './layout.js';
 import { Kit, signOnFace, metalFence, bicycle } from './kit.js';
-import { FONTS, drawVertical, fitText, roundRect } from '../render/atlas.js';
-import { buildRoom, openWall, wallRects, hrect, vrect, vsign, productTex } from './interiors.js';
+import { FONTS, drawVertical, fitText } from '../render/atlas.js';
+import { bookcase, lockers } from './furnish.js';
+import { buildRoom, openWall, wallRects, hrect, vrect, vsign } from './interiors.js';
 import { roadSurfaceY } from './roads.js';
 import { shrub, flowers, GARDEN_FLOWERS, AZALEA } from './greenery.js';
 
@@ -131,46 +132,7 @@ function chalkboard(ctx, key, lines) {
   });
 }
 
-function cubbyTex(ctx) {
-  return ctx.atlas2.draw('sch:cubby', 256, 64, (c, w, h) => {
-    c.fillStyle = '#d8c4a0';
-    c.fillRect(0, 0, w, h);
-    const cols = 10, rows = 2;
-    const rng = new RNG(4242);
-    const bags = ['#2a3a5a', '#3a3a3a', '#7a2a3a', '#2f5a3a', '#c98a3a', '#f2efe6'];
-    for (let r = 0; r < rows; r++) {
-      for (let k = 0; k < cols; k++) {
-        const x = (k * w) / cols + 2, y = (r * h) / rows + 2, cw = w / cols - 4, ch = h / rows - 4;
-        c.fillStyle = '#5a4632';
-        c.fillRect(x, y, cw, ch);
-        if (rng.next() < 0.75) {
-          c.fillStyle = bags[Math.floor(rng.next() * bags.length)];
-          roundRect(c, x + 2, y + ch * 0.25, cw - 4, ch * 0.75, 3);
-          c.fill();
-        }
-      }
-    }
-  });
-}
 
-function shoeTex(ctx) {
-  return ctx.atlas2.draw('sch:shoes', 256, 128, (c, w, h) => {
-    c.fillStyle = '#c9c6bc';
-    c.fillRect(0, 0, w, h);
-    const cols = 8, rows = 6;
-    for (let r = 0; r < rows; r++) {
-      for (let k = 0; k < cols; k++) {
-        const x = (k * w) / cols + 2, y = (r * h) / rows + 2, cw = w / cols - 4, ch = h / rows - 4;
-        c.fillStyle = '#e4e1d8';
-        c.fillRect(x, y, cw, ch);
-        c.fillStyle = '#ffffff';
-        c.fillRect(x + cw * 0.2, y + 3, cw * 0.6, ch * 0.22); // name tag
-        c.fillStyle = '#8a8880';
-        c.fillRect(x + cw * 0.42, y + ch * 0.6, cw * 0.16, 3); // handle
-      }
-    }
-  });
-}
 
 function noticeTex(ctx) {
   return ctx.atlas2.draw('sch:notice', 256, 96, (c, w, h) => {
@@ -534,8 +496,7 @@ function classroom(ctx, name, xa, xb, y) {
   ctx.interactables.push({ kind: 'bench', x: sx + 0.1, z: sz - 0.7, y, r: 0.9, label: special ? '窓際のいちばん後ろの席に座る' : '窓際の席に座る', sit: { x: sx, y: y + 0.45, z: sz, yaw: Math.PI / 2 } });
   ctx.interactables.push({ kind: 'school', what: 'board', x: xa + 1.6, z: RZC - 1.6, y, r: 1.5, label: '黒板を見る', text: special ? '黒板に「日直　桜井・春野」と書いてある。' : '黒板には今日の時間割と、消し忘れの板書。' });
   // lockers at the back, notice board, clock, speaker
-  b.boxMM(xb - PT / 2 - 0.42, y, RZ0 + 0.3, xb - PT / 2, y + 1.05, RZ1 - 0.3, { color: 0xb89a70 });
-  vsign(ctx, 'z', xb - PT / 2 - 0.421, RZ0 + 0.35, RZ1 - 0.35, y + 0.05, y + 1.0, -1, cubbyTex(ctx), 0.1, 2.2);
+  lockers(ctx, 'z', xb - PT / 2 - 0.42, RZ0 + 0.3, RZ1 - 0.3, -1, y, 1.05, 0.42, { style: 'cubby', cols: 16, rows: 2, frame: 0xc4a77c, plinth: 0.08, seed: Math.round(y * 10 + xb) });
   solid(ctx, xb - PT / 2 - 0.42, RZ0 + 0.3, xb - PT / 2, RZ1 - 0.3, y - 0.5, y + 1.05);
   vsign(ctx, 'z', xb - PT / 2 - 0.01, RZC - 2.6, RZC + 2.6, y + 1.35, y + 2.45, -1, noticeTex(ctx), 0.1, 2.6);
   vsign(ctx, 'z', xa + PT / 2 + 0.02, RZC - 0.25, RZC + 0.25, y + 2.42, y + 2.92, 1, clockTex(ctx), 0.1);
@@ -610,12 +571,9 @@ function nurseRoom(ctx, xa, xb, y) {
 
 function libraryRoom(ctx, xa, xb, y) {
   const b = IB(ctx, (xa + xb) / 2, RZC);
-  const books = productTex(ctx, 'books');
   for (let i = 0; i < 3; i++) {
     const x = xa + 1.6 + i * 1.6;
-    b.boxMM(x - 0.25, y, RZ0 + 0.8, x + 0.25, y + 1.8, RZC + 1.0, { color: 0x9a7a5a, pattern: PAT.PLANKS });
-    vsign(ctx, 'z', x - 0.26, RZ0 + 0.85, RZC + 0.95, y + 0.06, y + 1.74, -1, books, 0.2, 1.2);
-    vsign(ctx, 'z', x + 0.26, RZ0 + 0.85, RZC + 0.95, y + 0.06, y + 1.74, 1, books, 0.2, 1.2);
+    for (const e of [-1, 1]) bookcase(ctx, 'z', x + e * 0.25, RZ0 + 0.8, RZC + 1.0, e, y, 1.8, 0.25, { color: 0x9a7a5a, label: true, seed: i * 2 + (e > 0 ? 1 : 0) + 61 });
     solid(ctx, x - 0.26, RZ0 + 0.8, x + 0.26, RZC + 1.0, y - 0.5, y + 1.8);
     ctx.interactables.push({ kind: 'book', x, z: RZC + 1.6, y, r: 1.4, label: '本棚を眺める' });
   }
@@ -644,8 +602,7 @@ function councilRoom(ctx, xa, xb, y) {
       for (const s of [-1, 1]) b.boxMM(cx - 0.18, y, cz + s * 0.17 - 0.01, cx + 0.18, y + 0.42, cz + s * 0.17 + 0.01, STEEL);
     }
   }
-  b.boxMM(xb - PT / 2 - 0.4, y, RZ0 + 0.4, xb - PT / 2, y + 1.8, RZ1 - 0.6, { color: 0xb9bcb8 });
-  vsign(ctx, 'z', xb - PT / 2 - 0.41, RZ0 + 0.5, RZ1 - 0.7, y + 0.1, y + 1.7, -1, productTex(ctx, 'books'), 0.2, 1.4);
+  bookcase(ctx, 'z', xb - PT / 2 - 0.4, RZ0 + 0.4, RZ1 - 0.6, -1, y, 1.8, 0.4, { color: 0xb9bcb8, binders: true, palette: ['#2f4f8a', '#2a2a2a', '#f2f0ea', '#3d6a4a', '#b8344a'], seed: 71 });
   solid(ctx, xb - PT / 2 - 0.4, RZ0 + 0.4, xb - PT / 2, RZ1 - 0.6, y - 0.5, y + 1.8);
   ctx.interactables.push({ kind: 'school', what: 'council', x: xa + 1.5, z: RZC, y, r: 1.6, label: 'ホワイトボードを見る', text: '「文化祭まで あと48日！」生徒会はもう準備を始めているらしい。' });
   curtains(ctx, xa, xb, y);
@@ -662,8 +619,7 @@ function broadcastRoom(ctx, xa, xb, y) {
     b.box(mx, y + 1.32, RZ1 - 1.6, 0.06, 0.12, 0.06, { color: 0x3a3c40 });
   }
   solid(ctx, xa + 0.5, RZ1 - 1.4, xb - 0.6, RZ1 - 0.5, y - 0.5, y + 0.9);
-  b.boxMM(xb - PT / 2 - 0.35, y, RZ0 + 0.4, xb - PT / 2, y + 2.0, RZC + 1.0, { color: 0x8a8f94 });
-  vsign(ctx, 'z', xb - PT / 2 - 0.36, RZ0 + 0.5, RZC + 0.9, y + 0.1, y + 1.9, -1, productTex(ctx, 'magazines'), 0.2, 1.2);
+  bookcase(ctx, 'z', xb - PT / 2 - 0.35, RZ0 + 0.4, RZC + 1.0, -1, y, 2.0, 0.35, { color: 0x8a8f94, cds: true, palette: ['#2a2a2a', '#e8432e', '#2f6fd0', '#f6c341', '#f4f4f0', '#9a4ac0', '#48a860'], seed: 72 });
   solid(ctx, xb - PT / 2 - 0.35, RZ0 + 0.4, xb - PT / 2, RZC + 1.0, y - 0.5, y + 2.0);
   ctx.interactables.push({ kind: 'school', what: 'broadcast', x: xa + 4, z: RZ1 - 2.2, y, r: 1.6, label: 'マイクのスイッチを見る', text: '「ピンポンパンポーン♪」…スイッチは切ってある。' });
   lights(ctx, xa, xb, y);
@@ -755,12 +711,9 @@ function labRoom(ctx, xa, xb, y) {
 // 昇降口: rows of shoe lockers between the doors and the corridor
 function entranceHall(ctx, xa, xb, y) {
   const b = IB(ctx, (xa + xb) / 2, RZC);
-  const tex = shoeTex(ctx);
   for (const x of [xa + 1.4, xa + 3.4, xb - 3.4, xb - 1.4]) {
     const z0 = RZ0 + 1.6, z1 = RZ1 - 2.6;
-    b.boxMM(x - 0.35, y, z0, x + 0.35, y + 1.75, z1, { color: 0xbab7ae });
-    vsign(ctx, 'z', x - 0.36, z0 + 0.05, z1 - 0.05, y + 0.08, y + 1.7, -1, tex, 0.1, 1.5);
-    vsign(ctx, 'z', x + 0.36, z0 + 0.05, z1 - 0.05, y + 0.08, y + 1.7, 1, tex, 0.1, 1.5);
+    for (const e of [-1, 1]) lockers(ctx, 'z', x + e * 0.35, z0, z1, e, y, 1.75, 0.35, { style: 'shoecubby', cols: 15, rows: 5, frame: 0xc8c4b8, plinth: 0.1, seed: Math.round(x * 3) + e });
     solid(ctx, x - 0.36, z0, x + 0.36, z1, y - 0.5, y + 1.75);
   }
   // duckboards by the doors, a notice board, an umbrella stand
