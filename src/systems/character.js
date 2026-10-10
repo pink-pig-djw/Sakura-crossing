@@ -50,7 +50,7 @@ for (const s of ['left', 'right']) {
 }
 
 // bones the procedural layers touch (breathing, looking, ground fitting)
-const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot'];
+const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot'];
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -128,6 +128,12 @@ export class Character {
       if (o.material.transparent) o.castShadow = false;
       o.material = Array.isArray(o.material) ? o.material.map((m) => materialFor(m, opts.recolor)) : materialFor(o.material, opts.recolor);
     });
+    // every material of hers (the indoor light is set on them all)
+    this.mats = [];
+    vrm.scene.traverse((o) => {
+      if (o.isMesh) for (const m of [o.material].flat()) if (m.uniforms?.uIndoor) this.mats.push(m);
+    });
+    this.indoorK = 0;
     // face materials follow the head's centre (sphere-shaded face)
     this.faceMats = [];
     vrm.scene.traverse((o) => {
@@ -228,6 +234,17 @@ export class Character {
       .filter((j) => /_Skirt(Front|Side)/.test(j.bone?.name || '') && !/Coat/.test(j.bone.name))
       .map((j) => ({ j, front: /Front/.test(j.bone.name), power: j.settings.gravityPower, stiff: j.settings.stiffness, dir: j.settings.gravityDir.clone() }));
     this.seatedness = 0;
+    // every skirt chain, overskirts too, keeps out of the legs, forearms and hands: some
+    // models leave a flared overskirt without colliders, and the hands hung through it
+    const sbm = vrm.springBoneManager;
+    if (sbm) {
+      const limbs = sbm.colliderGroups.filter((g) => g.colliders.some((c) => /(UpperLeg|LowerArm|Hand)$/.test(c.parent?.name || '')));
+      for (const j of sbm.joints) {
+        if (!/Skirt/.test(j.bone?.name || '')) continue;
+        j.colliderGroups = [...new Set([...(j.colliderGroups ?? []), ...limbs])];
+      }
+      sbm._isSortedJointsDirty = true;
+    }
     // hair spring chains: `wind` (a world vector, set by the owner) blows them along it, as
     // when riding a bicycle
     this.hair = [...(vrm.springBoneManager?.joints ?? [])]
@@ -465,6 +482,17 @@ export class Character {
       em.setValue('ee', m * 0.3 * w * (1 - v));
     }
 
+    this._armsOut();
+    // under a roof (Character.indoorAt, set by the game): lit by the room
+    if (Character.indoorAt) {
+      const p = this.root.position;
+      const want = Character.indoorAt(p.x, p.y + 1.0, p.z) ? 1 : 0;
+      const k = this.indoorK + (want - this.indoorK) * Math.min(1, dt * 5);
+      if (Math.abs(k - this.indoorK) > 1e-4 || (want && this.indoorK !== 1)) {
+        this.indoorK = Math.abs(k - want) < 0.002 ? want : k;
+        for (const m of this.mats) m.uniforms.uIndoor.value = this.indoorK;
+      }
+    }
     this._fitGround();
     // a pose laid over the clip (a cyclist on her bike), before the skin and the hair follow
     if (this.pose) this.pose(this, dt);
@@ -481,6 +509,31 @@ export class Character {
       head.updateWorldMatrix(true, false);
       _v.set(0, 0.075, -0.015).applyMatrix4(head.matrixWorld);
       for (const m of this.faceMats) m.uniforms.uHeadCenter.value.copy(_v);
+    }
+  }
+
+  // A dress whose overskirt flares out from the waist (armOut, rad): hanging arms swing out a
+  // little so the hands rest outside the cloth rather than inside it; raised arms (a wave, a
+  // point) are left as the clip has them
+  _armsOut() {
+    if (!this.armOut) return;
+    for (const side of ['left', 'right']) {
+      const ua = this.node(side + 'UpperArm'), la = this.node(side + 'LowerArm');
+      if (!ua || !la) continue;
+      ua.updateWorldMatrix(true, false);
+      la.updateWorldMatrix(false, false);
+      ua.getWorldPosition(_v);
+      la.getWorldPosition(_v2);
+      const down = -_v2.sub(_v).normalize().y;
+      const w = THREE.MathUtils.smoothstep(down, 0.5, 0.9);
+      if (w < 0.01) continue;
+      // about her forward axis: the left arm (+x) out to +x, the right to -x
+      _v3.set(0, 0, 1).applyQuaternion(this.root.quaternion);
+      _q.setFromAxisAngle(_v3, this.armOut * w * (side === 'left' ? 1 : -1));
+      ua.parent.getWorldQuaternion(_q2);
+      // the turn in the parent's frame: parent^-1 * q * parent
+      _q3.copy(_q2).invert().multiply(_q).multiply(_q2);
+      ua.quaternion.premultiply(_q3);
     }
   }
 

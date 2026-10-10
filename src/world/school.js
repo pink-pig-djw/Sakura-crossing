@@ -1054,12 +1054,17 @@ function buildGrounds(ctx) {
   fence(GATE[1] + 0.4, S.z1 + 1.9, S.x1 + 0.4, S.z1 + 1.9);
   fence(S.x0 - 1.4, S.z0 - 0.9, S.x0 - 1.4, S.z1 + 1.9);
   fence(S.x1 + 0.4, S.z0 - 0.9, S.x1 + 0.4, S.z1 + 1.9);
+  // the hill side has no street: a fence under the net there as well (up to its foot), so the
+  // ground is closed all round and the steps from the school are the one way in
+  metalFence(t, S.x0 - 1.4, S.z0 - 0.85, S.x1 + 0.4, S.z0 - 0.85, (x, z) => Math.max(groundH(x, z), sideY(x, z)), 1.8, 0x2f3a34);
+  ctx.colliders.addSegment(S.x0 - 1.4, S.z0 - 0.85, S.x1 + 0.4, S.z0 - 0.85, 0.25);
   for (const [x0, z0, x1, z1] of [[S.x0 - 1.2, S.z0 - 0.8, S.x1 + 0.3, S.z0 - 0.8], [S.x1 + 0.3, S.z0 - 0.8, S.x1 + 0.3, w0]]) {
     const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 6));
     for (let i = 0; i <= n; i++) {
       const x = x0 + ((x1 - x0) * i) / n, z = z0 + ((z1 - z0) * i) / n;
       const y0 = Math.max(groundH(x, z), sideY(x, z));
       t.cyl(x, y0 - 0.3, z, 0.07, 0.07, 9.3, 6, 0x5d7a68);
+      ctx.colliders.addCircle(x, z, 0.12); // (bikes and walkers go round the posts, not through)
       if (i < n) {
         const xb = x0 + ((x1 - x0) * (i + 1)) / n, zb = z0 + ((z1 - z0) * (i + 1)) / n;
         const yb = Math.max(groundH(xb, zb), sideY(xb, zb));

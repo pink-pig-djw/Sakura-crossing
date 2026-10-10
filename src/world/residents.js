@@ -189,6 +189,7 @@ export class Resident {
     this.ch.root.visible = !home;
     this.solid.off = home;
     this.interact.r = home ? 0 : 2.0;
+    this.interact.off = home; // (no "talk to her" while she is not there)
     this.phone.visible = false;
     if (home) this.leaveBench();
   }

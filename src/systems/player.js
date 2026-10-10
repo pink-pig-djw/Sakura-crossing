@@ -172,9 +172,25 @@ export class Player {
     if (!this.sitting) return;
     const s = this.sitting;
     this.sitting = null;
-    // step forward off the bench
-    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
-    this.pos.set(s.x + fx * 0.8, this.col.groundAt(s.x + fx * 0.8, s.z + fz * 0.8, s.y - 0.45), s.z + fz * 0.8);
+    // step off the front of the seat (the way it faces, whatever the camera looks at: a bench
+    // stands against a wall), as far out as is free; to one side if the front is blocked
+    const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+    const floor = s.y - 0.45;
+    const free = (x, z) => {
+      const p = { x, z };
+      this.col.resolve(p, RADIUS, floor);
+      return Math.hypot(p.x - x, p.z - z) < 0.03 && Math.abs(this.col.groundAt(x, z, floor + 0.3) - floor) < 0.5;
+    };
+    let at = null;
+    for (const [d, side] of [[0.8, 0], [0.65, 0], [0.55, 0], [0.7, 0.5], [0.7, -0.5], [0.45, 0]]) {
+      const x = s.x + fx * d + fz * side, z = s.z + fz * d - fx * side;
+      if (free(x, z)) {
+        at = [x, z];
+        break;
+      }
+    }
+    if (!at) at = [s.x + fx * 0.8, s.z + fz * 0.8];
+    this.pos.set(at[0], this.col.groundAt(at[0], at[1], floor + 0.3), at[1]);
   }
 
   update(dt) {

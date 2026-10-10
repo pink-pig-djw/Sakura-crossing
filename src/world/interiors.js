@@ -181,7 +181,8 @@ export function buildRoom(ctx, R) {
 // ceiling light panels in a grid (+ night light pools inside)
 export function ceilingLights(ctx, x0, z0, x1, z1, y, step = 3, size = [1.2, 0.3]) {
   for (let x = x0 + step / 2; x < x1; x += step) {
-    for (let z = z0 + step / 2; z < z1; z += step) ctx.builders.get('emissive', x, z).box(x, y - 0.02, z, size[0], 0.03, size[1], { color: 0xffffff });
+    // (hung a little under the ceiling, which is drawn a hair nearer than it is: see the interior material)
+    for (let z = z0 + step / 2; z < z1; z += step) ctx.builders.get('emissive', x, z).box(x, y - 0.045, z, size[0], 0.03, size[1], { color: 0xffffff });
   }
 }
 

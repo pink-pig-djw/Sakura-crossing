@@ -13,7 +13,8 @@ export const OUTFITS = [
   { file: 'chars/nanami2.vrm', name: 'パーカー' },
   { file: 'chars/nanami3.vrm', name: '制服' },
   { file: 'chars/nanami4.vrm', name: 'デニム' },
-  { file: 'chars/nanami5.vrm', name: 'ゴシック' },
+  // (a flared overskirt: her hanging arms swing out a little to keep the hands outside it)
+  { file: 'chars/nanami5.vrm', name: 'ゴシック', armOut: 0.2 },
 ];
 
 // gestures she does with her eyes shut: from, to (s)
@@ -47,6 +48,7 @@ export class Avatar {
     if (!this.loaded.has(i)) this.loaded.set(i, loadCharacter(OUTFITS[i].file, 'chars/motions.json', { name: 'nanami' + i }));
     const ch = await this.loaded.get(i);
     if (this.want !== i) return; // another outfit was picked meanwhile
+    ch.armOut = OUTFITS[i].armOut || 0;
     const old = this.ch;
     const C = this.world.colliders, p = this.player;
     // the floor she stands on (stacked levels: the one at her feet)
@@ -107,7 +109,19 @@ export class Avatar {
         this.gait = 'sit';
       }
       const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
-      const back = 0.06 + ch.sitBack;
+      // at a counter (solid down to the floor, unlike a table on legs): back on the stool a
+      // little, so the knees and shins stay clear of it
+      if (this.seatShift === undefined || this.seatShiftFor !== s) {
+        this.seatShiftFor = s;
+        this.seatShift = 0;
+        for (let d = 0.34; s.counter && d <= 0.62; d += 0.04) {
+          if (this.world.colliders.solidAt(s.x + fx * d, s.z + fz * d, s.y - 0.45)) {
+            this.seatShift = Math.min(0.3, 0.64 - d);
+            break;
+          }
+        }
+      }
+      const back = 0.06 + ch.sitBack - this.seatShift;
       x = s.x + fx * back;
       z = s.z + fz * back;
       y = s.y - 0.45;

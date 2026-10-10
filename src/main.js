@@ -24,6 +24,7 @@ import { createResidents } from './world/residents.js';
 import { createPedestrians } from './world/pedestrians.js';
 import { createAvatar, OUTFITS } from './systems/avatar.js';
 import { Bicycle } from './systems/bicycle.js';
+import { Character } from './systems/character.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
@@ -172,6 +173,9 @@ const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l)
 const buildMs = Math.round(performance.now() - t0);
 const player = new Player(camera, world.colliders, canvas);
 player.indoors = world.indoorRects || [];
+Character.indoorAt = isIndoors;
+// counter seats: sitting keeps her knees out of the counter (see avatar.js)
+for (const it of world.interactables) if (it.sit && /カウンター/.test(it.label || '')) it.sit.counter = true;
 // her bicycle (B to get on and off), in the colour picked last time
 const bike = new Bicycle(world, scene, { audio });
 try {
@@ -1095,6 +1099,10 @@ window.__tick = (dt = 1 / 30, n = 1) => {
 // the camera in a room or underground: the compositing's sky gradients and sun effects step back
 function cameraIndoors() {
   const { x, y, z } = camera.position;
+  return isIndoors(x, y, z);
+}
+// under a roof or underground (characters there are lit by the room)
+function isIndoors(x, y, z) {
   if (y < groundH(x, z) - 2.5 && x > SUBWAY.x0 - 6 && x < SUBWAY.x1 + 6 && z > SUBWAY.z0 - 100 && z < SUBWAY.z1 + 70) return true;
   return (world.indoorRects || []).some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1 && y > r.y0 && y < r.y1);
 }
@@ -1125,7 +1133,7 @@ window.__setView = (cam, hour) => {
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, i18n: { tr, tf, setLang } };
+window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, THREE, i18n: { tr, tf, setLang } };
 // debug: subway trains standing at the platform with doors open (?subway)
 if (params.has('subway') && world.subway) {
   for (const tr of world.subway.trains) {

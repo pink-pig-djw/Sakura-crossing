@@ -12,6 +12,7 @@ export class Colliders {
     this.grid = new Map();
     this.surfaces = [];
     this.surfGrid = new Map();
+    this.pavedGrid = new Map();
   }
 
   _insert(grid, item, x0, z0, x1, z1) {
@@ -69,6 +70,14 @@ export class Colliders {
     return item;
   }
 
+  // Paved road and sidewalk (h(x, z): the drawn surface, a few cm over the terrain it lies on):
+  // the ground there is the paving, so wheels and feet stand on it rather than in it
+  addPaved(x0, z0, x1, z1, h) {
+    const item = { x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), h };
+    this._insert(this.pavedGrid, item, item.x0, item.z0, item.x1, item.z1);
+    return item;
+  }
+
   // Height of the walkable ground at (x,z). With feetY, stacked floors resolve to the
   // one the walker is on; without it, the street-level answer (for placing objects).
   groundAt(x, z, feetY = null) {
@@ -86,8 +95,18 @@ export class Colliders {
       }
       if (best) {
         const v = best.h(x, z);
-        if (best.priority > 0) h = v;
-        else h = Math.max(h, v);
+        if (best.priority > 0) return v;
+        h = Math.max(h, v);
+      }
+    }
+    // (street level only: not for someone well below it, under a bridge or underground)
+    const paved = this.pavedGrid.get(Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell));
+    if (paved) {
+      for (const p of paved) {
+        if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue;
+        const v = p.h(x, z);
+        if (feetY === null || feetY > v - 1.4) h = Math.max(h, v);
+        break;
       }
     }
     return h;

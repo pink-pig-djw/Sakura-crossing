@@ -146,7 +146,7 @@ function buildHospital(ctx, doors) {
   ctx.interactables.push({ kind: 'hospital', what: 'guide', x: ent + 3.0, z: H.z1 - 1.8, y, r: 1.4, label: 'フロア案内を見る', text: '1F 外来・受付／2F 検査／3F 手術室／4〜6F 病棟' });
   for (const [px, pz] of [[349.6, H.z1 - 0.8], [374.4, H.z1 - 0.8], [349.6, -6.8]]) {
     b.cyl(px, y, pz, 0.25, 0.2, 0.45, 10, 0xb8a080);
-    shrub(px, y + 0.85, pz, 0.38, 0.45, new RNG(Math.round(px * 10)), { cards: 6, size: 0.32, kind: 'shrub' });
+    shrub(px, y + 0.62, pz, 0.38, 0.45, new RNG(Math.round(px * 10)), { cards: 6, size: 0.32, kind: 'shrub' }); // (the lowest leaves down in the pot)
     ctx.colliders.addCircle(px, pz, 0.3);
   }
   // ---- the ward floors above (not walkable): white bands of windows

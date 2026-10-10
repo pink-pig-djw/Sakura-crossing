@@ -650,6 +650,12 @@ export function createInteriorMaterial(opts = {}) {
     vertexColors: true,
     defines,
     uniforms,
+    // A room's ceiling often lies in the plane of the underside of the building above it
+    // (a tower on a podium, an upper floor): drawn a hair nearer, the room's surfaces win from
+    // inside instead of flickering with the outer shell (from outside they face away, unseen)
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
     side: opts.side ?? THREE.FrontSide,
     vertexShader: /* glsl */ `
       ${VERT_COMMON}
@@ -1087,6 +1093,7 @@ export function createCharacterMaterial(opts = {}) {
     uRecolorRef: { value: opts.recolorRef ?? 0.5 },
     uShadeFloor: { value: opts.shadeFloor ?? 0.5 },
     uHeadCenter: { value: new THREE.Vector3() },
+    uIndoor: { value: 0 }, // set per character: 1 under a roof (lit by the room, not the sky)
   });
   uniforms.uOutline.value = opts.outline ?? 1;
   uniforms.uSoft.value = opts.soft ?? 0.04;
@@ -1160,6 +1167,7 @@ export function createCharacterMaterial(opts = {}) {
       uniform float uRecolorRef;
       uniform float uShadeFloor;
       uniform vec3 uHeadCenter;
+      uniform float uIndoor;
       #ifdef USE_TEXMAP
         uniform sampler2D map;
       #endif
@@ -1201,6 +1209,19 @@ export function createCharacterMaterial(opts = {}) {
         vec3 shadeCol = mix(amb, uShade * ambLum * 1.25, uShadeMix) * 0.85;
         // model textures are painted at full brightness: keep the lit side below white
         vec3 litCol = (amb + uSunColor) * 0.8;
+        // at night the moon and the sky are dim and blue: on figures (as in anime, lit by the
+        // street lamps) the light keeps most of its brightness and loses the blue cast, so
+        // skin and clothes keep their colours
+        float nl = dot(litCol, vec3(0.299, 0.587, 0.114));
+        litCol = mix(litCol, max(vec3(nl), vec3(0.6)) * vec3(1.02, 0.98, 0.93), uNight * 0.75);
+        float ns = dot(shadeCol, vec3(0.299, 0.587, 0.114));
+        shadeCol = mix(shadeCol, vec3(ns) * vec3(1.0, 0.97, 0.95), uNight * 0.6);
+        // under a roof: the room's ceiling lights, a soft top light, no sun or sky
+        vec3 Ld = normalize(vec3(0.35, 0.85, 0.4));
+        float Lin = smoothstep(-0.25, 0.25, dot(N, Ld));
+        L = mix(L, Lin, uIndoor);
+        litCol = mix(litCol, vec3(0.86, 0.84, 0.8), uIndoor);
+        shadeCol = mix(shadeCol, vec3(0.86, 0.84, 0.8) * mix(vec3(1.0), uShade, 0.45) * max(uShadeFloor, 0.72), uIndoor);
         // the shadow side never sinks below a share of the lit side, tinted by the shade
         // colour: skin stays light and warm in the shade of trees and buildings
         shadeCol = max(shadeCol, litCol * mix(vec3(1.0), uShade, 0.45) * uShadeFloor);

@@ -98,6 +98,9 @@ export function buildRoads(ctx) {
 
   for (const r of ROADS) {
     const hf = halfFull(r);
+    // the paving (road and sidewalks) is walked and ridden on at its drawn height
+    const q = r.axis === 'x' ? [r.a, r.c - hf, r.b, r.c + hf] : [r.c - hf, r.a, r.c + hf, r.b];
+    ctx.colliders.addPaved(...q, roadSurfaceY);
     const segs = subtract([[r.a, r.b]], cuts.get(r.id) || []);
     const specials = [];
     for (const [id, c] of crosswalks) if (id === r.id) specials.push({ a: c - 2, b: c + 2, style: 5 });
