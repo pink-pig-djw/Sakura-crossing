@@ -55,9 +55,36 @@ const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
 
-function materialFor(m) {
+// typical brightness of a texture's opaque texels (the median, linear as the shader sees it:
+// stripes, buttons and stitching do not pull it off the cloth's own tone)
+const lumaOf = new WeakMap();
+function meanLuma(tex) {
+  const img = tex?.image;
+  if (!img) return 0.5;
+  if (lumaOf.has(img)) return lumaOf.get(img);
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0, 32, 32);
+  const d = g.getImageData(0, 0, 32, 32).data;
+  const lin = (v) => Math.pow(v / 255, 2.2);
+  const ls = [];
+  for (let i = 0; i < d.length; i += 4) if (d[i + 3] >= 128) ls.push(0.299 * lin(d[i]) + 0.587 * lin(d[i + 1]) + 0.114 * lin(d[i + 2]));
+  ls.sort((a, b) => a - b);
+  const v = ls.length ? Math.max(0.02, ls[ls.length >> 1]) : 0.5;
+  lumaOf.set(img, v);
+  return v;
+}
+
+// recolor(materialName) -> THREE.Color or null: repaint that part (hair, clothes)
+function materialFor(m, recolor = null) {
   const name = m.name || '';
   const map = m.map || m.uniforms?.map?.value || null;
+  const rc = recolor?.(name);
+  if (rc && map) {
+    const opts = /HAIR/.test(name) ? { shade: new THREE.Color(0.78, 0.74, 0.9), shadeMix: 0.5, soft: 0.05, rim: 0.3 } : { shade: m.shadeColorFactor ? m.shadeColorFactor.clone() : new THREE.Color(0xb9b4d8), shadeMix: 0.55, soft: 0.05 };
+    return createCharacterMaterial({ map, name: 'char:' + name, side: THREE.DoubleSide, alphaTest: m.alphaTest || 0, transparent: !!m.transparent, ...opts, recolor: rc, recolorRef: meanLuma(map) });
+  }
   const shade = m.shadeColorFactor ? m.shadeColorFactor.clone() : new THREE.Color(0xb9b4d8);
   // cut-out (MASK) and blended (BLEND) parts as the model sets them up
   const base = { map, name: 'char:' + name, side: THREE.DoubleSide, alphaTest: m.alphaTest || 0, transparent: !!m.transparent };
@@ -99,7 +126,7 @@ export class Character {
         o.geometry.clearGroups();
       }
       if (o.material.transparent) o.castShadow = false;
-      o.material = Array.isArray(o.material) ? o.material.map(materialFor) : materialFor(o.material);
+      o.material = Array.isArray(o.material) ? o.material.map((m) => materialFor(m, opts.recolor)) : materialFor(o.material, opts.recolor);
     });
     // face materials follow the head's centre (sphere-shaded face)
     this.faceMats = [];
@@ -534,7 +561,7 @@ export class Character {
 
 // motion files are shared by every character that uses them
 const motionFiles = new Map();
-function loadMotions(path) {
+export function loadMotions(path) {
   if (!motionFiles.has(path)) motionFiles.set(path, loadAsset(path).then((b) => JSON.parse(new TextDecoder().decode(b))));
   return motionFiles.get(path);
 }

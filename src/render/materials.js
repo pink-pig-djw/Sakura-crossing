@@ -982,6 +982,8 @@ export function createCharacterMaterial(opts = {}) {
     uUnlit: { value: opts.unlit ?? 0 },
     uSelfShadow: { value: opts.selfShadow ?? 1 },
     uTint: { value: opts.tint || new THREE.Color(1, 1, 1) },
+    uRecolor: { value: opts.recolor || new THREE.Color(1, 1, 1) },
+    uRecolorRef: { value: opts.recolorRef ?? 0.5 },
     uShadeFloor: { value: opts.shadeFloor ?? 0.5 },
     uHeadCenter: { value: new THREE.Vector3() },
   });
@@ -1006,6 +1008,7 @@ export function createCharacterMaterial(opts = {}) {
     : {};
   if (opts.transparent) defines.BLEND = '';
   if (opts.tint) defines.TINT = '';
+  if (opts.recolor) defines.RECOLOR = '';
   if (opts.faceSphere) defines.FACE_SPHERE = opts.faceSphere.toFixed(3);
   const cut = opts.alphaTest || (opts.transparent ? 0.02 : 0);
   if (cut) defines.ALPHA_TEST = cut.toFixed(3);
@@ -1052,6 +1055,8 @@ export function createCharacterMaterial(opts = {}) {
       uniform float uUnlit;
       uniform float uSelfShadow;
       uniform vec3 uTint;
+      uniform vec3 uRecolor;
+      uniform float uRecolorRef;
       uniform float uShadeFloor;
       uniform vec3 uHeadCenter;
       #ifdef USE_TEXMAP
@@ -1071,6 +1076,12 @@ export function createCharacterMaterial(opts = {}) {
           // greyscale paint: tint all but the near-white parts
           float lum = dot(albedo, vec3(0.299, 0.587, 0.114));
           albedo = mix(albedo * uTint, albedo, smoothstep(0.72, 0.92, lum));
+        #endif
+        #ifdef RECOLOR
+          // repainted (a passer-by's hair or clothes): the painted light and dark of the
+          // texture kept, around the new colour (uRecolorRef: the texture's mean brightness)
+          float rl = dot(albedo, vec3(0.299, 0.587, 0.114));
+          albedo = clamp(uRecolor * (rl / uRecolorRef), 0.0, 1.0);
         #endif
         vec3 N = normalize(vNormalW);
         if (!gl_FrontFacing) N = -N;

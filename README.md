@@ -105,12 +105,23 @@ npm run deploy   # 构建并把 dist/ 发布到 gh-pages 分支（GitHub Pages�
 - **叠加的细节**：头和眼睛转向你（VRM 视线）、随机眨眼、微笑 / 担心 / 惊讶的表情（微笑和担心是瘦身脚本用 VRoid 的嘴型和眉形另组的表情，说话时眼睛保持睁开，不会像预设的 happy 那样眯成弯月）、说话时按语音音量在「あ・お・え」之间变化口型、头发和衣服的物理摆动（VRM spring bone）、在坡道上用双骨骼 IK 让两只脚各自踩在地面上。配音为 VOICEVOX:四国めたん。
 - **画风统一**：人物不用模型自带的 MToon 着色，而是用小镇同一套卡通光照（硬明暗交界、按材质的阴影色、细轮廓光、大气透视、描边）；睫毛、眉毛、虹膜等半透明部分按模型的设置混合绘制。
 
+## 路人
+
+街上还有 8 位路人陪着你：两位穿水手服、两位穿西装外套校服的高中生（校服保持原样，只换发色），四位穿便服的女性（发色和上衣、下装的颜色各不相同）。她们分别走在商店街、中央通り两侧的人行道、桜橋通り、東町通り（上学的路）和桜川两岸的步道上：
+
+- 沿着人行道来回走，每人的步速略有不同，经过行道树和电线杆时会往旁边让一让；走到尽头会四处看看再往回走，中途偶尔停下来眺望、换脚站着或看手机，有的人会**边走边看手机**。
+- 你挡在她们前面时会停下来看着你，等你让开再走；你一直不动，她们就转身往回走。你也不能从她们身上穿过去。
+- 学生大约 7:00～18:30 在路上，其他人 6:30～21:00 前后各自出门、回家（都发生在你看不见的地方）。
+- 只在镜头附近才播放动作（30 m 以外降低更新频率，100 m 以外不绘制），模型在主角和芽衣之后、一个一个在后台加载，不影响开始散步。
+- 换色方法：头发、上衣、下装的贴图在着色器里按「原贴图的明暗 ÷ 贴图亮度的中位数 × 新颜色」重新上色，保留布料的褶皱、条纹和高光；新的组合只要在 `src/world/pedestrians.js` 的 `PEOPLE` 里加一行。
+
 素材与许可：
 
 | 素材 | 来源 | 许可 |
 | --- | --- | --- |
 | 人物模型 | 「春野 芽衣」，作者 Nanami Chiaki（VRoid 制作的 VRM 1.0），用 `tools/chars/optimize_vrm.py` 只保留颜色贴图和用到的表情后约 3.7 MB | VRM Public License 1.0：仅限个人非营利使用，**需署名**，允许修改后再分发；「作为化身使用」仅限作者本人 |
 | 主角模型 | 「Sakurai Nanami」三套服装，作者 Nanami Chiaki（VRoid 制作的 VRM 1.0），各约 4.2～4.7 MB | VRM Public License 1.0：允许个人营利使用，**需署名**，允许修改后再分发；「作为化身使用」需另行授权 |
+| 路人模型 | 「女高中生1 / 2」（水手服 / 西装外套两套校服）、「女路人1 / 2」，作者 Nanami Chiaki（VRoid 制作的 VRM 1.0），用 `optimize_vrm.py … 512 --light`（贴图 512 px、表情只留眨眼和放松）瘦身到各约 2.1～3.2 MB | VRM Public License 1.0：「作为化身使用」所有人可用，允许法人商用，**无需署名**（这里仍然注明），允许修改后再分发 |
 | 动作数据 | [Mixamo](https://www.mixamo.com/)（Adobe）的动画，整理在 [pink-pig-djw/mixamoLibrary](https://github.com/pink-pig-djw/mixamoLibrary)；转换后的数据在 `public/chars/motions.json`，原始 FBX 不放进这个仓库 | Mixamo 官方 FAQ：可在个人 / 商业 / 非营利项目（包括游戏）中免版税使用；原始动画文件不单独再分发 |
 | 配音 | VOICEVOX:四国めたん | 按角色使用条款标注 |
 
@@ -188,6 +199,7 @@ src/
   world/shopinteriors.js  各种商店的店内（45 种，商店街 / 商场 / 站前共用）
   render/shadowfix.js  稳定的阴影过滤
   world/residents.js   居民「芽衣」的一天和互动
+  world/pedestrians.js 路人（换发色、换衣服颜色，在人行道上来回走）
   ui/                  界面、地图与小地图 (ui.js)、语言切换 (i18n.js) 与中文文本 (zh.js)
 public/voice/          VOICEVOX 生成的配音（MP3）
 public/chars/          人物模型（VRM）和重定向后的动作数据
@@ -202,6 +214,6 @@ tools/deploy-pages.sh  发布到 GitHub Pages
 - [three.js](https://threejs.org/)（MIT）
 - 字体来自 Google Fonts：Zen Maru Gothic、Zen Old Mincho、Zen Kaku Gothic New、Yuji Syuku、Dela Gothic One、Noto Sans SC、Noto Serif SC（SIL OFL）。离线时会回退到系统字体。
 - 配音：**VOICEVOX:九州そら**、**VOICEVOX:冥鳴ひまり**、**VOICEVOX:春日部つむぎ**、**VOICEVOX:四国めたん**（按各角色的使用条款标注；游戏菜单里也有显示）。
-- 人物：主角「Sakurai Nanami」与「春野 芽衣」© Nanami Chiaki（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
+- 人物：主角「Sakurai Nanami」与「春野 芽衣」、路人「女高中生1 / 2」「女路人1 / 2」© Nanami Chiaki（VRM Public License 1.0），用 [three-vrm](https://github.com/pixiv/three-vrm)（MIT）加载。
 - 动作：[Mixamo](https://www.mixamo.com/)（Adobe）。
 - 风格参考：用户提供的樱花小镇演示视频。

@@ -53,10 +53,10 @@ const _m = new THREE.Matrix4();
 // thumb and off the palm, its long side turned this far (rad) from the fingers toward the thumb
 const PALM = { fingers: 0.055, thumb: 0.035, out: 0.025, lean: 1.15 };
 
-// a phone in a pink case, held while she texts or reads (see updatePhone)
-function makePhone() {
+// a phone in a pink case, held while she texts or reads (see holdPhone)
+export function makePhone(color = 0xf3b9c9) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.01, 0.148), createCharacterMaterial({ name: 'char:phone', color: 0xf3b9c9, shadeMix: 0.5, outline: 0.6 }));
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.01, 0.148), createCharacterMaterial({ name: 'char:phone', color, shadeMix: 0.5, outline: 0.6 }));
   const screen = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.002, 0.134), createCharacterMaterial({ name: 'char:phoneScreen', color: 0x9cc4e4, unlit: 0.85, outline: 0 }));
   screen.position.y = 0.0055;
   g.add(body, screen);
@@ -535,57 +535,60 @@ export class Resident {
     this.updatePhone();
   }
 
-  // the phone sits between her palms while she texts (once both hands are up), or in the palm
-  // of the one hand that faces up (she reads it holding it in one hand as she walks)
   updatePhone() {
-    const ch = this.ch;
-    let on = (ch.currentName === 'phone' && ch.remaining() > 0.4) || ch.currentName === 'walkText';
-    if (on) {
-      const L = ch.node('leftHand'), R = ch.node('rightHand');
-      L.getWorldPosition(_a);
-      R.getWorldPosition(_b);
-      const fl = _c.set(1, 0, 0).transformDirection(L.matrixWorld);
-      const fr = _d.set(-1, 0, 0).transformDirection(R.matrixWorld);
-      _a.addScaledVector(fl, 0.065);
-      _b.addScaledVector(fr, 0.065);
-      const both = _a.distanceTo(_b) < 0.2 && fl.y > -0.55 && fr.y > -0.55;
-      if (both) {
-        const across = _e.copy(_a).sub(_b).normalize();
-        const fwd = fl.add(fr).normalize();
-        fwd.addScaledVector(across, -fwd.dot(across)).normalize();
-        const up = _d.crossVectors(fwd, across).normalize();
-        if (up.y < 0) {
-          up.negate();
-          across.negate();
-        }
-        _m.makeBasis(across, up, fwd);
-        _m.setPosition(_a.add(_b).multiplyScalar(0.5).addScaledVector(up, 0.012));
-      } else {
-        // the palm (the hand's -Y) facing up the most
-        let hand = null, side = 0, best = 0.35;
-        for (const [h, sx] of [[L, 1], [R, -1]]) {
-          const n = _c.set(0, -1, 0).transformDirection(h.matrixWorld).y;
-          if (n > best) [hand, side, best] = [h, sx, n];
-        }
-        on = !!hand;
-        if (on) {
-          // held upright: its long side leans from the fingers toward the thumb (the hand's +Z)
-          const up = _c.set(0, -1, 0).transformDirection(hand.matrixWorld);
-          const fingers = _d.set(side, 0, 0).transformDirection(hand.matrixWorld);
-          const thumb = _b.set(0, 0, 1).transformDirection(hand.matrixWorld);
-          hand.getWorldPosition(_a).addScaledVector(fingers, PALM.fingers).addScaledVector(thumb, PALM.thumb).addScaledVector(up, PALM.out);
-          const fwd = fingers.multiplyScalar(Math.cos(PALM.lean)).addScaledVector(thumb, Math.sin(PALM.lean)).normalize();
-          _m.makeBasis(_e.crossVectors(up, fwd).normalize(), up, fwd);
-          _m.setPosition(_a);
-        }
+    holdPhone(this.ch, this.phone);
+  }
+}
+
+// the phone sits between her palms while she texts (once both hands are up), or in the palm
+// of the one hand that faces up (she reads it holding it in one hand as she walks)
+export function holdPhone(ch, phone) {
+  let on = (ch.currentName === 'phone' && ch.remaining() > 0.4) || ch.currentName === 'walkText';
+  if (on) {
+    const L = ch.node('leftHand'), R = ch.node('rightHand');
+    L.getWorldPosition(_a);
+    R.getWorldPosition(_b);
+    const fl = _c.set(1, 0, 0).transformDirection(L.matrixWorld);
+    const fr = _d.set(-1, 0, 0).transformDirection(R.matrixWorld);
+    _a.addScaledVector(fl, 0.065);
+    _b.addScaledVector(fr, 0.065);
+    const both = _a.distanceTo(_b) < 0.2 && fl.y > -0.55 && fr.y > -0.55;
+    if (both) {
+      const across = _e.copy(_a).sub(_b).normalize();
+      const fwd = fl.add(fr).normalize();
+      fwd.addScaledVector(across, -fwd.dot(across)).normalize();
+      const up = _d.crossVectors(fwd, across).normalize();
+      if (up.y < 0) {
+        up.negate();
+        across.negate();
       }
+      _m.makeBasis(across, up, fwd);
+      _m.setPosition(_a.add(_b).multiplyScalar(0.5).addScaledVector(up, 0.012));
+    } else {
+      // the palm (the hand's -Y) facing up the most
+      let hand = null, side = 0, best = 0.35;
+      for (const [h, sx] of [[L, 1], [R, -1]]) {
+        const n = _c.set(0, -1, 0).transformDirection(h.matrixWorld).y;
+        if (n > best) [hand, side, best] = [h, sx, n];
+      }
+      on = !!hand;
       if (on) {
-        this.phone.matrix.copy(_m);
-        this.phone.matrixWorldNeedsUpdate = true;
+        // held upright: its long side leans from the fingers toward the thumb (the hand's +Z)
+        const up = _c.set(0, -1, 0).transformDirection(hand.matrixWorld);
+        const fingers = _d.set(side, 0, 0).transformDirection(hand.matrixWorld);
+        const thumb = _b.set(0, 0, 1).transformDirection(hand.matrixWorld);
+        hand.getWorldPosition(_a).addScaledVector(fingers, PALM.fingers).addScaledVector(thumb, PALM.thumb).addScaledVector(up, PALM.out);
+        const fwd = fingers.multiplyScalar(Math.cos(PALM.lean)).addScaledVector(thumb, Math.sin(PALM.lean)).normalize();
+        _m.makeBasis(_e.crossVectors(up, fwd).normalize(), up, fwd);
+        _m.setPosition(_a);
       }
     }
-    this.phone.visible = on;
+    if (on) {
+      phone.matrix.copy(_m);
+      phone.matrixWorldNeedsUpdate = true;
+    }
   }
+  phone.visible = on;
 }
 
 // the bench seat (top of the slats) above its feet, and her hips above a seat

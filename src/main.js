@@ -20,6 +20,7 @@ import { tr, tf, setLang } from './ui/i18n.js';
 import { VoiceSystem } from './systems/voice.js';
 import { TownVoices } from './systems/townVoices.js';
 import { createResidents } from './world/residents.js';
+import { createPedestrians } from './world/pedestrians.js';
 import { createAvatar } from './systems/avatar.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
@@ -148,7 +149,7 @@ const placesMax = new Set(AREAS.map((a) => a.name)).size;
 const town = new TownVoices(voice, world);
 // residents load in the background (a 3 MB model): the walk can start before they arrive
 let residents = null;
-createResidents(world, scene, { voice })
+const residentsReady = createResidents(world, scene, { voice })
   .then((r) => {
     residents = r;
     window.__residents = r;
@@ -163,12 +164,21 @@ try {
   /* storage unavailable */
 }
 ui.setOutfit(outfit);
-createAvatar(world, scene, player, outfit)
+const avatarReady = createAvatar(world, scene, player, outfit)
   .then((a) => {
     avatar = a;
     window.__avatar = a;
   })
   .catch((e) => console.warn('protagonist not loaded:', e));
+// passers-by come once she and Mei are there
+let passersby = null;
+Promise.allSettled([residentsReady, avatarReady])
+  .then(() => createPedestrians(world, scene))
+  .then((p) => {
+    passersby = p;
+    window.__passersby = p;
+  })
+  .catch((e) => console.warn('passers-by not loaded:', e));
 ui.lots = world.lots;
 ui.minimap.build(world.landmarks, world.lots);
 
@@ -805,6 +815,7 @@ function frame() {
   avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
   residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
+  passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera.position, tod.hour);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);

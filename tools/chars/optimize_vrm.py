@@ -6,7 +6,9 @@ every other image (normal, emissive, matcap, outline-width maps, the thumbnail) 
 blanked; the face keeps only the morph targets that the VRM expressions use (and only
 their positions). Colour textures are capped at 1024 px, opaque ones stored as JPEG.
 
-  python3 tools/chars/optimize_vrm.py in.vrm out.vrm [max texture px, default 1024]
+  python3 tools/chars/optimize_vrm.py in.vrm out.vrm [max texture px, default 1024] [--light]
+
+--light (passers-by, seen from a distance): the face keeps only blinking and a relaxed look.
 """
 import io
 import json
@@ -16,6 +18,8 @@ import sys
 from PIL import Image
 
 MAX_TEX = 1024
+LIGHT = False
+LIGHT_KEEP = ('blink', 'blinkLeft', 'blinkRight', 'relaxed')
 
 # Expressions added to VRoid models (built from its separate face parts): a smile and a
 # worried look that keep the eyes open, unlike the whole-face presets (happy / relaxed close
@@ -66,8 +70,13 @@ def main(src, dst):
     j, bin_ = read_glb(src)
     vrm = j['extensions']['VRMC_vrm']
 
+    if LIGHT:
+        ex = vrm['expressions']
+        ex['preset'] = {k: v for k, v in ex.get('preset', {}).items() if k in LIGHT_KEEP}
+        ex['custom'] = {}
+
     # --- extra expressions (VRoid face) -----------------------------------------------------
-    for ni, node in enumerate(j['nodes']):
+    for ni, node in enumerate([] if LIGHT else j['nodes']):
         mesh = j['meshes'][node['mesh']] if 'mesh' in node else None
         names = mesh and ((mesh.get('extras') or {}).get('targetNames') or (mesh['primitives'][0].get('extras') or {}).get('targetNames'))
         if not names or 'Fcl_MTH_Fun' not in names:
@@ -207,6 +216,8 @@ def main(src, dst):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 3:
-        MAX_TEX = int(sys.argv[3])
-    main(sys.argv[1], sys.argv[2])
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    LIGHT = '--light' in sys.argv
+    if len(args) > 2:
+        MAX_TEX = int(args[2])
+    main(args[0], args[1])
