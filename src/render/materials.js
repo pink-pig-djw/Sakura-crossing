@@ -967,6 +967,76 @@ export function createGrassMaterial(tex, opts = {}) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// The protagonist's bicycle: the town's toon shading, with the surface kind in the
+// `pattern` attribute: 0 matte, 1 glossy paint (a crisp painted highlight), 2 chrome (the sky
+// above and the street below in bands, a sharp glint of sun), 3 rubber, 4 lamp lens (glows
+// when the lamp is on), 5 reflector, 6 leather (a soft sheen).
+// ---------------------------------------------------------------------------
+export function createBikeMaterial(opts = {}) {
+  const uniforms = makeUniforms({ uLamp: { value: 0 } });
+  uniforms.uOutline.value = opts.outline ?? 1;
+  uniforms.uSoft.value = 0.05;
+  return new THREE.ShaderMaterial({
+    name: opts.name || 'bike',
+    lights: true,
+    vertexColors: true,
+    uniforms,
+    side: opts.side ?? THREE.FrontSide,
+    vertexShader: /* glsl */ `
+      ${VERT_COMMON}
+      void main() {
+        ${VERT_MAIN}
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD}
+      uniform vec3 uZenith;
+      uniform vec3 uHorizon;
+      uniform float uLamp;
+      void main() {
+        vec3 albedo = vColor;
+        float kind = vPattern;
+        vec3 N = normalize(vNormalW);
+        if (!gl_FrontFacing) N = -N;
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        float sh = getShadowMask();
+        vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
+        vec3 R = reflect(-V, N);
+        float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
+        float day = 1.0 - uNight;
+        if (kind > 0.5 && kind < 1.5) {
+          // glossy paint
+          col += uSunColor * smoothstep(0.86, 0.92, dot(R, uSunDir)) * 0.75 * sh;
+          col += mix(uHorizon, uZenith, 0.5) * fres * 0.2 * (0.35 + 0.65 * day);
+        } else if (kind > 1.5 && kind < 2.5) {
+          // chrome
+          float up = R.y;
+          vec3 sky = mix(uHorizon, uZenith, smoothstep(0.05, 0.75, up));
+          vec3 env = mix(uGroundAmb * 0.7 + vec3(0.025), sky, smoothstep(-0.14, 0.05, up));
+          env = mix(env, uHorizon * 1.2 + vec3(0.04), (1.0 - smoothstep(0.0, 0.06, abs(up - 0.02))) * 0.6);
+          col = mix(col * 0.45, env * mix(0.6, 1.0, sh), 0.74);
+          col += uSunColor * smoothstep(0.955, 0.99, dot(R, uSunDir)) * 2.4 * sh;
+        } else if (kind > 2.5 && kind < 3.5) {
+          // rubber
+          col += uSkyAmb * fres * 0.07;
+        } else if (kind > 3.5 && kind < 4.5) {
+          // lamp lens
+          col = mix(col + uHorizon * 0.25 * fres, albedo * 3.2, uLamp);
+        } else if (kind > 4.5 && kind < 5.5) {
+          // reflector
+          col = mix(col, albedo * (0.75 + 1.2 * uNight), 0.55);
+        } else if (kind > 5.5) {
+          // leather
+          col += uSunColor * smoothstep(0.72, 0.92, dot(R, uSunDir)) * 0.14 * sh;
+        }
+        col = applyHaze(col, vWorldPos);
+        gl_FragColor = vec4(col, uOutline);
+      }
+    `,
+  });
+}
+
 // Simple unlit material (for emissive bulbs, distant silhouettes ...)
 export function createUnlitMaterial(opts = {}) {
   return new THREE.ShaderMaterial({

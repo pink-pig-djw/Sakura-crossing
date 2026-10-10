@@ -52,6 +52,9 @@ export class Player {
     this.boom = 2.7; // wanted camera distance (third person)
     this.boomNow = 2.7; // after collisions
     this.indoors = []; // rooms: { x0, x1, z0, z1, y0, y1 } (y1: ceiling)
+    this.ride = null; // the bicycle while she rides it (see systems/bicycle.js)
+    this.padBrake = 0;
+    this.lookIdle = 0; // seconds since the view was last turned by hand
     this._dt = 0;
     this._bindEvents();
   }
@@ -186,6 +189,8 @@ export class Player {
       this.pitch -= this.padLook.y * 1.9 * this.sensitivity * dt * (this.invertY ? -1 : 1);
     }
     this.pitch = this.view === 'third' ? THREE.MathUtils.clamp(this.pitch, -1.1, 0.6) : THREE.MathUtils.clamp(this.pitch, -1.45, 1.45);
+    const looked = this.lookDelta.x || this.lookDelta.y || Math.abs(this.padLook.x) > 0.05 || Math.abs(this.padLook.y) > 0.05;
+    this.lookIdle = looked ? 0 : this.lookIdle + dt;
     this.lookDelta.set(0, 0);
     if (!this.enabled) {
       this.applyCamera();
@@ -204,6 +209,18 @@ export class Player {
     if (len > 1) {
       ix /= len;
       iz /= len;
+    }
+    if (this.ride) {
+      // on the bicycle: forward pedals, back brakes, sideways steers (each at full strength,
+      // not shared out like a walking direction); Shift / RT / the stick pushed all the way:
+      // up out of the saddle
+      const kz = THREE.MathUtils.clamp((K.has('KeyW') || K.has('ArrowUp') ? 1 : 0) - (K.has('KeyS') || K.has('ArrowDown') ? 1 : 0) + this.touchMove.y + this.padMove.y, -1, 1);
+      const kx = THREE.MathUtils.clamp((K.has('KeyD') || K.has('ArrowRight') ? 1 : 0) - (K.has('KeyA') || K.has('ArrowLeft') ? 1 : 0) + this.touchMove.x + this.padMove.x, -1, 1);
+      const boost = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
+      this.running = false;
+      this.ride.drive(dt, { ix: kx, iz: kz, boost, brake: this.padBrake }, this);
+      this.applyCamera();
+      return;
     }
     if (this.sitting) {
       if (len > 0.3) this.stand();
@@ -366,6 +383,12 @@ export class Player {
       return;
     }
     const c = this.camera;
+    if (this.ride) {
+      // on the saddle, leaning with the bike a little
+      this.ride.eye(c.position);
+      c.rotation.set(this.pitch, this.yaw, this.ride.roll * 0.3, 'YXZ');
+      return;
+    }
     const bob = this.onGround && !this.sitting ? Math.sin(this.bob) * 0.035 * this.bobAmount * Math.min(1, this.speed / 3) : 0;
     c.position.set(this.pos.x, (this.sitting ? this.eyeY : this.eyeY) + bob, this.pos.z);
     c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');

@@ -40,6 +40,7 @@
             <li><kbd>E</kbd> <span data-i18n>しらべる</span></li>
             <li><kbd>M</kbd> <span data-i18n>地図</span></li>
             <li><kbd>N</kbd> <span data-i18n>ミニマップ</span></li>
+            <li><kbd>B</kbd> <span data-i18n>自転車</span></li>
             <li><kbd>V</kbd> <span data-i18n>視点切替</span></li>
             <li><kbd>T</kbd> <span data-i18n>時間帯</span></li>
             <li><kbd>Esc</kbd> <span data-i18n>メニュー</span></li>
@@ -55,6 +56,7 @@
             <li><i class="pad-btn wide">LB</i><i class="pad-btn wide">RB</i> <span data-i18n>時間帯</span></li>
             <li><i class="pad-btn">⧉</i> <span data-i18n>ミニマップ</span></li>
             <li><i class="pad-btn">R</i><span data-i18n>押し込み</span> <span data-i18n>視点切替</span></li>
+            <li><i class="pad-btn">✚</i><span data-i18n>上</span> <span data-i18n>自転車</span></li>
             <li><i class="pad-btn">≡</i> <span data-i18n>メニュー</span></li>
           </ul>
         </div>
@@ -68,6 +70,11 @@
         </div>
         <div class="hud-right">
           <div class="clock-chip"><i id="clock-icon" class="sun"></i><span id="clock">10:30</span><span id="period">昼</span></div>
+          <div class="bike-chip" id="bike-chip" hidden>
+            <svg class="bike-ico" viewBox="0 0 34 22" aria-hidden="true"><circle cx="7.5" cy="14.5" r="6"/><circle cx="26.5" cy="14.5" r="6"/><path d="M7.5 14.5 13 6.5h9M15.5 14.5l-2.5-8M15.5 14.5 22 6.5l4.5 8M22 6.5l-1.5-3.5h3.5M11.5 4.5h4"/></svg>
+            <span class="gears" id="bike-gears"><i>1</i><i>2</i><i>3</i></span>
+            <span class="kmh"><b id="bike-kmh">0</b><small>km/h</small></span>
+          </div>
           <canvas id="minimap" class="minimap" width="200" height="200" aria-hidden="true"></canvas>
           <div class="count-chip" id="counts"></div>
         </div>
@@ -83,8 +90,10 @@
         <div id="stick-zone" class="stick-zone"><div id="stick" class="stick"><i></i></div></div>
         <div class="touch-buttons">
           <button id="t-act" type="button" class="tbtn act" data-i18n>しらべる</button>
+          <button id="t-gear" type="button" class="tbtn" data-i18n hidden>ギア</button>
           <button id="t-jump" type="button" class="tbtn" data-i18n>ジャンプ</button>
           <button id="t-run" type="button" class="tbtn" data-i18n>走る</button>
+          <button id="t-bike" type="button" class="tbtn" data-i18n>自転車</button>
         </div>
       </section>
 
@@ -126,6 +135,17 @@
                 <button type="button" data-outfit="0" data-i18n>ワンピース</button>
                 <button type="button" data-outfit="1" data-i18n>パーカー</button>
                 <button type="button" data-outfit="2" data-i18n>制服</button>
+                <button type="button" data-outfit="3" data-i18n>デニム</button>
+                <button type="button" data-outfit="4" data-i18n>ゴシック</button>
+              </div>
+            </div>
+            <div class="group">
+              <h3 data-i18n>自転車の色</h3>
+              <div class="seg swatches" id="bike-color-buttons">
+                <button type="button" data-bike-color="0"><i style="--c: #8ccfb8"></i><span data-i18n>ミント</span></button>
+                <button type="button" data-bike-color="1"><i style="--c: #f1b2c3"></i><span data-i18n>さくら</span></button>
+                <button type="button" data-bike-color="2"><i style="--c: #efe0bd"></i><span data-i18n>クリーム</span></button>
+                <button type="button" data-bike-color="3"><i style="--c: #2f4b74"></i><span data-i18n>ネイビー</span></button>
               </div>
             </div>
             <div class="group">

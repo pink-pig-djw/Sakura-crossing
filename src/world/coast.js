@@ -169,11 +169,36 @@ export function buildCoast(ctx) {
     for (const xx of [x, x1]) for (const z of zs) b.vtx(xx, wallTop, z, 0, 1, 0, c, z - PROM.z0, xx, 9);
     b.idx.push(base, base + 1, base + 3, base, base + 3, base + 2);
   }
-  // curb along the road edge, parapet with gaps for the stairs
+  // curb along the road edge (cut where a ramp comes up), parapet with gaps for the stairs
+  // ramps (スロープ) up the curb beside each flight of beach stairs, for bicycles, buggies and
+  // wheelchairs: running along the road edge, rising toward the stairs
+  const RAMP_LEN = 3.4, RAMP_IN = 1.0;
+  const ramps = BEACH_STAIRS.filter((sx) => !nearRiver(sx + 3.7, 4) && sx + 2 + RAMP_LEN < X1).map((sx) => [sx + 2.0, sx + 2.0 + RAMP_LEN]);
+  const cuts = (a, b) => {
+    // [a, b] minus the ramps
+    let out = [[a, b]];
+    for (const [r0, r1] of ramps) out = out.flatMap(([p, q]) => (r1 <= p || r0 >= q ? [[p, q]] : [[p, r0], [r1, q]].filter(([u, v]) => v - u > 0.01)));
+    return out;
+  };
   for (let x = X0; x < X1; x += 6) {
     const x1 = Math.min(X1, x + 6);
     if (nearRiver((x + x1) / 2, 3)) continue;
-    B(x, 70).boxMM(x, COAST.y - 0.2, PROM.z0 - 0.12, x1, wallTop + 0.01, PROM.z0 + 0.02, { color: 0xc9c5bb, pattern: PAT.CONCRETE });
+    for (const [p, q] of cuts(x, x1)) B(p, 70).boxMM(p, COAST.y - 0.2, PROM.z0 - 0.12, q, wallTop + 0.01, PROM.z0 + 0.02, { color: 0xc9c5bb, pattern: PAT.CONCRETE });
+  }
+  for (const [r0, r1] of ramps) {
+    const b = B(r0, 70);
+    const zA = PROM.z0 - RAMP_IN, zB = PROM.z0 + 0.02, y0 = COAST.y + 0.005, y1 = wallTop + 0.005;
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const mid = V((r0 + r1) / 2, y0 - 0.6, (zA + zB) / 2);
+    const at = (x) => y0 + (y1 - y0) * Math.min(1, Math.max(0, (r1 - x) / RAMP_LEN));
+    // the slope (high end at r0, by the stairs), the open side facing the road, the high end
+    b.quadOut(V(r1, y0, zA), V(r1, y0, zB), V(r0, y1, zB), V(r0, y1, zA), mid, 0xc9c5bb, PAT.CONCRETE);
+    b.tri(V(r1, y0, zA), V(r0, y0 - 0.02, zA), V(r0, y1, zA), 0xbdb9ae, PAT.CONCRETE);
+    b.quadOut(V(r0, y0 - 0.02, zA), V(r0, y1, zA), V(r0, y1, zB), V(r0, y0 - 0.02, zB), mid, 0xbdb9ae, PAT.CONCRETE);
+    // yellow tactile paving at the top, and a white edge line along the open side
+    b.quadOut(V(r0 + 0.32, at(r0 + 0.32) + 0.004, zA + 0.06), V(r0 + 0.32, at(r0 + 0.32) + 0.004, zB - 0.04), V(r0 + 0.02, y1 + 0.004, zB - 0.04), V(r0 + 0.02, y1 + 0.004, zA + 0.06), mid, 0xe8b52a, PAT.TILE);
+    b.quadOut(V(r1 - 0.05, y0 + 0.004, zA + 0.02), V(r1 - 0.05, y0 + 0.004, zA + 0.1), V(r0 + 0.34, at(r0 + 0.34) + 0.004, zA + 0.1), V(r0 + 0.34, at(r0 + 0.34) + 0.004, zA + 0.02), mid, 0xf2f0ea, 0);
+    ctx.colliders.addSurface(r0, zA, r1, zB, (px) => COAST.y + (wallTop - COAST.y) * Math.min(1, Math.max(0, (r1 - px) / RAMP_LEN)), 2);
   }
   // the parapet runs on over the river's wall tops up to the bridge railings
   const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0 + RIVER.wall, RW1 - RIVER.wall]]);

@@ -5,6 +5,9 @@
 //  X  jump                   Y  map
 //  LB / RB  time of day      RT (hold) or L-stick click  run
 //  Menu  pause menu          View  map
+//  D-pad up  get on / off the bicycle
+//  on the bicycle: L stick pedal / brake / steer, RT stand on the pedals, LT brake,
+//  LB / RB gear, X bell, B get off
 //  D-pad / left stick  move focus inside menus
 
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU: 9, LS: 10, RS: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
@@ -25,6 +28,7 @@ export class GamepadInput {
     this.move = { x: 0, y: 0 };
     this.look = { x: 0, y: 0 };
     this.run = false;
+    this.brake = 0;
     this.runToggle = false;
     this.navCooldown = 0;
     this.lastUsed = 0;
@@ -103,6 +107,7 @@ export class GamepadInput {
     this.look.x = lx * curve;
     this.look.y = ly * curve;
     this.run = this.runToggle || val(BTN.RT) > 0.45;
+    this.brake = val(BTN.LT) > 0.08 ? val(BTN.LT) : 0;
     const any = mx || my || lx || ly || p.buttons.some((x) => x && x.pressed);
     if (any) {
       this.lastUsed = performance.now();
@@ -131,6 +136,7 @@ export class GamepadInput {
         else if (i === BTN.MENU) this.emit('menu');
         else if (i === BTN.LB) this.emit('time', -1);
         else if (i === BTN.RB) this.emit('time', 1);
+        else if (i === BTN.UP) this.emit('bike');
       } else if (menuish) {
         if (i === BTN.A) this.emit('confirm');
         else if (i === BTN.B || i === BTN.MENU || (mode === 'map' && (i === BTN.Y || i === BTN.VIEW))) this.emit('close');

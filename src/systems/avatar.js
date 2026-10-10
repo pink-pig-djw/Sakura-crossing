@@ -5,13 +5,15 @@ import { loadCharacter } from './character.js';
 //
 // She follows the walker (Player): turns toward where she is going, idles, walks and runs
 // with her feet matched to the ground speed, jumps, sits down on benches and chairs, and
-// turns her head toward what you look at or are about to use. Three outfits (one VRM
+// turns her head toward what you look at or are about to use. Five outfits (one VRM
 // each), switched from the settings; each is loaded the first time it is worn.
 
 export const OUTFITS = [
   { file: 'chars/nanami.vrm', name: 'ワンピース' },
   { file: 'chars/nanami2.vrm', name: 'パーカー' },
   { file: 'chars/nanami3.vrm', name: '制服' },
+  { file: 'chars/nanami4.vrm', name: 'デニム' },
+  { file: 'chars/nanami5.vrm', name: 'ゴシック' },
 ];
 
 // gestures she does with her eyes shut: from, to (s)
@@ -86,6 +88,12 @@ export class Avatar {
     if (!ch) return;
     ch.root.visible = active && visible;
     if (!active) return;
+    // on her bicycle (getting on, riding, getting off)
+    if (this.bike?.on) {
+      this._ride(dt, still);
+      return;
+    }
+    if (this.riding) this._offBike();
 
     let x = p.pos.x, y = p.pos.y, z = p.pos.z;
     if (p.sitting) {
@@ -189,6 +197,72 @@ export class Avatar {
       this.fresh = false;
       ch.resetPhysics();
     }
+  }
+
+  // Riding: the bike poses her (see Bicycle.pose); her root takes the bike's frame, moving
+  // from where she stood to the saddle as she gets on (and back to the roadside as she gets
+  // off). She smiles into the wind, her head turned down the road and into the turns, or the
+  // way you look when you look about, and her hair streams back with the speed.
+  _ride(dt, still) {
+    const ch = this.ch, B = this.bike, p = this.player;
+    if (this.riding !== ch) {
+      if (this.riding) this._offBike();
+      this.riding = ch;
+      this.seat = null;
+      ch.seat = null;
+      this.act = null;
+      ch.stairs = null;
+      ch.eyesClosed = 0;
+      ch.noFit = true;
+      ch.pose = (c) => B.pose(c);
+      ch.widenSkirt(2.0);
+      ch.skirtFollow = true;
+      ch.play('idle', 0.3);
+      this.gait = 'ride';
+      this.from = { x: ch.root.position.x, y: ch.root.position.y, z: ch.root.position.z, h: this.heading };
+    }
+    B.placeRider(ch.root);
+    const k = B.k * B.k * (3 - 2 * B.k);
+    if (k < 1) {
+      const f = B.state === 'dismounting' && B.offSpot ? B.offSpot : this.from;
+      const r = ch.root;
+      r.position.set(f.x + (r.position.x - f.x) * k, f.y + (r.position.y - f.y) * k, f.z + (r.position.z - f.z) * k);
+      r.rotation.set(r.rotation.x * k, (f.h ?? B.h) + wrap(B.h - (f.h ?? B.h)) * k, r.rotation.z * k);
+    }
+    this.heading = B.h;
+    // a smile that grows with the speed
+    const v = Math.abs(B.v);
+    ch.setMood(0.18 + Math.min(v / 6, 1) * 0.42);
+    // where she looks: down the road (into the turn), or where you look
+    const hx = Math.sin(B.h + B.steerVis * 0.9), hz = Math.cos(B.h + B.steerVis * 0.9);
+    ch.node('head').getWorldPosition(_v);
+    const cam = _w.set(-Math.sin(p.yaw), Math.sin(p.pitch), -Math.cos(p.yaw));
+    const ahead = cam.x * Math.sin(B.h) + cam.z * Math.cos(B.h);
+    const lookCam = p.lookIdle < 1.2 && ahead > -0.1 ? 1 : 0;
+    this.lookK = (this.lookK ?? 0) + (lookCam - (this.lookK ?? 0)) * Math.min(1, dt * 3);
+    _v.x += (hx * (1 - this.lookK) + cam.x * this.lookK) * 10;
+    _v.z += (hz * (1 - this.lookK) + cam.z * this.lookK) * 10;
+    _v.y += -0.6 + cam.y * 6 * this.lookK;
+    ch.lookAt(_v, 0.65);
+    // the wind of riding, and a little gusting
+    const wind = (this.wind ||= new THREE.Vector3());
+    const gust = 1 + 0.25 * Math.sin(ch.t * 7.3) * Math.sin(ch.t * 2.9 + 1.0);
+    wind.set(-Math.sin(B.h) * B.v, 0.02 * v, -Math.cos(B.h) * B.v).multiplyScalar(0.07 * gust);
+    ch.wind = still ? null : wind;
+    ch.update(dt);
+  }
+
+  _offBike() {
+    const ch = this.riding;
+    this.riding = null;
+    ch.pose = null;
+    ch.noFit = false;
+    ch.wind = null;
+    ch.widenSkirt(1);
+    ch.skirtFollow = false;
+    ch.root.rotation.set(0, this.heading, 0);
+    ch.setMood(0.15);
+    this.gait = '';
   }
 }
 

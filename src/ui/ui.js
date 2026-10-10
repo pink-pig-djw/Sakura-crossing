@@ -90,6 +90,7 @@ export class UI {
     this._langChanged();
     for (const b of document.querySelectorAll('#quality-buttons button')) b.addEventListener('click', () => this.emit('quality', b.dataset.q));
     for (const b of document.querySelectorAll('#outfit-buttons button')) b.addEventListener('click', () => this.emit('outfit', +b.dataset.outfit));
+    for (const b of document.querySelectorAll('#bike-color-buttons button')) b.addEventListener('click', () => this.emit('bikeColor', +b.dataset.bikeColor));
     this._bindTouch();
   }
 
@@ -158,6 +159,8 @@ export class UI {
     });
     $('t-act').addEventListener('click', () => this.emit('interact'));
     $('t-jump').addEventListener('click', () => this.emit('jump'));
+    $('t-bike').addEventListener('click', () => this.emit('bike'));
+    $('t-gear').addEventListener('click', () => this.emit('gear'));
     const run = $('t-run');
     run.addEventListener('click', () => {
       run.classList.toggle('on');
@@ -176,6 +179,7 @@ export class UI {
     if (this.lastLuck) this.openOmikuji(...this.lastLuck, !this.el.omikuji.hidden);
     if (this.lastSub && !this.el.subtitle.hidden) this._setSub(this.lastSub);
     if (this.mapArgs && !this.el.map.hidden) drawMap(this.el.mapCanvas, ...this.mapArgs);
+    this.bikeGear = -1; // the touch gear button's label is drawn again
     this.emit('lang', l);
   }
 
@@ -307,6 +311,45 @@ export class UI {
 
   setOutfit(i) {
     for (const b of document.querySelectorAll('#outfit-buttons button')) b.classList.toggle('on', +b.dataset.outfit === i);
+  }
+
+  setBikeColor(i) {
+    for (const b of document.querySelectorAll('#bike-color-buttons button')) b.classList.toggle('on', +b.dataset.bikeColor === i);
+  }
+
+  // on the bicycle: { gear (0..2), kmh, standing } shows the gear and speed chip (and the
+  // touch buttons turn into the bell, standing up, the gears and getting off); null hides it
+  setBike(b) {
+    const chip = $('bike-chip');
+    const on = !!b;
+    if (on !== this.bikeOn) {
+      this.bikeOn = on;
+      chip.hidden = !on;
+      const label = (id, ja) => {
+        const el = $(id);
+        el.dataset.ja = ja;
+        el.textContent = tr(ja);
+      };
+      label('t-jump', on ? 'ベル' : 'ジャンプ');
+      label('t-run', on ? '立ちこぎ' : '走る');
+      label('t-bike', on ? '降りる' : '自転車');
+      $('t-gear').hidden = !on;
+      $('t-act').hidden = on;
+    }
+    if (!on) return;
+    if (b.gear !== this.bikeGear) {
+      this.bikeGear = b.gear;
+      [...$('bike-gears').children].forEach((el, k) => el.classList.toggle('on', k === b.gear));
+      const g = $('t-gear');
+      g.dataset.ja = `ギア ${b.gear + 1}`;
+      g.textContent = `${tr('ギア')} ${b.gear + 1}`;
+    }
+    const kmh = Math.round(b.kmh);
+    if (kmh !== this.bikeKmh) {
+      this.bikeKmh = kmh;
+      $('bike-kmh').textContent = String(kmh);
+    }
+    chip.classList.toggle('standing', !!b.standing);
   }
 
   openMenu(state) {
@@ -602,6 +645,38 @@ export function drawMap(canvas, player, landmarks, lots) {
   }
 }
 
+// a little bicycle on a white disc (the parked bike on the minimap)
+function bikeGlyph(c, x, y, s) {
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  c.beginPath();
+  c.arc(0, 0, 10, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(255,252,246,0.95)';
+  c.fill();
+  c.lineWidth = 1.5;
+  c.strokeStyle = '#e2708f';
+  c.stroke();
+  c.strokeStyle = '#273049';
+  c.lineWidth = 1.4;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  c.beginPath();
+  c.arc(-4.5, 2.5, 3, 0, Math.PI * 2);
+  c.moveTo(7.5, 2.5);
+  c.arc(4.5, 2.5, 3, 0, Math.PI * 2);
+  c.moveTo(-4.5, 2.5);
+  c.lineTo(-1.5, -2.5);
+  c.lineTo(3, -2.5);
+  c.lineTo(4.5, 2.5);
+  c.moveTo(-0.5, 2.5);
+  c.lineTo(-1.8, -3.6);
+  c.moveTo(-0.5, 2.5);
+  c.lineTo(3, -2.5);
+  c.stroke();
+  c.restore();
+}
+
 // Round heading-up minimap in the HUD. The town is drawn once into a large offscreen
 // canvas; each update copies the area around the player, rotated so "forward" is up.
 const MINI_K = 2.5; // offscreen pixels per meter
@@ -672,6 +747,17 @@ class Minimap {
       if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
       placed.push(box);
       outlinedText(c, label, R + px, R + py, col, 3 * dpr);
+    }
+    // the parked bicycle (pinned to the rim when out of range)
+    if (player.bike) {
+      const dx = (player.bike.x - player.x) * k, dz = (player.bike.z - player.z) * k;
+      let px = dx * cs - dz * sn, py = dx * sn + dz * cs;
+      const d = Math.hypot(px, py), lim = R - 13 * dpr;
+      if (d > lim) {
+        px *= lim / d;
+        py *= lim / d;
+      }
+      bikeGlyph(c, R + px, R + py, 0.9 * dpr);
     }
     // north marker on the rim
     const nx = R + Math.sin(player.yaw) * (R - 10 * dpr), ny = R - Math.cos(player.yaw) * (R - 10 * dpr);

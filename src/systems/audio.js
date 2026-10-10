@@ -403,6 +403,87 @@ export class AudioEngine {
     s.stop(t + dur + 0.02);
   }
 
+  // a struck metal partial: instant attack, exponential ring-out
+  ping(dest, t, f, dur, vol) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f, t);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  // ------------------------------------------------------------------ the bicycle
+  // tyres on the road (a band of noise rising with the speed), the freewheel's pawls ticking
+  // while she coasts, wind past her ears, and the brakes' squeal when she stops hard
+  setupBike() {
+    const ctx = this.ctx;
+    const n = this.loopNoise(this.pink);
+    const tf = ctx.createBiquadFilter();
+    tf.type = 'bandpass';
+    tf.frequency.value = 300;
+    tf.Q.value = 0.8;
+    const tg = ctx.createGain();
+    tg.gain.value = 0;
+    n.connect(tf).connect(tg).connect(this.sfxBus);
+    const fo = ctx.createOscillator();
+    fo.type = 'square';
+    fo.frequency.value = 20;
+    const ff = ctx.createBiquadFilter();
+    ff.type = 'bandpass';
+    ff.frequency.value = 3600;
+    ff.Q.value = 3;
+    const fg = ctx.createGain();
+    fg.gain.value = 0;
+    fo.connect(ff).connect(fg).connect(this.sfxBus);
+    fo.start();
+    const wn = this.loopNoise(this.white);
+    const wf = ctx.createBiquadFilter();
+    wf.type = 'highpass';
+    wf.frequency.value = 700;
+    const wg = ctx.createGain();
+    wg.gain.value = 0;
+    wn.connect(wf).connect(wg).connect(this.sfxBus);
+    const so = ctx.createOscillator();
+    so.type = 'triangle';
+    so.frequency.value = 2350;
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 9;
+    const vg = ctx.createGain();
+    vg.gain.value = 40;
+    vib.connect(vg).connect(so.frequency);
+    const sg = ctx.createGain();
+    sg.gain.value = 0;
+    so.connect(sg).connect(this.sfxBus);
+    so.start();
+    vib.start();
+    this.bk = { tf, tg, fo, fg, wf, wg, sg };
+  }
+
+  // s: { on, v (m/s), coast, brake (0..1), surface }
+  bike(dt, s) {
+    if (!this.ctx) return;
+    if (!this.bk) {
+      if (!s.on) return;
+      this.setupBike();
+    }
+    const t = this.ctx.currentTime, B = this.bk;
+    const v = s.on ? Math.abs(s.v) : 0;
+    const sand = s.surface === 'sand';
+    B.tg.gain.setTargetAtTime(Math.min(1, v / 5) * (sand ? 0.09 : 0.07), t, 0.08);
+    B.tf.frequency.setTargetAtTime((sand ? 160 : 220) + v * (sand ? 60 : 110), t, 0.1);
+    // about 24 clicks a turn of the wheel
+    B.fo.frequency.setTargetAtTime(Math.max(2, (v / (2 * Math.PI * 0.334)) * 24), t, 0.04);
+    B.fg.gain.setTargetAtTime(s.coast && v > 0.5 ? 0.006 + Math.min(v, 6) * 0.0012 : 0, t, 0.05);
+    B.wg.gain.setTargetAtTime(Math.max(0, v - 2.5) ** 2 * 0.0011, t, 0.25);
+    B.sg.gain.setTargetAtTime(s.brake > 0.6 && v > 2.4 ? 0.006 * Math.min(1, (v - 2.4) / 2) : 0, t, 0.04);
+  }
+
   step(surface, running) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
@@ -517,6 +598,36 @@ export class AudioEngine {
         break;
       case 'page':
         this.noiseHit(out, t, 4200, 0.7, 0.18, 0.06);
+        break;
+      case 'bell': {
+        // チリンチリン: a small dome bell struck twice (inharmonic partials), the striker's tick
+        const f0 = rand(2280, 2360);
+        for (const [dt, a] of [[0, 1], [0.15, 0.85]]) {
+          for (const [k, vol, dur] of [[1, 0.06, 1.1], [2.71, 0.028, 0.7], [4.16, 0.014, 0.45], [5.93, 0.008, 0.3]]) this.ping(out, t + dt, f0 * k, dur, vol * a);
+          this.ping(this.revSend, t + dt, f0, 0.9, 0.012 * a);
+          this.noiseHit(out, t + dt, 6000, 2, 0.02, 0.03 * a);
+        }
+        break;
+      }
+      case 'bikeStand':
+        // the stand flipped up or kicked down: a light metal clack
+        this.noiseHit(out, t, 260, 1, 0.09, 0.16, 'lowpass');
+        this.ping(out, t + 0.005, 1850, 0.12, 0.02);
+        this.ping(out, t + 0.005, 2960, 0.08, 0.012);
+        break;
+      case 'bikeShift':
+        // the twist shifter's detent and the hub's click
+        this.noiseHit(out, t, 3200, 2.5, 0.03, 0.05);
+        this.noiseHit(out, t + 0.07, 1500, 2, 0.04, 0.04);
+        break;
+      case 'bikeBump':
+        this.noiseHit(out, t, 140, 1, 0.16, 0.3, 'lowpass');
+        this.noiseHit(out, t + 0.01, 900, 1.5, 0.08, 0.08);
+        this.ping(out, t + 0.02, 1400, 0.25, 0.015);
+        break;
+      case 'bikeStroke':
+        // the chain over the ring on each stroke, very soft
+        this.noiseHit(out, t, rand(2400, 3200), 2, 0.05, 0.012);
         break;
       default:
         break;

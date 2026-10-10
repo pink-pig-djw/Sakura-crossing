@@ -35,7 +35,11 @@ const MAN_TOPS = ['#2f3f5e', '#f2f2ee', '#6b7a4a', '#8a8f96', '#a8c4e0', '#5a3a3
 const MAN_BOTTOMS = ['#c8b89a', '#3a4e6e', '#2a2a2e', '#6a6e74', '#4a4038'];
 const DRESS = ['#bcd6ea', '#c6d6b4', '#e2cce2', '#f6e7b8', '#f2c4cc', '#d8e8f0'];
 
-const SCHOOL = [7, 18.5], DAY = [6.5, 20.5];
+// When they are out. After dark the town quietens: most are home by dusk, a few walk back
+// from the station in the evening, one is out late; nobody after midnight.
+const SCHOOL = [7, 18.5], DAY = [6.5, 19.5];
+const EVE = [6.5, 21.5]; // on the way home from the station
+const LATE = [6.5, 23.5];
 const RUN = [[6, 9], [16, 19.5]]; // a run before work, or in the evening
 
 // who, doing what, where: walkers wander the sidewalks within r of `near`; riders loop a
@@ -45,16 +49,16 @@ const PEOPLE = [
   { model: 'girl1', act: 'walk', near: [-35, -15], r: 40, hours: [7, 19] },
   { model: 'woman1', act: 'walk', near: [-35, -15], r: 40, hours: [9, 19.5], phone: true },
   { model: 'woman3', act: 'walk', near: [-35, -15], r: 40, hours: DAY },
-  { model: 'man1', act: 'walk', near: [-35, -15], r: 40, hours: DAY },
+  { model: 'man1', act: 'walk', near: [-35, -15], r: 40, hours: EVE },
   { model: 'boy2', act: 'walk', near: [28, -45], r: 45, hours: SCHOOL, phone: true },
   { model: 'woman2', act: 'walk', near: [28, -45], r: 45, hours: DAY },
   { model: 'woman4', act: 'walk', near: [-95, -40], r: 50, hours: [9, 19] },
   { model: 'man1', act: 'walk', near: [-95, -40], r: 50, hours: DAY, phone: true },
   { model: 'girl2', act: 'walk', near: [182, -15], r: 40, hours: [7.5, 19] },
-  { model: 'woman3', act: 'walk', near: [182, -15], r: 40, hours: [8, 20], phone: true },
+  { model: 'woman3', act: 'walk', near: [182, -15], r: 40, hours: [8, 19.5], phone: true },
   { model: 'girl2', act: 'walk', near: [250, -25], r: 45, hours: SCHOOL, phone: true },
   { model: 'woman1', act: 'walk', near: [250, -25], r: 45, hours: DAY },
-  { model: 'man1', act: 'walk', near: [250, -25], r: 45, hours: DAY },
+  { model: 'man1', act: 'walk', near: [250, -25], r: 45, hours: LATE },
   { model: 'girl1', act: 'walk', near: [330, -60], r: 55, hours: SCHOOL, phone: true },
   { model: 'boy1', act: 'walk', near: [330, -60], r: 55, hours: SCHOOL },
   { model: 'woman4', act: 'walk', near: [380, 10], r: 40, hours: DAY },
@@ -72,7 +76,7 @@ const PEOPLE = [
   { act: 'chat', at: [-38, 32], hours: [8, 18.5], members: ['girl2', 'girl2'] },
   { act: 'chat', at: [234.5, -30], hours: [9, 19], members: ['woman1', 'woman3'] },
   // waiting for the bus
-  { model: 'man1', act: 'wait', at: [259.4, -1], hours: [7, 20], phone: true },
+  { model: 'man1', act: 'wait', at: [259.4, -1], hours: [7, 21], phone: true },
   { model: 'woman2', act: 'wait', at: [349, 16.4], hours: [8, 19] },
   // sitting on a bench
   { model: 'woman1', act: 'sit', at: [167.8, -29.9], hours: [9, 18] },
@@ -128,6 +132,8 @@ const CLIPS = {
 };
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const inHours = (h, hours) => (Array.isArray(hours[0]) ? hours : [hours]).some(([a, b]) => h >= a && h < b);
+// in front of the camera (within 75° of where it looks), or right beside it
+const inView = (cam, x, z, d) => d < 4 || cam.fx === undefined || ((x - cam.x) * cam.fx + (z - cam.z) * cam.fz) / d > 0.26;
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 
@@ -503,6 +509,7 @@ class Person {
     this.solid = C.addDynamicBox(0.24, 0.24, 0, 99, -99);
     this.phone = spec.phone ? makePhone(this.male ? 0x3a3c40 : spec.model.startsWith('girl') ? 0xa8d0f0 : 0xf3e0b0) : null;
     this.lod = Math.floor(Math.random() * 4);
+    this.jit = (Math.random() - 0.5) * 0.8;
     this.acc = 0;
     this.away = false;
     this.x = this.z = this.heading = 0;
@@ -516,11 +523,19 @@ class Person {
     if (this.phone) this.phone.visible = false;
   }
 
-  // out and about? They come and go out of sight (respawn: back somewhere on their way)
+  // out and about? They come and go out of sight (respawn: back somewhere on their way).
+  // Their hours over, they go home as soon as nobody sees them go: far off, or out of view
+  // (cam: { x, z, fx, fz }, the camera and the way it looks); out of their hours when they
+  // first arrive (the town loading at night), they are not about at all.
   presence(cam, hour) {
-    const out = inHours(hour, this.spec.hours ?? DAY);
+    // (each keeps their own time, give or take 25 minutes: they do not all leave at once)
+    const out = inHours(hour + this.jit, this.spec.hours ?? DAY);
     this.dc = Math.hypot(cam.x - this.x, cam.z - this.z);
-    if (!out && !this.away && this.dc > 45) this.setAway(true);
+    if (this.arrived === undefined) {
+      this.arrived = true;
+      if (!out) this.setAway(true);
+    }
+    if (!out && !this.away && (this.dc > 45 || !inView(cam, this.x, this.z, this.dc))) this.setAway(true);
     if (out && this.away && this.dc > 45) {
       this.setAway(false);
       this.respawn?.();
@@ -560,8 +575,9 @@ class Person {
       ch.lite = lite;
       if (!lite) ch.resetPhysics();
     }
+    if (this.heard > 0) this.heard -= dt;
     if (look) ch.lookAt(look, 0.8);
-    else if (player && Math.hypot(player.pos.x - this.x, player.pos.z - this.z) < 3.5) ch.lookAt(_v.set(player.head.x, player.head.y, player.head.z), 0.7);
+    else if (player && (this.heard > 0 || Math.hypot(player.pos.x - this.x, player.pos.z - this.z) < 3.5)) ch.lookAt(_v.set(player.head.x, player.head.y, player.head.z), 0.7);
     else ch.lookAt(null);
     const every = dc < 25 ? 1 : dc < 45 ? 2 : 4;
     this.acc += dt;
@@ -587,6 +603,7 @@ class Walker extends Person {
     this.edges = G.edges.filter((e) => inside(e.a) && inside(e.b) && (!this.jog || e.kind === 'path'));
     this.rate = this.jog ? 1.05 + Math.random() * 0.15 : (this.male ? 0.8 : 0.86) + Math.random() * 0.14;
     this.off = 0;
+    this.giveWay = 0; // seconds of keeping to the side for a bicycle that rang its bell
     this.respawn();
   }
 
@@ -664,6 +681,12 @@ class Walker extends Person {
         if (fwd < 0.8 && Math.abs(lat) < 0.65) blocked = true;
         if (!t) aside = lat > 0 ? 0.8 : -0.8; // (lat > 0: they are on the left: step right)
       }
+    }
+    // a bell behind or ahead: keep to the side away from the bicycle
+    if (this.giveWay > 0) {
+      this.giveWay -= dt;
+      const b = agents.find((o) => o.bike);
+      if (b) aside = (b.x - this.x) * fz - (b.z - this.z) * fx > 0 ? 0.85 : -0.85;
     }
     switch (this.state) {
       case 'walk': {
@@ -900,7 +923,8 @@ class Stander extends Person {
   }
 
   update(dt, player, cam, hour) {
-    if (!this.presence(cam, hour)) return;
+    // (one of a group comes and goes with the others, see Chat.tick)
+    if (this.group ? this.away : !this.presence(cam, hour)) return;
     if (!this.group) {
       // waiting: shifting about, looking up the road, a look at the phone
       this.timer -= dt;
@@ -925,8 +949,21 @@ class Chat {
     for (const p of members) p.group = this;
   }
 
-  tick(dt) {
+  tick(dt, cam, hour) {
     const m = this.m;
+    // the group comes and goes together (as one person does, see Person.presence)
+    const out = inHours(hour + m[0].jit, m[0].spec.hours ?? DAY);
+    let near = Infinity, seen = false;
+    for (const p of m) {
+      p.dc = Math.hypot(cam.x - p.x, cam.z - p.z);
+      near = Math.min(near, p.dc);
+      if (inView(cam, p.x, p.z, p.dc)) seen = true;
+    }
+    if (this.arrived === undefined) {
+      this.arrived = true;
+      if (!out) for (const p of m) p.setAway(true);
+    } else if (!out && !m[0].away && (near > 45 || !seen)) for (const p of m) p.setAway(true);
+    else if (out && m[0].away && near > 45) for (const p of m) p.setAway(false);
     if (m[0].away) return;
     this.timer -= dt;
     if (this.timer <= 0) {
@@ -1029,16 +1066,39 @@ export async function createPedestrians(world, scene, near = null) {
   const look = wardrobe();
   const list = [], groups = [];
   const agents = [];
+  const view = { x: 0, z: 0, fx: 0, fz: 1 };
   const api = {
     list,
     graph: G,
-    // others: { x, z } of anyone else about (you, Mei) for them to keep clear of
+    // others: { x, z } of anyone else about (you, Mei) for them to keep clear of; cam: the
+    // camera (or just where it is)
     update(dt, player, cam, hour, others = []) {
+      if (cam.isCamera) {
+        cam.getWorldDirection(_v);
+        const l = Math.hypot(_v.x, _v.z) || 1;
+        view.x = cam.position.x;
+        view.z = cam.position.z;
+        view.fx = _v.x / l;
+        view.fz = _v.z / l;
+        cam = view;
+      }
       agents.length = 0;
       for (const p of list) if (!p.away) agents.push({ x: p.x, z: p.z, vx: Math.sin(p.heading) * p.speed, vz: Math.cos(p.heading) * p.speed, self: p });
-      for (const o of others) agents.push({ x: o.x, z: o.z, self: null });
-      for (const g of groups) g.tick(dt);
+      for (const o of others) agents.push({ x: o.x, z: o.z, vx: o.vx || 0, vz: o.vz || 0, bike: !!o.bike, self: null });
+      for (const g of groups) g.tick(dt, cam, hour);
       for (const p of list) p.update(dt, player, cam, hour, agents);
+    },
+    // a bicycle bell rung at (x, z), riding along h: those near turn to look, and walkers in
+    // the way ahead step to the side of the path for a few seconds
+    bell(x, z, h) {
+      const sx = Math.sin(h), sz = Math.cos(h);
+      for (const p of list) {
+        if (p.away) continue;
+        const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
+        if (d > 16) continue;
+        p.heard = 1.4 + Math.random() * 0.8;
+        if (p.giveWay !== undefined && d < 13 && dx * sx + dz * sz > -1.5) p.giveWay = 3 + Math.random();
+      }
     },
   };
   const make = async (model) => {

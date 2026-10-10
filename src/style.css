@@ -286,6 +286,64 @@ kbd {
   font-size: 0.78rem;
   gap: 0.8rem;
 }
+/* on the bicycle: the gear (1 2 3) and the speed */
+.bike-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 0.32rem 0.85rem 0.32rem 0.7rem;
+  box-shadow: var(--shadow);
+  font: 700 0.95rem var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.bike-ico {
+  width: 30px;
+  height: 20px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bike-chip.standing .bike-ico {
+  stroke: var(--sakura-deep);
+}
+.gears {
+  display: flex;
+  gap: 3px;
+}
+.gears i {
+  display: grid;
+  place-items: center;
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 50%;
+  font: 700 0.7rem var(--font-label);
+  font-style: normal;
+  color: var(--ink-soft);
+  background: rgba(39, 48, 73, 0.08);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.gears i.on {
+  background: var(--sakura);
+  color: #fff;
+}
+.kmh {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  min-width: 4.4em;
+  justify-content: flex-end;
+}
+.kmh b {
+  font-size: 1.05rem;
+}
+.kmh small {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
 .count-chip:empty {
   display: none;
 }
@@ -416,6 +474,12 @@ kbd {
   gap: 10px;
   pointer-events: auto;
 }
+/* phones held sideways: two columns, clear of the minimap */
+@media (max-height: 480px) {
+  .touch-buttons {
+    grid-template-columns: repeat(2, auto);
+  }
+}
 .tbtn {
   font: 700 0.85rem var(--font-ui);
   border: 0;
@@ -515,6 +579,18 @@ kbd {
   border-radius: 999px;
   padding: 0.45em 1em;
   cursor: pointer;
+}
+.seg.swatches button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.seg.swatches i {
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: inset 0 0 0 1px rgba(39, 48, 73, 0.25);
 }
 .seg button.on {
   background: var(--ink);

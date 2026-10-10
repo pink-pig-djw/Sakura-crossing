@@ -21,7 +21,8 @@ import { VoiceSystem } from './systems/voice.js';
 import { TownVoices } from './systems/townVoices.js';
 import { createResidents } from './world/residents.js';
 import { createPedestrians } from './world/pedestrians.js';
-import { createAvatar } from './systems/avatar.js';
+import { createAvatar, OUTFITS } from './systems/avatar.js';
+import { Bicycle } from './systems/bicycle.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 
@@ -135,6 +136,15 @@ const world = await buildWorld(scene, { progress: (p, l) => ui.setProgress(p, l)
 const buildMs = Math.round(performance.now() - t0);
 const player = new Player(camera, world.colliders, canvas);
 player.indoors = world.indoorRects || [];
+// her bicycle (B to get on and off), in the colour picked last time
+const bike = new Bicycle(world, scene, { audio });
+try {
+  bike.setColor(+(localStorage.getItem('sakura-bike-color') || 0) | 0);
+  bike.gear = Math.max(0, Math.min(2, +(localStorage.getItem('sakura-bike-gear') ?? 1) | 0));
+} catch {
+  /* storage unavailable */
+}
+window.__bike = bike;
 petals = createPetals(world.petalEmitters, QUALITY.high.petals);
 petals.userData.max = QUALITY.high.petals;
 petals.geometry.instanceCount = QUALITY[quality].petals;
@@ -160,7 +170,7 @@ const residentsReady = createResidents(world, scene, { voice })
 let avatar = null;
 let outfit = 0;
 try {
-  outfit = Math.max(0, Math.min(2, +(localStorage.getItem('sakura-outfit') || 0) | 0));
+  outfit = Math.max(0, Math.min(OUTFITS.length - 1, +(localStorage.getItem('sakura-outfit') || 0) | 0));
 } catch {
   /* storage unavailable */
 }
@@ -168,6 +178,8 @@ ui.setOutfit(outfit);
 const avatarReady = createAvatar(world, scene, player, outfit)
   .then((a) => {
     avatar = a;
+    a.bike = bike;
+    bike.setRider(a.ch);
     window.__avatar = a;
   })
   .catch((e) => console.warn('protagonist not loaded:', e));
@@ -302,7 +314,7 @@ function findInteractable() {
   const py = player.pos.y;
   const below = py < groundH(player.pos.x, player.pos.z) - 2.5; // underground / in the river bed
   for (const it of world.interactables) {
-    if (it.kind === 'shell' && it.shell.taken) continue;
+    if (it.off || (it.kind === 'shell' && it.shell.taken)) continue;
     // things on other floors (subway concourse, platform, street above) are out of reach
     const iy = it.y ?? (it.sit ? it.sit.y - 0.45 : null);
     if (iy !== null ? Math.abs(iy - py) > 2.2 : below) continue;
@@ -325,7 +337,7 @@ function updateCounts() {
 }
 
 function interact() {
-  if (state.mode !== 'play') return;
+  if (state.mode !== 'play' || bike.on) return;
   if (player.sitting) {
     player.stand();
     return;
@@ -462,11 +474,71 @@ function interact() {
       audio.sfx('beep');
       ui.toast('ICカードをタッチ。ピッ。');
       break;
+    case 'bike':
+      toggleBike();
+      break;
     default:
       break;
   }
   updateCounts();
 }
+
+// ---------------------------------------------------------------------------
+// the bicycle
+// ---------------------------------------------------------------------------
+let bikeTips = 0;
+function toggleBike() {
+  if (state.mode !== 'play') return;
+  if (bike.on) {
+    bike.dismount();
+    return;
+  }
+  if (player.sitting) player.stand();
+  // facing the way she faces (third person) or you look (first person)
+  const h = player.view === 'third' && avatar ? avatar.heading : player.yaw + Math.PI;
+  const r = bike.mount(player, h);
+  if (r !== 'ok') {
+    ui.toast(r === 'here' ? 'ここでは自転車に乗れない。' : '自転車に乗れない。', 2.4);
+    return;
+  }
+  if (bikeTips < 2) {
+    bikeTips++;
+    const tip = usingPad()
+      ? '左スティックでこぐ・ブレーキ・ハンドル、RT で立ちこぎ、LB / RB でギア、X でベル、B で降りる'
+      : isTouch
+        ? 'スティックでこぐ・ハンドル、ベルとギアのボタン、もう一度「自転車」で降りる'
+        : 'W でこぐ・S でブレーキ・A / D でハンドル、Shift で立ちこぎ、Q / E でギア、Space でベル、B で降りる';
+    setTimeout(() => ui.toast(tip, 5.5), 600);
+  }
+}
+function shiftGear(d, abs = null) {
+  if (!bike.riding) return;
+  const ok = abs !== null ? bike.setGear(abs) : bike.shift(d);
+  if (!ok) return;
+  try {
+    localStorage.setItem('sakura-bike-gear', String(bike.gear));
+  } catch {
+    /* storage unavailable */
+  }
+}
+// bumping into a doorway or a flight of steps: a hint, now and then
+let blockedToast = 0;
+bike.onBlocked = (why) => {
+  if (performance.now() - blockedToast < 6000) return;
+  blockedToast = performance.now();
+  if (why === 'door') ui.toast('自転車のままでは入れない。（B で降りる）', 2.6);
+  else if (why === 'step') ui.toast('段差が高くて自転車では進めない。', 2.4);
+  pad.rumble(0.25, 0.2, 120);
+};
+// people slowed for (passers-by and Mei), and those who hear the bell
+const bikeAgents = [];
+bike.agents = () => {
+  bikeAgents.length = 0;
+  for (const p of passersby?.list ?? []) bikeAgents.push(p);
+  for (const r of residents?.list ?? []) bikeAgents.push(r);
+  return bikeAgents;
+};
+bike.onRing = (x, z, h) => passersby?.bell?.(x, z, h);
 
 // ---------------------------------------------------------------------------
 // modes
@@ -620,14 +692,16 @@ pad.on('active', () => ui.setInputMode('pad'));
 pad.on('start', startPlay);
 pad.on('interact', interact);
 pad.on('back', () => {
-  if (player.sitting) player.stand();
+  if (bike.on) bike.dismount();
+  else if (player.sitting) player.stand();
 });
-pad.on('jump', () => player.jump());
+pad.on('jump', () => (bike.on ? bike.ring() : player.jump()));
+pad.on('bike', toggleBike);
 pad.on('map', openMap);
 pad.on('minimap', () => toggleMinimap());
 pad.on('view', () => toggleView());
 pad.on('menu', openMenu);
-pad.on('time', cycleTime);
+pad.on('time', (d) => (bike.riding ? shiftGear(d) : cycleTime(d)));
 pad.on('confirm', () => activateFocused(modalRoot()));
 pad.on('close', backToPlay);
 pad.on('nav', (dx, dy) => moveFocus(modalRoot(), dx, dy));
@@ -657,7 +731,10 @@ ui.on('view', (third) => toggleView(third ? 'third' : 'first'));
 ui.on('outfit', (i) => {
   outfit = i;
   ui.setOutfit(i);
-  avatar?.setOutfit(i).catch((e) => console.warn('outfit not loaded:', e));
+  avatar
+    ?.setOutfit(i)
+    .then(() => bike.setRider(avatar.ch))
+    .catch((e) => console.warn('outfit not loaded:', e));
   try {
     localStorage.setItem('sakura-outfit', String(i));
   } catch {
@@ -675,7 +752,19 @@ ui.on('look', (dx, dy) => {
   if (state.mode === 'play') player.addLook(dx, dy);
 });
 ui.on('interact', interact);
-ui.on('jump', () => player.jump());
+ui.on('jump', () => (bike.on ? bike.ring() : player.jump()));
+ui.on('bike', toggleBike);
+ui.on('gear', () => shiftGear(0, (bike.gear + 1) % 3));
+ui.on('bikeColor', (i) => {
+  bike.setColor(i);
+  ui.setBikeColor(i);
+  try {
+    localStorage.setItem('sakura-bike-color', String(i));
+  } catch {
+    /* storage unavailable */
+  }
+});
+ui.setBikeColor(bike.colorIndex);
 ui.on('runToggle', (v) => (player.run = v));
 
 canvas.addEventListener('click', () => {
@@ -699,7 +788,14 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (state.mode !== 'play') return;
-  if (e.code === 'KeyE' || e.code === 'Enter') interact();
+  if (e.code === 'KeyB') toggleBike();
+  if (bike.on) {
+    // on the bicycle: Q / E (or 1 2 3) change gear, Space rings the bell
+    if (e.code === 'KeyQ') shiftGear(-1);
+    if (e.code === 'KeyE') shiftGear(1);
+    if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') shiftGear(0, +e.code.slice(5) - 1);
+    if (e.code === 'Space' && !e.repeat) bike.ring();
+  } else if (e.code === 'KeyE' || e.code === 'Enter') interact();
   if (e.code === 'KeyM') openMap();
   if (e.code === 'KeyN') toggleMinimap();
   if (e.code === 'KeyV') toggleView();
@@ -767,6 +863,25 @@ function frame() {
   const now = performance.now();
   const dt = Math.min((now - lastNow) / 1000, 0.1);
   lastNow = now;
+  simulate(dt);
+
+  // render
+  pipe.setIndoor(cameraIndoors(), dt);
+  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value, tod.leak * G.uSunDisk.value, tod.rays * G.uSunDisk.value);
+  renderer.info.reset();
+  pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
+  frames++;
+  if (frames === 3) {
+    window.__info.calls = renderer.info.render.calls;
+    window.__info.tris = renderer.info.render.triangles;
+    window.__ready = true;
+    if (params.has('still')) return;
+  }
+  requestAnimationFrame(frame);
+}
+
+// one step of the town, the walk and the sounds (everything but drawing the frame)
+function simulate(dt) {
   const t = (G.uTime.value += dt);
 
   if (state.mode === 'title') {
@@ -783,6 +898,15 @@ function frame() {
   player.padMove.set(padOn ? pad.move.x : 0, padOn ? pad.move.y : 0);
   player.padLook.set(padOn ? pad.look.x : 0, padOn ? pad.look.y : 0);
   player.padRun = padOn && pad.run;
+  player.padBrake = padOn ? pad.brake : 0;
+  // the bicycle (its wheels, cranks and bars set before she is posed on it)
+  bike.update(state.mode === 'play' ? dt : 0, player);
+  // a touch wider view the faster she rides
+  const fov = 62 + Math.max(0, Math.abs(bike.riding ? bike.v : 0) - 2) * 0.9;
+  if (Math.abs(camera.fov - fov) > 0.01) {
+    camera.fov += (fov - camera.fov) * Math.min(1, dt * 2);
+    camera.updateProjectionMatrix();
+  }
 
   // town life
   const train = world.train;
@@ -819,10 +943,11 @@ function frame() {
   residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
   // the passers-by keep clear of you and of Mei
   aroundThem.length = 0;
-  if (state.mode === 'play') aroundThem.push(player.pos);
+  if (state.mode === 'play') aroundThem.push(bike.on ? { x: player.pos.x, z: player.pos.z, vx: player.vel.x, vz: player.vel.z, bike: true } : player.pos);
+  bike.obstacles(aroundThem);
   const mei = residents?.list[0];
   if (mei && !mei.home) aroundThem.push(mei);
-  passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera.position, tod.hour, aroundThem);
+  passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera, tod.hour, aroundThem);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);
@@ -836,8 +961,9 @@ function frame() {
   gu.value += (gust - gu.value) * Math.min(1, dt * 0.8);
 
   if (state.mode === 'play') {
-    focus = findInteractable();
+    focus = bike.on ? null : findInteractable();
     ui.setPrompt(player.sitting ? '立ち上がる' : focus ? focus.label : null);
+    ui.setBike(bike.on ? { gear: bike.gear, kmh: Math.abs(bike.v) * 3.6, standing: bike.stand > 0.5 } : null);
     areaCheck -= dt;
     if (areaCheck <= 0) {
       areaCheck = 0.4;
@@ -850,8 +976,11 @@ function frame() {
       state.lastArea = name;
     }
     ui.setCrosshair(player.pointerLocked && player.view === 'first');
-    ui.minimap.update(dt, { x: player.pos.x, z: player.pos.z, yaw: player.yaw });
-  } else ui.setPrompt(null);
+    ui.minimap.update(dt, { x: player.pos.x, z: player.pos.z, yaw: player.yaw, bike: !bike.on && bike.parked ? bike.parked : null });
+  } else {
+    ui.setPrompt(null);
+    ui.setBike(null);
+  }
   ui.setClock(tod.label, tod.period.label, tod.hour);
   const lastHour = prevHour;
   prevHour = tod.hour;
@@ -910,21 +1039,11 @@ function frame() {
       station: { x: (STATION.platX0 + STATION.platX1) / 2, z: STATION.platZ0 },
     });
   }
-
-  // render
-  pipe.setIndoor(cameraIndoors(), dt);
-  pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value, tod.leak * G.uSunDisk.value, tod.rays * G.uSunDisk.value);
-  renderer.info.reset();
-  pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
-  frames++;
-  if (frames === 3) {
-    window.__info.calls = renderer.info.render.calls;
-    window.__info.tris = renderer.info.render.triangles;
-    window.__ready = true;
-    if (params.has('still')) return;
-  }
-  requestAnimationFrame(frame);
 }
+// (tests: run the town n steps of dt seconds without drawing)
+window.__tick = (dt = 1 / 30, n = 1) => {
+  for (let i = 0; i < n; i++) simulate(dt);
+};
 
 // the camera in a room or underground: the compositing's sky gradients and sun effects step back
 function cameraIndoors() {

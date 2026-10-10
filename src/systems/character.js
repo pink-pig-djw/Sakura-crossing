@@ -228,6 +228,13 @@ export class Character {
       .filter((j) => /_Skirt(Front|Side)/.test(j.bone?.name || '') && !/Coat/.test(j.bone.name))
       .map((j) => ({ j, front: /Front/.test(j.bone.name), power: j.settings.gravityPower, stiff: j.settings.stiffness, dir: j.settings.gravityDir.clone() }));
     this.seatedness = 0;
+    // hair spring chains: `wind` (a world vector, set by the owner) blows them along it, as
+    // when riding a bicycle
+    this.hair = [...(vrm.springBoneManager?.joints ?? [])]
+      .filter((j) => /Hair/.test(j.bone?.name || ''))
+      .map((j) => ({ j, power: j.settings.gravityPower, dir: j.settings.gravityDir.clone() }));
+    this.wind = null;
+    this._blown = false;
     // how far back sitting down takes the hips (the clip faces +Z)
     if (sd) {
       const h = decode(sd.hips, Int16Array), n = sd.frames;
@@ -462,6 +469,7 @@ export class Character {
     // a pose laid over the clip (a cyclist on her bike), before the skin and the hair follow
     if (this.pose) this.pose(this, dt);
     this._drapeSkirt();
+    this._blowHair();
     if (this.lite) {
       // far off (a passer-by down the street): the pose and the face, no hair or skirt physics
       this.vrm.humanoid.update();
@@ -478,6 +486,10 @@ export class Character {
 
   _drapeSkirt() {
     if (!this.skirt.length || !this.sitHips) return;
+    if (this.skirtFollow) {
+      this._followKnees();
+      return;
+    }
     const k = THREE.MathUtils.clamp(((this.hipsHeight - this._hipsY) / (this.hipsHeight - this.sitHips) - 0.25) / 0.6, 0, 1);
     if (k < 0.01 && this.seatedness < 0.01) return;
     this.seatedness = k;
@@ -487,6 +499,63 @@ export class Character {
       st.gravityDir.copy(s.dir).lerp(_v2.copy(fwd).multiplyScalar(s.front ? 1 : 0.6).add(_v3.set(0, -0.35, 0)).normalize(), k).normalize();
       st.gravityPower = s.power + (s.front ? 2.4 : 0.9) * k;
       st.stiffness = s.stiff * (1 - 0.8 * k);
+    }
+  }
+
+  // Riding (skirtFollow): the front and side chains of the skirt are drawn toward the knee on
+  // their side, the side chains a little outside it, so the cloth lies over the thighs and
+  // follows them up and down with the pedals (the leg colliders keep it on top)
+  _followKnees() {
+    this.seatedness = 1;
+    const out = new THREE.Vector3(), knee = new THREE.Vector3(), at = new THREE.Vector3();
+    for (const s of this.skirt) {
+      const left = /_L_/.test(s.j.bone.name);
+      this.node(left ? 'leftLowerLeg' : 'rightLowerLeg').getWorldPosition(knee);
+      s.j.bone.getWorldPosition(at);
+      out.set(left ? 1 : -1, 0, 0).applyQuaternion(this.root.quaternion);
+      knee.addScaledVector(out, s.front ? 0.045 : 0.13);
+      knee.y -= s.front ? 0.06 : 0.14;
+      const st = s.j.settings;
+      st.gravityDir.copy(knee.sub(at).normalize());
+      st.gravityPower = s.power + (s.front ? 2.8 : 2.0);
+      st.stiffness = s.stiff * 0.25;
+    }
+  }
+
+  // Riding a bicycle, the thighs come up through a skirt of a few spring chains (the cloth
+  // between chains is not pushed out): widen the leg colliders the skirt chains use, and the
+  // chains' own reach, by k (1: as the model has them)
+  widenSkirt(k) {
+    const sbm = this.vrm.springBoneManager;
+    if (!sbm || k === this._skirtK) return;
+    this._skirtK = k;
+    if (!this._skirtCols) {
+      const groups = new Set();
+      this._skirtJoints = [...sbm.joints].filter((j) => /Skirt/.test(j.bone?.name || ''));
+      for (const j of this._skirtJoints) for (const g of j.colliderGroups ?? []) groups.add(g);
+      this._skirtCols = [...groups].flatMap((g) => g.colliders).filter((c) => /UpperLeg/.test(c.parent?.name || '') && c.shape?.radius !== undefined).map((c) => ({ shape: c.shape, r: c.shape.radius }));
+      this._skirtHit = this._skirtJoints.map((j) => j.settings.hitRadius);
+    }
+    for (const c of this._skirtCols) c.shape.radius = c.r * k;
+    this._skirtJoints.forEach((j, i) => (j.settings.hitRadius = this._skirtHit[i] * (1 + (k - 1) * 2)));
+  }
+
+  _blowHair() {
+    const w = this.wind;
+    const on = !!w && w.lengthSq() > 1e-5;
+    if (!on && !this._blown) return;
+    this._blown = on;
+    for (const h of this.hair) {
+      const st = h.j.settings;
+      if (!on) {
+        st.gravityDir.copy(h.dir);
+        st.gravityPower = h.power;
+        continue;
+      }
+      _v.copy(h.dir).multiplyScalar(h.power).add(w);
+      const p = _v.length();
+      st.gravityDir.copy(_v).divideScalar(Math.max(p, 1e-6));
+      st.gravityPower = p;
     }
   }
 
