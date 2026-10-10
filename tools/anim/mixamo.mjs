@@ -353,6 +353,17 @@ export const CLIPS = {
   stairsUp: { file: '20_Movement_Plus/Walk Up Stairs.fbx', loop: true, stairs: true },
   stairsDown: { file: '20_Movement_Plus/Walk Down Stairs.fbx', loop: true, stairs: true },
   stairsRun: { file: '20_Movement_Plus/Run Up Stairs.fbx', loop: true, stairs: true },
+  // the boys and men in town walk and stand like it
+  walkM: { file: '02_Locomotion/Walking.fbx', loop: true, walk: true, level: true },
+  idleM: { file: '01_Idle/Breathing Idle.fbx', loop: true },
+  shiftM: { file: '15_NPC_Idle/Idle - Weight Shift.fbx' },
+  lookAround: { file: '15_NPC_Idle/Idle Looking Around 1.fbx' },
+  // passers-by: out for a run, chatting in a group
+  jog: { file: '02_Locomotion/Jogging.fbx', loop: true, walk: true },
+  talk: { file: '12_Dialogue/Talking - Funny.fbx', level: true },
+  talkB: { file: '12_Dialogue/Hand Raising.fbx', level: true },
+  think: { file: '06_Emote/Thinking.fbx', level: true },
+  nod: { file: '06_Emote/Head Nod Yes.fbx' },
 };
 
 function convert(dir, only) {

@@ -459,8 +459,14 @@ export class Character {
     }
 
     this._fitGround();
+    // a pose laid over the clip (a cyclist on her bike), before the skin and the hair follow
+    if (this.pose) this.pose(this, dt);
     this._drapeSkirt();
-    this.vrm.update(dt);
+    if (this.lite) {
+      // far off (a passer-by down the street): the pose and the face, no hair or skirt physics
+      this.vrm.humanoid.update();
+      this.vrm.expressionManager?.update();
+    } else this.vrm.update(dt);
     if (this.faceMats.length) {
       // the middle of the head: a little above and behind the head bone
       const head = n('head');
@@ -551,6 +557,31 @@ export class Character {
   }
 
   // rotate a node so that world direction `from` becomes `to`
+  // Two-bone IK in world space: the end bone's joint onto `target`, the middle joint bent
+  // toward the direction `pole` (knees forward, elbows out and back).
+  ik(upper, lower, end, target, pole) {
+    const up = this.node(upper), lo = this.node(lower), en = this.node(end);
+    const a0 = up.getWorldPosition(new THREE.Vector3()), k0 = lo.getWorldPosition(new THREE.Vector3()), e0 = en.getWorldPosition(new THREE.Vector3());
+    const a = a0.distanceTo(k0), b = k0.distanceTo(e0);
+    const c = THREE.MathUtils.clamp(a0.distanceTo(target), Math.abs(a - b) + 1e-3, a + b - 1e-3);
+    const d = target.clone().sub(a0).normalize();
+    const p = pole.clone().addScaledVector(d, -pole.dot(d)).normalize();
+    const cosA = (a * a + c * c - b * b) / (2 * a * c), sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+    const mid = a0.clone().addScaledVector(d, a * cosA).addScaledVector(p, a * sinA);
+    this._rotateWorld(up, k0.sub(a0).normalize(), mid.sub(a0).normalize());
+    up.updateMatrixWorld(true);
+    const k1 = lo.getWorldPosition(new THREE.Vector3()), e1 = en.getWorldPosition(new THREE.Vector3());
+    this._rotateWorld(lo, e1.sub(k1).normalize(), target.clone().sub(k1).normalize());
+    lo.updateMatrixWorld(true);
+  }
+
+  // give a bone this world orientation
+  setWorldQuaternion(bone, q) {
+    const n = this.node(bone);
+    n.quaternion.copy(n.parent.getWorldQuaternion(_q3).invert().multiply(q));
+    n.updateMatrixWorld(true);
+  }
+
   _rotateWorld(node, from, to) {
     const delta = _q.setFromUnitVectors(from, to);
     const wq = node.getWorldQuaternion(_q2);

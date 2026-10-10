@@ -172,8 +172,9 @@ const avatarReady = createAvatar(world, scene, player, outfit)
   .catch((e) => console.warn('protagonist not loaded:', e));
 // passers-by come once she and Mei are there
 let passersby = null;
+const aroundThem = [];
 Promise.allSettled([residentsReady, avatarReady])
-  .then(() => createPedestrians(world, scene))
+  .then(() => createPedestrians(world, scene, () => player.pos))
   .then((p) => {
     passersby = p;
     window.__passersby = p;
@@ -815,7 +816,12 @@ function frame() {
   avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
   residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
-  passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera.position, tod.hour);
+  // the passers-by keep clear of you and of Mei
+  aroundThem.length = 0;
+  if (state.mode === 'play') aroundThem.push(player.pos);
+  const mei = residents?.list[0];
+  if (mei && !mei.home) aroundThem.push(mei);
+  passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera.position, tod.hour, aroundThem);
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);

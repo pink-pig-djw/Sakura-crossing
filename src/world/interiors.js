@@ -1001,6 +1001,8 @@ function buildPlaza(ctx, block) {
     b.quadOut(P(R0, a0, top), P(R1, a0, top), P(R1, a1, top), P(R0, a1, top), V(fx, top - 3, fz), 0xd8d0c0, 0);
     b.quadOut(V(fx, floorY, fz), P(R0, a0, floorY), P(R0, a1, floorY), V(fx, floorY, fz), V(fx, floorY - 3, fz), 0x6f8f98, PAT.TILE);
   }
+  // nobody steps over the low rim into the water
+  ctx.colliders.addCircle(fx, fz, R1, fy + 0.9, fy - 1);
   b.cyl(fx, fy - 0.1, fz, 0.7, 0.55, 1.3, 14, 0xc9c1b2, PAT.STONE);
   b.cyl(fx, fy + 1.2, fz, 1.3, 1.05, 0.2, 16, 0xd8d0c0);
   b.cyl(fx, fy + 1.4, fz, 0.22, 0.18, 0.55, 10, 0xc9c1b2, PAT.STONE);
