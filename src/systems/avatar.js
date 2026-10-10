@@ -138,12 +138,16 @@ export class Avatar {
       this.airT = p.onGround ? 0 : this.airT + dt;
       ch.noFit = this.airT > 0;
       let gait;
+      const st = p.stairs;
       if (this.act) gait = 'act';
       else if (this.jumping && this.airT < 0.85) gait = 'jump';
       else if (this.airT > (this.jumping ? 0 : 0.3)) gait = 'fall';
       else if (sp < 0.2) gait = 'idle';
+      else if (st && ch.clips.stairsUp) gait = st.dir > 0 ? (p.running ? 'stairsRun' : 'stairsUp') : 'stairsDown';
       else if (this.gait === 'run' ? sp > 2.6 : sp > 3.2) gait = 'run';
       else gait = 'walk';
+      // on stairs: one tread a step; the legs lift as high as these risers need
+      ch.stairs = gait.startsWith('stairs') ? { k: THREE.MathUtils.clamp(st.rise / (ch.info[gait].rise || 0.25), 0.35, 1.3) } : null;
       const fade = gait === 'fall' || gait === 'jump' ? 0.12 : this.gait === 'fall' || this.gait === 'jump' ? 0.12 : 0.3;
       if (gait === 'act') {
         // the gesture plays itself
@@ -151,10 +155,21 @@ export class Avatar {
         if (this.gait !== 'jump') ch.play('jump', fade, 0.92);
       } else if (gait === 'walk') ch.play('walk', fade, THREE.MathUtils.clamp(sp / ch.info.walk.speed, 0.5, 1.6));
       else if (gait === 'run') ch.play('run', fade, THREE.MathUtils.clamp(sp / ch.info.run.speed, 0.6, 1.3));
+      else if (gait.startsWith('stairs')) ch.play(gait, 0.25, THREE.MathUtils.clamp(sp / st.run / (2 / ch.clips[gait].duration), 0.6, 2.0));
       else ch.play(gait, fade);
       this.gait = gait;
     }
 
+    // on stairs her body follows the line through the treads (the walker hops tread to
+    // tread); the change eases in and out
+    const stairY = !p.sitting && p.stairs && p.onGround ? p.stairs.rampY : null;
+    if (stairY !== null || this.stairEase > 0) {
+      this.stairEase = stairY !== null ? 1 : Math.max(0, (this.stairEase ?? 0) - dt * 4);
+      const want = stairY ?? y;
+      if (this.bodyY === undefined || Math.abs(want - this.bodyY) > 1) this.bodyY = want;
+      this.bodyY += (want - this.bodyY) * Math.min(1, dt * 14);
+      y = stairY !== null ? this.bodyY : this.bodyY + (p.pos.y - this.bodyY) * (1 - this.stairEase);
+    } else this.bodyY = y;
     ch.root.position.set(x, y, z);
     ch.root.rotation.set(0, this.heading, 0);
 

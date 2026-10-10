@@ -55,7 +55,7 @@ const MAP = buildMap();
 const BONE = Object.fromEntries(MAP.map((e, i) => [e[1], i]));
 
 // ------------------------------------------------------------------------------- FBX
-function loadFBX(file) {
+export function loadFBX(file) {
   const buf = fs.readFileSync(file);
   const g = new FBXLoader().parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), '');
   // files that carry the X Bot mesh have an empty extra take
@@ -72,7 +72,7 @@ const basis = (a, r) => {
 
 // per-bone Q (ideal VRM bone frame -> Mixamo joint frame) from the rest T-pose; for bones
 // without an axis, the inverse rest rotation (so the rest pose maps to the model's rest)
-function calibrate({ g, joint }) {
+export function calibrate({ g, joint }) {
   g.updateMatrixWorld(true);
   return MAP.map(([jn, , A, R, child]) => {
     const j = joint(jn);
@@ -87,7 +87,7 @@ function calibrate({ g, joint }) {
 }
 
 // sample every frame: ideal-frame world rotations of the mapped bones, hips position (m)
-function sample(fbx, Q, fps) {
+export function sample(fbx, Q, fps) {
   const { g, clip, joint } = fbx;
   const mixer = new THREE.AnimationMixer(g);
   mixer.clipAction(clip).play();
@@ -298,6 +298,7 @@ function pack(frames, o) {
   const out = { frames: nf, loop: !!o.loop, speed: +(o.speed || 0).toFixed(4), hipsHeight: +o.hipsHeight.toFixed(4) };
   if (o.reps) out.reps = o.reps;
   if (o.root) out.root = true;
+  if (o.rise) out.rise = +o.rise.toFixed(4);
   out.rot = Buffer.from(rot.buffer).toString('base64');
   out.hips = Buffer.from(pos.buffer).toString('base64');
   return out;
@@ -315,6 +316,8 @@ function pack(frames, o) {
 // knees: sitting, knees brought together this far apart
 // airborne: a jump: the hips keep only their height over the lower foot
 // legs: blend the legs this far toward the standing pose
+// stairs: a stair-climbing loop: the climb comes out (the game moves her along the stairs),
+//   the hips sit at standing height over the line through the treads, `rise` = one riser
 export const CLIPS = {
   idle: { file: '15_NPC_Idle/Idle - Female.fbx', loop: true },
   happy: { file: '01_Idle/Happy Idle.fbx', loop: true, level: true },
@@ -346,6 +349,10 @@ export const CLIPS = {
   sit: { file: '05_Interact/Sitting Idle.fbx', loop: true, after: 'sitDown', knees: 0.11 },
   standUp: { file: '05_Interact/Sit To Stand.fbx', root: true, after: 'sitDown', knees: 0.11 },
   sitFidget: { file: '16_Sitting/Sitting Fidgeting Feet.fbx', loop: true, after: 'sitDown', seat: 'sit', knees: 0.11 }, // swinging her feet
+  // on stairs: two steps a cycle
+  stairsUp: { file: '20_Movement_Plus/Walk Up Stairs.fbx', loop: true, stairs: true },
+  stairsDown: { file: '20_Movement_Plus/Walk Down Stairs.fbx', loop: true, stairs: true },
+  stairsRun: { file: '20_Movement_Plus/Run Up Stairs.fbx', loop: true, stairs: true },
 };
 
 function convert(dir, only) {
@@ -405,6 +412,10 @@ function convert(dir, only) {
       const dy = starts[c.seat].y - frames[0].hips.y;
       frames.forEach((f) => (f.hips.y += dy));
     }
+    // stairs: the take climbs (or descends) two risers; note one riser before the loop
+    // closure below spreads the climb out of the hips
+    let rise = 0;
+    if (c.stairs) rise = Math.abs(frames[N - 1].hips.y - frames[0].hips.y) / 2;
     let seam = 0;
     if (c.loop) {
       // close the cycle: spread any end/start mismatch over the loop, then drop the last key
@@ -419,10 +430,16 @@ function convert(dir, only) {
       });
       frames.pop();
     }
+    if (c.stairs) {
+      // over the line through the treads the hips ride a little lower than standing
+      const mean = frames.reduce((a, f) => a + f.hips.y, 0) / frames.length;
+      const dy = hipsHeight * 0.92 - mean;
+      for (const f of frames) f.hips.y += dy;
+    }
     if (name === 'idle') standFrame = frames[0];
     ends[name] = frames[frames.length - 1].hips.clone();
     starts[name] = frames[0].hips.clone();
-    out.clips[name] = pack(frames, { ...c, speed, hipsHeight });
+    out.clips[name] = pack(frames, { ...c, speed, hipsHeight, rise });
     console.log(name.padEnd(10), String(frames.length).padStart(4), 'frames', (frames.length / fps).toFixed(2).padStart(6), 's', c.loop ? `loop seam ${THREE.MathUtils.radToDeg(seam).toFixed(1)}°` : '', speed ? `speed ${speed.toFixed(2)} m/s` : '');
   }
   out.clips.point = pack(synthPoint(standFrame, fps), { hipsHeight });

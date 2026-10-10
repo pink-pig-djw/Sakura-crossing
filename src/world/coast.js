@@ -221,9 +221,10 @@ export function buildCoast(ctx) {
       }
       ctx.colliders.addBox(wx, SEAWALL_Z + (steps * run) / 2, 0.15, (steps * run) / 2, 0, 99);
     }
+    // the walk surface follows the treads (a stepped surface, not a ramp)
     ctx.colliders.addSurface(sx - 1.6, SEAWALL_Z - 0.05, sx + 1.6, SEAWALL_Z + steps * run, (px, pz) => {
-      const k = Math.min(1, Math.max(0, (pz - SEAWALL_Z) / (steps * run)));
-      return wallTop - k * (wallTop - by);
+      if (pz < SEAWALL_Z) return wallTop;
+      return wallTop - (Math.min(steps - 1, Math.floor((pz - SEAWALL_Z) / run)) + 1) * rise;
     }, 2);
   }
   // benches facing the sea on the promenade

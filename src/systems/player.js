@@ -218,7 +218,9 @@ export class Player {
     }
     const running = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
     this.running = running;
-    const maxSpeed = this.view === 'third' ? (running ? TP_RUN : TP_WALK) : running ? 6.2 : 3.1;
+    let maxSpeed = this.view === 'third' ? (running ? TP_RUN : TP_WALK) : running ? 6.2 : 3.1;
+    // on stairs she takes one tread a step at a natural pace (about two steps a second)
+    if (this.stairs && this.view === 'third') maxSpeed = THREE.MathUtils.clamp(this.stairs.run * (running ? 3.2 : 1.9), running ? 0.9 : 0.42, running ? 1.9 : 0.9);
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
     const wantX = (fx * iz + rx * ix) * maxSpeed;
@@ -269,6 +271,7 @@ export class Player {
       this.onGround = false;
     }
 
+    this._probeStairs(dt);
     // smooth eye height (stairs feel soft) + head bob
     this.speed = Math.hypot(this.vel.x, this.vel.z);
     const targetEye = this.pos.y + EYE;
@@ -278,13 +281,59 @@ export class Player {
       this.bob += dt * this.speed * 2.1;
       this.stepDist += this.speed * dt;
       const tp = this.view === 'third' && this.strides;
-      const stride = tp ? (running ? this.strides.run : this.strides.walk) : running ? 1.7 : 1.25;
+      const stride = this.stairs ? this.stairs.run : tp ? (running ? this.strides.run : this.strides.walk) : running ? 1.7 : 1.25;
       if (this.stepDist > stride) {
         this.stepDist = 0;
         if (this.onStep) this.onStep(this.surface(), running);
       }
     }
     this.applyCamera();
+  }
+
+  // Stairs under her: the ground along the way she walks rises (or falls) in two or more
+  // sharp steps within ±0.45 m (a ramp rises smoothly, a kerb is a single step). Sets
+  // this.stairs = { dir: +1 up / -1 down, rise, run, rampY } or null; rampY is the height of
+  // the line through the treads at her position (the ground averaged over one tread), which
+  // the protagonist's body follows instead of hopping tread to tread.
+  _probeStairs(dt) {
+    const sp = Math.hypot(this.vel.x, this.vel.z);
+    if (!this.onGround || this.sitting || sp < 0.15) {
+      if (this.stairs && (this.stairHold = (this.stairHold ?? 0) - dt) <= 0) this.stairs = null;
+      return;
+    }
+    const ux = this.vel.x / sp, uz = this.vel.z / sp, x = this.pos.x, z = this.pos.z, fy = this.pos.y + 0.3;
+    const at = (d) => this.col.groundAt(x + ux * d, z + uz * d, fy + Math.max(0, d) * 0.9);
+    const N = 13, h = [];
+    for (let i = 0; i < N; i++) h.push(at((i - 6) * 0.075));
+    const edges = [];
+    for (let i = 1; i < N; i++) {
+      const dh = h[i] - h[i - 1];
+      if (Math.abs(dh) < 0.05 || Math.abs(dh) > 0.4) continue;
+      // find the riser between the two samples
+      let a = (i - 7) * 0.075, b = (i - 6) * 0.075;
+      for (let k = 0; k < 4; k++) {
+        const m = (a + b) / 2;
+        if (Math.abs(at(m) - h[i - 1]) < Math.abs(dh) / 2) a = m;
+        else b = m;
+      }
+      edges.push({ d: (a + b) / 2, dh });
+    }
+    const up = edges.filter((e) => e.dh > 0).length, down = edges.length - up;
+    const ok = edges.length >= 2 && (up === 0 || down === 0);
+    const keep = this.stairs && edges.length === 1 && Math.sign(edges[0].dh) === this.stairs.dir;
+    if (!ok && !keep) {
+      if (this.stairs && (this.stairHold = (this.stairHold ?? 0) - dt) <= 0) this.stairs = null;
+      return;
+    }
+    this.stairHold = 0.25;
+    const dir = ok ? (up ? 1 : -1) : this.stairs.dir;
+    const rise = ok ? edges.reduce((s, e) => s + Math.abs(e.dh), 0) / edges.length : this.stairs.rise;
+    const run = ok ? THREE.MathUtils.clamp((edges[edges.length - 1].d - edges[0].d) / (edges.length - 1), 0.2, 0.6) : this.stairs.run;
+    // the ground averaged over one tread centred on her: a straight line through the treads
+    const half = run / 2;
+    let y = at(-half) * run;
+    for (const e of edges) if (e.d > -half && e.d < half) y += e.dh * (half - e.d);
+    this.stairs = { dir, rise, run, rampY: y / run };
   }
 
   allowed(x, z, g) {

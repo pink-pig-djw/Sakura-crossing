@@ -157,7 +157,7 @@ export class Character {
     for (const [name, c] of Object.entries(motions.clips)) {
       this.clips[name] = this._buildClip(name, c, motions);
       // reps: a short cycle (a wave of the hand) played a few times as a one-shot
-      this.info[name] = { speed: c.speed * (this.hipsHeight / c.hipsHeight), loop: c.loop && !c.reps, reps: c.reps || 1 };
+      this.info[name] = { speed: c.speed * (this.hipsHeight / c.hipsHeight), rise: (c.rise || 0) * (this.hipsHeight / c.hipsHeight), loop: c.loop && !c.reps, reps: c.reps || 1 };
     }
     this.actions = {};
     for (const [n, clip] of Object.entries(this.clips)) {
@@ -466,10 +466,17 @@ export class Character {
     // for each foot: how far the ankle must move. It follows the terrain under it (the clip
     // stands on flat ground at the root's height) and never goes below its standing height
     // over the ground (no sole sinks into it)
+    // on stairs (a stair clip, its climb taken out, the root on the line through the treads)
+    // the clip's own risers are scaled to these by k, and no foot goes into a tread
+    const k = this.stairs?.k;
     const legs = ['left', 'right'].map((s) => {
       n(s + 'Foot').getWorldPosition(_v);
       const d = this.ground(_v.x, _v.z) - g0;
       const a = _v.y - g0;
+      if (k !== undefined) {
+        const want = this.ankleHeight + k * (a - this.ankleHeight);
+        return { s, c: Math.max(want - a, d + this.ankleHeight * 0.98 - a, this._soleNeed(s) + 0.005) };
+      }
       return { s, c: Math.max(d, d + this.ankleHeight * 0.98 - a, this._soleNeed(s) + 0.005) };
     });
     const drop = Math.min(0, legs[0].c, legs[1].c);

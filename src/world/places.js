@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { RNG, clamp } from '../core/rng.js';
+import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { terrainH, STATION, PLAZA, PARK, SHRINE, townH } from './layout.js';
 import { Kit, boxFaces, fp, faceBox, signOnFace, windowUnit, door, koshiDoor, gableRoof, hipRoof, leanTo, bicycle, potPlant, acUnit, FRAME, metalFence } from './kit.js';
@@ -221,7 +221,7 @@ export function buildStation(ctx) {
     const z = bz0 + 2.0 - (i + 1) * 0.36;
     t.boxMM(cx - 5, 2.6, z, cx + 5, fy - (i + 1) * ((fy - 3.0) / (steps + 1)) + 0.001, z + 0.36, { color: 0xc6c1b6, pattern: PAT.STONE });
   }
-  ctx.colliders.addSurface(cx - 5, bz0 + 2.0 - steps * 0.36, cx + 5, bz0 + 2.0, (px, pz) => 3.0 + clamp((pz - (bz0 + 2.0 - steps * 0.36)) / (steps * 0.36), 0, 1) * (fy - 3.0), 2);
+  ctx.colliders.addSurface(cx - 5, bz0 + 2.0 - steps * 0.36, cx + 5, bz0 + 2.0, (px, pz) => fy - (Math.min(steps - 1, Math.max(0, Math.floor((bz0 + 2.0 - pz) / 0.36))) + 1) * ((fy - 3.0) / (steps + 1)), 2);
   ctx.colliders.addSurface(bx0, bz0 + 2.0, bx1, bz1 + 0.2, () => fy, 2);
   const wallC = 0xe9e1cf;
   const H = 3.6;
@@ -923,7 +923,7 @@ export function buildShrine(ctx) {
     }
     ctx.colliders.addBox(S.x + e * 2.0, (S.z0 + S.terraceZ0) / 2, 0.2, (S.z0 - S.terraceZ0) / 2);
   }
-  ctx.colliders.addSurface(S.x - 1.8, S.terraceZ0, S.x + 1.8, S.z0 + 0.6, (px, pz) => yBottom + clamp((S.z0 - pz) / (S.z0 - S.terraceZ0), 0, 1) * (S.y - yBottom), 2);
+  ctx.colliders.addSurface(S.x - 1.8, S.terraceZ0, S.x + 1.8, S.z0 + 0.6, (px, pz) => (pz > S.z0 ? yBottom : yBottom + (Math.min(steps - 1, Math.floor((S.z0 - pz) / run)) + 1) * rise), 2);
   torii(t, S.x, yBottom, S.z0 + 1.5, 1.0);
   torii(t, S.x, S.y, S.terraceZ0 - 2.5, 0.85);
   for (const e of [-1, 1]) {
