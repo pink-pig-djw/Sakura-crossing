@@ -78,6 +78,7 @@ kbd {
 .btn:focus-visible,
 .seg button:focus-visible,
 .icon-btn:focus-visible,
+.fs-pill:focus-visible,
 .tbtn:focus-visible {
   outline: 3px solid var(--sakura);
   outline-offset: 2px;
@@ -429,6 +430,57 @@ kbd {
   pointer-events: auto;
   cursor: pointer;
 }
+/* fullscreen: under the menu button while walking, beside the language switch on the title */
+.fs-btn {
+  top: max(64px, calc(env(safe-area-inset-top, 0px) + 50px));
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.fs-ico {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fs-ico .fs-out,
+.on > .fs-ico .fs-in {
+  display: none;
+}
+.on > .fs-ico .fs-out {
+  display: inline;
+}
+.title-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+}
+.fs-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font: 700 0.85rem var(--font-ui);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.35em 0.95em 0.35em 0.75em;
+  cursor: pointer;
+}
+.fs-pill .fs-ico {
+  width: 1.05em;
+  height: 1.05em;
+}
+.fs-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
 
 /* ---------- touch ---------- */
 #touch {
@@ -616,6 +668,65 @@ kbd {
 .notebook li span:last-child {
   color: var(--ink-soft);
 }
+/* the controls page: across the whole menu, the keys for each way of playing */
+.group.controls {
+  grid-column: 1 / -1;
+}
+.ctl-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.9rem 1.8rem;
+}
+.ctl-sec {
+  min-width: 0;
+}
+.ctl-sec h4 {
+  margin: 0 0 0.4rem;
+  font: 700 0.78rem var(--font-label);
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+.ctl-sec ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.86rem;
+}
+.ctl-sec li {
+  display: grid;
+  grid-template-columns: 9em minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 0.3rem;
+}
+.ctl-sec .keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+}
+.ctl-sec kbd {
+  min-width: 1.25em;
+  padding: 0.12em 0.32em;
+  font-size: 0.72rem;
+}
+.tkey {
+  font: 700 0.74rem var(--font-ui);
+  padding: 0.18em 0.65em;
+  border-radius: 999px;
+  background: rgba(39, 48, 73, 0.07);
+  border: 1px solid var(--line);
+}
+.kb-hint {
+  margin-left: 0.35em;
+}
+@media (pointer: coarse) {
+  .kb-hint {
+    display: none;
+  }
+}
 .panel.map-panel {
   width: min(1180px, 100%);
 }
@@ -691,7 +802,6 @@ kbd {
 .title-panel .lang-switch {
   display: flex;
   gap: 0.4rem;
-  justify-self: start;
 }
 .lang-switch button {
   font: 700 0.85rem var(--font-ui);
@@ -716,6 +826,8 @@ kbd {
 
 /* ---------- minimap ---------- */
 .minimap {
+  pointer-events: auto;
+  cursor: pointer;
   width: 168px;
   height: 168px;
   border-radius: 50%;

@@ -208,16 +208,17 @@ const FINAL = /* glsl */ `
   // distance in the world: 1/z is linear across any plane, so a pair on a flat wall or road
   // sums to zero, while a pixel in a concave corner (wall meets ground, under eaves and
   // benches, at the foot of a post) lies behind its taps' average. Near-vertical pairs only,
-  // at six radii (a smooth gradient, no blocky halos beside things standing in front of a
+  // at twelve radii (a smooth gradient, no blocky halos beside things standing in front of a
   // wall); a pair touching something far in front (an outline, not a corner) is left out.
+  // No per-pixel jitter: fixed to the screen, its dots crawled over the shade as the view
+  // moved (it read as flickering shadow); the finer steps between radii smooth it instead.
   float creaseOcclusion(vec2 uv, float zc) {
     float rpx = clamp(uCornerRadius * uFocal / zc, 1.5, 44.0);
-    float jit = 0.92 + 0.16 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     float occ = 0.0, n = 0.0;
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 12; i++) {
       float fi = float(i);
       float a = 1.5708 + (fract(fi * 0.618) - 0.5) * 0.6;
-      vec2 o = vec2(cos(a), sin(a)) * rpx * jit * (1.0 - fi * 0.15) / uRes;
+      vec2 o = vec2(cos(a), sin(a)) * rpx * (1.0 - fi * 0.07) / uRes;
       float da = invZ(uv + o) * zc - 1.0;
       float db = invZ(uv - o) * zc - 1.0;
       float ok = step(max(da, db), 0.4);

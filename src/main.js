@@ -16,6 +16,7 @@ import { createPetals, createCats, createBirds, createShells, createSmallAnimati
 import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY } from './world/layout.js';
 import { walkState } from './world/commercial.js';
 import { UI } from './ui/ui.js';
+import { fullscreenSupported, isFullscreen, isIPhone, setFullscreen, onFullscreenChange } from './ui/fullscreen.js';
 import { tr, tf, setLang } from './ui/i18n.js';
 import { VoiceSystem } from './systems/voice.js';
 import { TownVoices } from './systems/townVoices.js';
@@ -124,6 +125,41 @@ const state = {
   trains: 0,
   lastArea: null,
 };
+
+// fullscreen: the F key, the buttons on the title screen and the HUD, or the menu checkbox
+// (wired before the town is built, so it works while the title screen is loading too)
+let fsSwitch = { at: -1e9, locked: false };
+function toggleFullscreen(on = !isFullscreen()) {
+  if (!fullscreenSupported) return;
+  fsSwitch = { at: performance.now(), locked: state.mode === 'play' && player.pointerLocked };
+  setFullscreen(on).then((ok) => {
+    if (ok) return;
+    ui.setFullscreen(isFullscreen());
+    ui.toast('全画面にできませんでした');
+  });
+  if (fsSwitch.locked) {
+    setTimeout(() => {
+      if (state.mode === 'play' && !player.pointerLocked) ui.toast('画面をクリックすると、マウスで見回せます');
+    }, 1500);
+  }
+}
+// The switch can cost the pointer lock while walking: take it back rather than pausing.
+// Returns true while such a switch is under way.
+function relockAfterSwitch() {
+  if (!fsSwitch.locked || performance.now() - fsSwitch.at > 1500) return false;
+  if (state.mode === 'play' && !player.pointerLocked) lockPointer();
+  return true;
+}
+ui.initFullscreen(fullscreenSupported, isIPhone);
+ui.setFullscreen(isFullscreen());
+ui.on('fullscreen', toggleFullscreen);
+onFullscreenChange((on) => {
+  ui.setFullscreen(on);
+  relockAfterSwitch();
+});
+addEventListener('keydown', (e) => {
+  if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
+});
 
 if (params.has('audit')) {
   AUDIT.on = true;
@@ -629,9 +665,11 @@ function startPlay() {
   town.onStart();
 }
 
+let menuAt = -1e9;
 function openMenu() {
   if (state.mode !== 'play') return;
   state.mode = 'menu';
+  menuAt = performance.now();
   player.enabled = false;
   releasePointer();
   ui.openMenu(menuState());
@@ -779,12 +817,22 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'Escape') {
-    if (state.mode === 'map' || state.mode === 'omikuji' || state.mode === 'menu') backToPlay();
-    else if (state.mode === 'play' && !player.pointerLocked) openMenu();
+    // (held down it repeats; and the press that just released the lock and opened the menu
+    // is not a second one)
+    if (e.repeat) return;
+    if (state.mode === 'map' || state.mode === 'omikuji' || state.mode === 'menu') {
+      if (performance.now() - menuAt > 400) backToPlay();
+    }
+    // in fullscreen Chrome hands Esc to the page with the pointer still locked (Keyboard Lock)
+    else if (state.mode === 'play' && (!player.pointerLocked || isFullscreen())) openMenu();
     return;
   }
   if (state.mode === 'map' && e.code === 'KeyM') {
     backToPlay();
+    return;
+  }
+  if (state.mode === 'menu' && e.code === 'KeyM') {
+    openMap();
     return;
   }
   if (state.mode !== 'play') return;
@@ -807,7 +855,7 @@ addEventListener('keydown', (e) => {
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) hadLock = true;
-  else if (hadLock && state.mode === 'play') openMenu();
+  else if (hadLock && state.mode === 'play' && !relockAfterSwitch()) openMenu();
 });
 
 function onResize() {
@@ -945,8 +993,7 @@ function simulate(dt) {
   aroundThem.length = 0;
   if (state.mode === 'play') aroundThem.push(bike.on ? { x: player.pos.x, z: player.pos.z, vx: player.vel.x, vz: player.vel.z, bike: true } : player.pos);
   bike.obstacles(aroundThem);
-  const mei = residents?.list[0];
-  if (mei && !mei.home) aroundThem.push(mei);
+  for (const r of residents?.list ?? []) if (!r.home) aroundThem.push(r);
   passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera, tod.hour, aroundThem);
   birds.userData.update(t);
   anims.update(t, tod.hour);

@@ -20,7 +20,14 @@ export class AudioEngine {
     }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    const ctx = new AC();
+    // a little more buffer than the lowest-latency default: with the town drawing hard on
+    // the same machine, the smallest buffers ran dry now and then (clicks and drop-outs)
+    let ctx;
+    try {
+      ctx = new AC({ latencyHint: 0.05 });
+    } catch {
+      ctx = new AC();
+    }
     this.ctx = ctx;
     this.started = true;
     // master chain
@@ -128,6 +135,14 @@ export class AudioEngine {
     p.rolloffFactor = roll;
     this.setPos(p, x, y, z);
     return p;
+  }
+
+  // a per-frame target: only a value that moved goes onto the param's timeline (a score of
+  // params re-aimed sixty times a second kept the audio thread busy for nothing)
+  ease(param, v, tc) {
+    if (param._to !== undefined && Math.abs(param._to - v) <= Math.abs(v) * 0.01 + 1e-4) return;
+    param._to = v;
+    param.setTargetAtTime(v, this.ctx.currentTime, tc);
   }
 
   setPos(p, x, y, z) {
@@ -472,16 +487,16 @@ export class AudioEngine {
       if (!s.on) return;
       this.setupBike();
     }
-    const t = this.ctx.currentTime, B = this.bk;
+    const B = this.bk;
     const v = s.on ? Math.abs(s.v) : 0;
     const sand = s.surface === 'sand';
-    B.tg.gain.setTargetAtTime(Math.min(1, v / 5) * (sand ? 0.09 : 0.07), t, 0.08);
-    B.tf.frequency.setTargetAtTime((sand ? 160 : 220) + v * (sand ? 60 : 110), t, 0.1);
+    this.ease(B.tg.gain, Math.min(1, v / 5) * (sand ? 0.09 : 0.07), 0.08);
+    this.ease(B.tf.frequency, (sand ? 160 : 220) + v * (sand ? 60 : 110), 0.1);
     // about 24 clicks a turn of the wheel
-    B.fo.frequency.setTargetAtTime(Math.max(2, (v / (2 * Math.PI * 0.334)) * 24), t, 0.04);
-    B.fg.gain.setTargetAtTime(s.coast && v > 0.5 ? 0.006 + Math.min(v, 6) * 0.0012 : 0, t, 0.05);
-    B.wg.gain.setTargetAtTime(Math.max(0, v - 2.5) ** 2 * 0.0011, t, 0.25);
-    B.sg.gain.setTargetAtTime(s.brake > 0.6 && v > 2.4 ? 0.006 * Math.min(1, (v - 2.4) / 2) : 0, t, 0.04);
+    this.ease(B.fo.frequency, Math.max(2, (v / (2 * Math.PI * 0.334)) * 24), 0.04);
+    this.ease(B.fg.gain, s.coast && v > 0.5 ? 0.006 + Math.min(v, 6) * 0.0012 : 0, 0.05);
+    this.ease(B.wg.gain, Math.max(0, v - 2.5) ** 2 * 0.0011, 0.25);
+    this.ease(B.sg.gain, s.brake > 0.6 && v > 2.4 ? 0.006 * Math.min(1, (v - 2.4) / 2) : 0, 0.04);
   }
 
   step(surface, running) {
@@ -747,7 +762,7 @@ export class AudioEngine {
     const dShore = Math.max(0, s.shoreZ - s.z);
     const near = Math.max(0.05, Math.min(1, 26 / (dShore + 14)));
     const outside = 1 - 0.85 * (s.indoor || 0);
-    this.seaBed.gain.setTargetAtTime((0.32 * near + 0.03) * outside, t, 0.5);
+    this.ease(this.seaBed.gain, (0.32 * near + 0.03) * outside, 0.5);
     this.nextWave -= dt;
     if (this.nextWave <= 0) {
       if (outside > 0.5) this.waveCrash(near);
@@ -756,8 +771,8 @@ export class AudioEngine {
     // wind: stronger on the hill and the beach
     this.windT += dt;
     const wv = 0.035 + 0.03 * Math.sin(this.windT * 0.21) + 0.02 * Math.sin(this.windT * 0.57) + (s.y > 18 ? 0.04 : 0) + (dShore < 30 ? 0.02 : 0);
-    this.windG.gain.setTargetAtTime(Math.max(0.005, wv * outside), t, 0.8);
-    this.windF.frequency.setTargetAtTime(420 + 260 * Math.sin(this.windT * 0.13), t, 1);
+    this.ease(this.windG.gain, Math.max(0.005, wv * outside), 0.8);
+    this.ease(this.windF.frequency, 420 + 260 * Math.sin(this.windT * 0.13), 1);
 
     // birds by time of day
     const day = s.night < 0.5 && !s.indoor;
@@ -779,7 +794,7 @@ export class AudioEngine {
       if (s.chime) this.furin(s.chime.x, s.chime.y, s.chime.z);
       T.chime = rand(3, 9);
     }
-    this.nightG.gain.setTargetAtTime(s.night > 0.6 ? 0.9 : 0, t, 1);
+    this.ease(this.nightG.gain, s.night > 0.6 ? 0.9 : 0, 1);
     if (s.night > 0.6 && T.frog <= 0) {
       this.frogCall();
       T.frog = rand(0.6, 2.2);
@@ -809,10 +824,10 @@ export class AudioEngine {
       const center = tr.head - tr.dir * tr.length * 0.5;
       this.setPos(this.trainPan, center, 4, 56);
       const sp = vis ? tr.v : 0;
-      this.trainG.gain.setTargetAtTime(vis ? 0.12 + sp * 0.05 : 0, t, 0.4);
-      this.trainF.frequency.setTargetAtTime(160 + sp * 40, t, 0.4);
-      this.motorG.gain.setTargetAtTime(vis && sp > 0.2 ? 0.015 + sp * 0.002 : 0, t, 0.3);
-      this.motor.frequency.setTargetAtTime(90 + sp * 38, t, 0.3);
+      this.ease(this.trainG.gain, vis ? 0.12 + sp * 0.05 : 0, 0.4);
+      this.ease(this.trainF.frequency, 160 + sp * 40, 0.4);
+      this.ease(this.motorG.gain, vis && sp > 0.2 ? 0.015 + sp * 0.002 : 0, 0.3);
+      this.ease(this.motor.frequency, 90 + sp * 38, 0.3);
       if (sp > 1) {
         this.clackT -= dt;
         if (this.clackT <= 0) {
@@ -829,10 +844,10 @@ export class AudioEngine {
     if (this.riverG) {
       const rd = s.river ? s.river.d : 999;
       if (s.river) this.setPos(this.riverPan, s.river.x, s.river.y, s.river.z);
-      this.riverG.gain.setTargetAtTime(rd < 40 ? 0.22 * Math.min(1, 10 / (rd + 4)) * outside + (s.river?.weir ? 0.05 : 0) : 0, t, 0.6);
+      this.ease(this.riverG.gain, rd < 40 ? 0.22 * Math.min(1, 10 / (rd + 4)) * outside + (s.river?.weir ? 0.05 : 0) : 0, 0.6);
       const fd = Math.hypot(s.x - 229.4, s.z + 33);
-      this.fountainG.gain.setTargetAtTime(fd < 30 && !s.under ? 0.06 : 0, t, 0.6);
-      this.humG.gain.setTargetAtTime(s.under ? 0.1 : 0, t, 0.8);
+      this.ease(this.fountainG.gain, fd < 30 && !s.under ? 0.06 : 0, 0.6);
+      this.ease(this.humG.gain, s.under ? 0.1 : 0, 0.8);
       const sub = s.subway;
       if (sub) {
         let best = null, bd = 1e9;
@@ -846,8 +861,8 @@ export class AudioEngine {
         }
         if (best) this.setPos(this.subPan, best.x, -3, best.z);
         const audible = s.under || bd < 40;
-        this.subG.gain.setTargetAtTime(best && audible ? 0.08 + best.v * 0.03 : 0, t, 0.4);
-        this.subF.frequency.setTargetAtTime(140 + (best ? best.v * 30 : 0), t, 0.4);
+        this.ease(this.subG.gain, best && audible ? 0.08 + best.v * 0.03 : 0, 0.4);
+        this.ease(this.subF.frequency, 140 + (best ? best.v * 30 : 0), 0.4);
         for (const ev of sub.events.splice(0)) {
           if (!s.under) continue;
           if (['approach', 'doorsOpen', 'melody', 'doorsClose'].includes(ev.e)) this.stationChime(ev.e, 252, -2, -14);
@@ -927,8 +942,15 @@ class PianoMusic {
       this.next = Math.max(this.next, now + 0.5);
       return;
     }
-    // schedule a little ahead
-    while (this.next < now + 0.6) {
+    // a long stall of the page (a model loading, shaders compiling) left the schedule
+    // behind: skip what was missed rather than sounding it all at once
+    if (this.next < now - 0.05) {
+      const missed = Math.ceil((now - this.next) / (this.beat / 2));
+      this.step += missed;
+      this.next += (missed * this.beat) / 2;
+    }
+    // scheduled well ahead, so a stall shorter than that does not reach the music at all
+    while (this.next < now + 1.6) {
       const bar = Math.floor(this.step / 8);
       const chord = this.chords[Math.floor(bar / 2) % 4];
       const sub = this.step % 8; // eighth notes in a bar

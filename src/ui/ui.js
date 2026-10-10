@@ -6,6 +6,90 @@ import { tr, tf, getLang, setLang, onLang, applyStatic } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
+// The controls page in the menu: per input, sections of [keys, what they do]. Keys are key
+// caps on the keyboard, coloured buttons on the controller, button names on a touch screen.
+const CONTROLS = {
+  kb: [
+    ['歩いているとき', [
+      [['W', 'A', 'S', 'D'], '歩く'],
+      [['マウス'], '見回す（画面をクリックして開始）'],
+      [['Shift'], '走る（押しているあいだ）'],
+      [['Space'], 'ジャンプ'],
+      [['E', 'Enter'], 'しらべる・話しかける'],
+      [['M'], '地図をひらく・とじる'],
+      [['N'], 'ミニマップの表示'],
+      [['V'], '視点切替'],
+      [['ホイール'], 'カメラの距離'],
+      [['T'], '時間帯'],
+      [['B'], '自転車に乗る・降りる'],
+      [['F'], '全画面'],
+      [['H'], '画面の文字を隠す（写真用）'],
+      [['Esc'], 'メニュー'],
+    ]],
+    ['自転車に乗っているとき', [
+      [['W'], 'こぐ'],
+      [['S'], 'ブレーキ（止まって押し続けると後ろへ）'],
+      [['A', 'D'], 'ハンドル'],
+      [['Shift'], '立ちこぎ'],
+      [['Q', 'E'], 'ギアを下げる・上げる'],
+      [['1', '2', '3'], 'ギアをえらぶ'],
+      [['Space'], 'ベル'],
+      [['B'], '降りる'],
+    ]],
+  ],
+  pad: [
+    ['歩いているとき', [
+      [['L'], '歩く'],
+      [['R'], '見回す'],
+      [['A'], 'しらべる・決定'],
+      [['B'], 'もどる・立ち上がる'],
+      [['X'], 'ジャンプ'],
+      [['Y'], '地図をひらく'],
+      [['RT'], '走る（押しているあいだ）'],
+      [['LB', 'RB'], '時間帯'],
+      [['⧉'], 'ミニマップの表示'],
+      [['R+'], '視点切替（右スティック押し込み）'],
+      [['✚↑'], '自転車に乗る・降りる'],
+      [['≡'], 'メニュー'],
+    ]],
+    ['自転車に乗っているとき', [
+      [['L'], 'こぐ・ブレーキ・ハンドル'],
+      [['RT'], '立ちこぎ'],
+      [['LT'], 'ブレーキ（押す強さで）'],
+      [['LB', 'RB'], 'ギア'],
+      [['X'], 'ベル'],
+      [['B'], '降りる'],
+    ]],
+  ],
+  touch: [
+    ['歩いているとき', [
+      [['左下のスティック'], '歩く'],
+      [['右側をなぞる'], '見回す'],
+      [['しらべる'], 'しらべる・話しかける'],
+      [['ジャンプ'], 'ジャンプ'],
+      [['走る'], '走る・歩くの切り替え'],
+      [['自転車'], '自転車に乗る'],
+      [['ミニマップ'], 'タップで地図をひらく'],
+      [['≡'], 'メニュー'],
+      [['全画面ボタン'], '全画面'],
+    ]],
+    ['自転車に乗っているとき', [
+      [['スティック'], 'こぐ・ブレーキ・ハンドル'],
+      [['ギア'], 'ギア切替'],
+      [['ベル'], 'ベル'],
+      [['立ちこぎ'], '立ちこぎ'],
+      [['降りる'], '降りる'],
+    ]],
+  ],
+};
+const PAD_CLASS = { A: 'a', B: 'b', X: 'x', Y: 'y', LB: 'wide', RB: 'wide', LT: 'wide', RT: 'wide' };
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function keyCap(kind, k) {
+  if (kind === 'pad') return `<i class="pad-btn ${PAD_CLASS[k] || ''}">${esc(k)}</i>`;
+  if (kind === 'touch') return `<b class="tkey">${esc(tr(k))}</b>`;
+  return `<kbd>${esc(tr(k))}</kbd>`;
+}
+
 export class UI {
   constructor() {
     this.el = {
@@ -60,6 +144,9 @@ export class UI {
     $('resume').addEventListener('click', () => this.emit('resume'));
     $('menu-btn').addEventListener('click', () => this.emit('menu'));
     $('open-map').addEventListener('click', () => this.emit('map'));
+    // the minimap is also a way in to the big map (a click with the mouse free, a tap)
+    e.minimap.addEventListener('click', () => this.emit('map'));
+    for (const b of document.querySelectorAll('#controls-tabs button')) b.addEventListener('click', () => this.showControls(b.dataset.ctl));
     $('close-map').addEventListener('click', () => this.emit('closeMap'));
     $('close-omikuji').addEventListener('click', () => this.emit('closeOmikuji'));
     e.map.addEventListener('click', (ev) => {
@@ -84,6 +171,9 @@ export class UI {
     $('subs-toggle').addEventListener('change', (ev) => this.emit('subtitles', ev.target.checked));
     $('minimap-toggle').addEventListener('change', (ev) => this.emit('minimap', ev.target.checked));
     $('view-toggle').addEventListener('change', (ev) => this.emit('view', ev.target.checked));
+    $('fs-toggle').addEventListener('change', (ev) => this.emit('fullscreen', ev.target.checked));
+    $('fs-btn').addEventListener('click', () => this.emit('fullscreen'));
+    $('fs-title').addEventListener('click', () => this.emit('fullscreen'));
     for (const b of document.querySelectorAll('[data-lang]')) b.addEventListener('click', () => setLang(b.dataset.lang));
     onLang(() => this._langChanged());
     applyStatic();
@@ -180,6 +270,9 @@ export class UI {
     if (this.lastSub && !this.el.subtitle.hidden) this._setSub(this.lastSub);
     if (this.mapArgs && !this.el.map.hidden) drawMap(this.el.mapCanvas, ...this.mapArgs);
     this.bikeGear = -1; // the touch gear button's label is drawn again
+    if (this.fsOn !== undefined) this.setFullscreen(this.fsOn);
+    this.el.minimap.title = tr('クリックで地図をひらく');
+    if (this.ctlKind) this.showControls(this.ctlKind);
     this.emit('lang', l);
   }
 
@@ -222,6 +315,25 @@ export class UI {
     this.el.toast.textContent = tr(text);
     this.el.toast.classList.add('show');
     this.toastTimer = secs;
+  }
+
+  // fullscreen buttons (HUD, title, menu) where the browser can do it; on an iPhone the menu
+  // explains the home-screen way instead
+  initFullscreen(supported, iphone) {
+    this.fsSupported = supported;
+    for (const id of ['fs-btn', 'fs-title', 'fs-row']) $(id).hidden = !supported;
+    $('fs-note').hidden = supported || !iphone;
+  }
+  setFullscreen(on) {
+    this.fsOn = on;
+    for (const id of ['fs-btn', 'fs-title']) {
+      const b = $(id);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.title = `${tr(on ? '全画面を終了' : '全画面')} (F)`;
+    }
+    $('fs-btn').setAttribute('aria-label', tr('全画面'));
+    $('fs-toggle').checked = on;
   }
 
   setInputMode(mode) {
@@ -355,6 +467,19 @@ export class UI {
   openMenu(state) {
     this.el.menu.hidden = false;
     this.syncMenu(state);
+    // the controls page opens on the way you are playing
+    this.showControls(this.inputMode === 'pad' ? 'pad' : this.inputMode === 'touch' || (!this.inputMode && this.isTouch) ? 'touch' : 'kb');
+  }
+
+  showControls(kind) {
+    this.ctlKind = kind;
+    for (const b of document.querySelectorAll('#controls-tabs button')) {
+      b.classList.toggle('on', b.dataset.ctl === kind);
+      b.setAttribute('aria-pressed', String(b.dataset.ctl === kind));
+    }
+    $('controls-list').innerHTML = CONTROLS[kind]
+      .map(([head, rows]) => `<section class="ctl-sec"><h4>${esc(tr(head))}</h4><ul>${rows.filter(([, what]) => this.fsSupported || what !== '全画面').map(([keys, what]) => `<li><span class="keys">${keys.map((k) => keyCap(kind, k)).join('')}</span><span class="what">${esc(tr(what))}</span></li>`).join('')}</ul></section>`)
+      .join('');
   }
   closeMenu() {
     this.el.menu.hidden = true;

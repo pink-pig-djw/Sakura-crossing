@@ -221,6 +221,13 @@ function buildStepping(ctx) {
     d.rod(V(xp, yTop + 1.0, zt), V(xp, yBot + 1.0, zb), 0.035, 0.035, 6, 0x7d858c);
     d.rod(V(xp, yTop + 0.55, zt), V(xp, yBot + 0.55, zb), 0.025, 0.025, 5, 0x7d858c);
     ctx.colliders.addSegment(xp, zl, xp, zb, 0.25, 99);
+    // and across the upstream end of the landing, over the weir just beyond it (a jump off
+    // there landed on the weir's slope in the water, with no way back up)
+    const xw = side < 0 ? x0 + 0.04 : x1 - 0.04, ze = zl + 0.06;
+    d.box(xw, yTop + 0.5, ze, 0.06, 1.0, 0.06, { color: 0x7d858c });
+    d.rod(V(xw, yTop + 1.0, ze), V(xp, yTop + 1.0, ze), 0.035, 0.035, 6, 0x7d858c);
+    d.rod(V(xw, yTop + 0.55, ze), V(xp, yTop + 0.55, ze), 0.025, 0.025, 5, 0x7d858c);
+    ctx.colliders.addSegment(x0, ze, x1, ze, 0.25, 99);
     ctx.colliders.addSurface(x0, zl, x1, zb + 1.4, (x, z) => {
       if (z <= zt) return yTop;
       if (z >= zb) return yBot;

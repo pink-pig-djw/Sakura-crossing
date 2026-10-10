@@ -654,10 +654,42 @@ export class Bicycle {
       this.C.resolve(p, r, y - 0.25);
       if (Math.hypot(p.x - x - sx * d, p.z - z - sz * d) > 0.02) return false;
     }
-    const yF = this.C.groundAt(x + sx * FA.z, z + sz * FA.z, y + 0.3), yR = this.C.groundAt(x + sx * RA.z, z + sz * RA.z, y + 0.3);
-    if (Math.abs(yF - yR) > 0.45) return false;
+    if (!this._steady(x, z, h, y)) return false;
     if (this._indoors(x, z, y)) return false;
     return true;
+  }
+
+  // standing on one surface, a slope or the flat (not half over a kerb, the side of a ramp
+  // or a step, a wheel down below or the stand foot in the air): the ground under the
+  // wheels, between them and to either side of them lies on one plane
+  _steady(x, z, h, y) {
+    const sx = Math.sin(h), sz = Math.cos(h), rx = sz, rz = -sx;
+    const g = (d, l) => this.C.groundAt(x + sx * d + rx * l, z + sz * d + rz * l, y + 0.3);
+    const yF = g(FA.z, 0), yR = g(RA.z, 0);
+    if (Math.abs(yF - yR) > 0.3) return false;
+    for (const d of [FA.z * 0.5, 0, RA.z * 0.5]) if (Math.abs(g(d, 0) - (yR + ((yF - yR) * (d - RA.z)) / WB)) > 0.035) return false;
+    for (const [d, y0, l] of [[FA.z, yF, 0.1], [RA.z, yR, 0.16]]) {
+      const a = g(d, l), b = g(d, -l);
+      if (Math.abs(a - b) > 0.06 || Math.abs((a + b) / 2 - y0) > 0.035) return false;
+    }
+    return true;
+  }
+
+  // she stopped to get off with the bike half over a kerb: the nearest spot, on along its
+  // heading or back and a little to either side, where it stands on one surface; null when
+  // it already does (or there is nowhere close)
+  _steadySpot() {
+    if (this._steady(this.x, this.z, this.h, this.y)) return null;
+    const sx = Math.sin(this.h), sz = Math.cos(this.h);
+    const tries = [];
+    for (let k = -12; k <= 12; k++) for (const l of [0, 0.2, -0.2, 0.35, -0.35]) if (k || l) tries.push([k * 0.15, l]);
+    tries.sort((a, b) => Math.hypot(...a) - Math.hypot(...b));
+    for (const [d, l] of tries) {
+      const x = this.x + sx * d + sz * l, z = this.z + sz * d - sx * l;
+      const y = this.C.groundAt(x, z, this.y + 0.3);
+      if (Math.abs(y - this.y) < 0.35 && this.fits(x, z, this.h, y) && this.P?.allowed(x, z, y) !== false) return { x, z };
+    }
+    return null;
   }
 
   _indoors(x, z, y) {
@@ -740,10 +772,14 @@ export class Bicycle {
     const gear = GEARS[this.gear];
     let throttle = Math.max(0, inp.iz);
     let brake = Math.max(0, -inp.iz, inp.brake || 0);
+    let walkOn = false;
     if (this.wantOff) {
       throttle = 0;
       brake = 1;
-      if (Math.abs(this.v) < 0.35) {
+      if (Math.abs(this.v) < 0.35 && this.walkTo === undefined) this.walkTo = this._steadySpot();
+      walkOn = !!this.walkTo;
+      if (Math.abs(this.v) < 0.35 && !walkOn) {
+        this.walkTo = undefined;
         this.wantOff = false;
         this.v = 0;
         this.state = 'dismounting';
@@ -794,10 +830,31 @@ export class Bicycle {
     // steering: the bars turn less the faster she goes; turning on the spot at a standstill
     // (shuffling the bike round with her feet)
     const sMax = Math.max(0.12, 0.55 / (1 + 0.32 * Math.abs(v)));
-    const want = -clamp(inp.ix, -1, 1) * sMax;
+    const ix = walkOn ? 0 : clamp(inp.ix, -1, 1);
+    const want = -ix * sMax;
     this.steer += clamp(want - this.steer, -3.2 * dt, 3.2 * dt);
-    let w = (v * Math.tan(this.steer)) / WB;
-    if (Math.abs(v) < 0.45 && Math.abs(inp.ix) > 0.1) w += -inp.ix * 0.9 * (1 - Math.abs(v) / 0.45);
+    let w = walkOn ? 0 : (v * Math.tan(this.steer)) / WB;
+    if (Math.abs(v) < 0.45 && Math.abs(ix) > 0.1) w += -ix * 0.9 * (1 - Math.abs(v) / 0.45);
+    if (walkOn) {
+      // walking the bike off a kerb before getting off: slowly, straight to the spot found
+      // (checked free), the wheels turning with it
+      const dx = this.walkTo.x - this.x, dz = this.walkTo.z - this.z, dist = Math.hypot(dx, dz);
+      const step = Math.min(0.7 * dt, dist);
+      this.x += (dx / dist) * step;
+      this.z += (dz / dist) * step;
+      v = (((dx * sx + dz * sz) / dist) * step) / dt;
+      if (dist - step < 0.005) {
+        this.walkTo = false;
+        v = 0;
+      }
+      this.v = v;
+      this.w = 0;
+      this._ground(this.y);
+      P.pos.set(this.x, this.y, this.z);
+      P.vel.set(0, 0, 0);
+      P.speed = 0;
+      return;
+    }
     const h1 = this.h + w * dt;
     const nx = this.x + Math.sin(h1) * v * dt, nz = this.z + Math.cos(h1) * v * dt;
     const ok = this._try(nx, nz, h1, v);

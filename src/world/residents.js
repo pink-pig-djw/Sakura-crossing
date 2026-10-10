@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { loadCharacter } from '../systems/character.js';
 import { createCharacterMaterial } from '../render/materials.js';
 import { VOICE_LINES } from '../systems/voiceLines.js';
+import { PARK } from './layout.js';
 
 // 芽衣 (Mei), a second-year at 桜ヶ浜高校, out on 桜坂 from early morning until dusk.
 //
@@ -15,12 +16,18 @@ import { VOICE_LINES } from '../systems/voiceLines.js';
 // pointing the way to the sea, slumping at the thought of a math test, nodding along, a hand
 // on her heart), jumps if you run into her and waves goodbye when you leave.
 // After dark she has gone home; she is back in the morning.
-
-const HOURS = [6.5, 19]; // out on the street
+//
+// 心愛 (Kokoa), a little girl who plays in ひだまり公園 until the five o'clock chime: she trots
+// between the swings, the slide, the sandbox and the spring riders, stops at each to look
+// about, cheer, point things out or swing her weight, sits on a bench swinging her feet, and
+// chats with you (in a child's voice) about petals, the cat under the slide, your bicycle,
+// shells, snacks and having to go home at five.
+//
+// Both are one Resident with their own cast (RESIDENTS below): hours, lines, gestures.
 
 // talk topics in order (the introduction once); face: heading to turn to for the gesture,
 // gaze: what she looks at while saying it; mood: [happy, relaxed, sad]
-const TALK = [
+const MEI_TALK = [
   { line: 'mei_intro', clip: 'lookAway', mood: [0.5], once: true }, // a shy glance away
   { line: 'mei_sakura', gaze: 'blossoms', mood: [0.75] },
   { line: 'mei_club', clip: 'happy', mood: [0.85] },
@@ -34,7 +41,7 @@ const TALK = [
 
 // what she does when she stops at the end of her walk: [action, weight(hour)]
 // seaward: she stopped facing down the slope, toward the sea
-const AMBIENT = [
+const MEI_AMBIENT = [
   ['idle', () => 2.5],
   ['phone', () => 3],
   ['blossoms', () => 2],
@@ -45,6 +52,56 @@ const AMBIENT = [
   ['yawn', (h) => (h < 9.5 ? 2.5 : 0.3)],
   ['bored', (h) => (h > 15 ? 1.5 : 0.6)],
 ];
+
+const KOKOA_TALK = [
+  { line: 'kokoa_intro', clip: 'happy', mood: [0.95], once: true },
+  { line: 'kokoa_petals', gaze: 'blossoms', mood: [0.85] },
+  { line: 'kokoa_cat', clip: 'point', mood: [0.7] },
+  { line: 'kokoa_bike', clip: 'happy', mood: [1] },
+  { line: 'kokoa_shell', clip: 'agree', mood: [0.75] },
+  { line: 'kokoa_snack', clip: 'think', mood: [0.5, 0.5] },
+  { line: 'kokoa_chime', clip: 'disappointed', mood: [0, 0.2, 0.55] },
+  { line: 'kokoa_promise', clip: 'thank', mood: [1] },
+];
+
+// at each thing in the playground: cheering, looking about, pointing at a bird or a cat...
+const KOKOA_AMBIENT = [
+  ['idle', () => 1.5],
+  ['blossoms', () => 2],
+  ['happy', () => 2.5],
+  ['lookAround', () => 1.5],
+  ['sway', () => 1.5],
+  ['point', () => 1],
+  ['lookBehind', () => 0.6],
+  ['wave', () => 0.6],
+];
+
+// who is who: model, hours out, what to say and do
+const RESIDENTS = {
+  mei: {
+    file: 'chars/mei.vrm',
+    label: '芽衣に話しかける',
+    hours: [6.5, 19],
+    talk: MEI_TALK,
+    ambient: MEI_AMBIENT,
+    lines: { hello: 'mei_hello', again: 'mei_again', bye: 'mei_bye', startle: 'mei_startle' },
+    greet: ['bow', 'greet'], // the first meeting, later ones
+    phoneWalk: 0.3, // how often she reads her phone as she walks on
+  },
+  kokoa: {
+    file: 'chars/kokoa.vrm',
+    label: '心愛に話しかける',
+    // home when the five o'clock chime has sounded (町の放送: よい子のみなさんは…)
+    hours: [8, 17.1],
+    talk: KOKOA_TALK,
+    ambient: KOKOA_AMBIENT,
+    lines: { hello: 'kokoa_hello', again: 'kokoa_again', bye: 'kokoa_bye', startle: 'kokoa_startle' },
+    greet: ['wave', 'happy'],
+    phoneWalk: 0,
+    trot: 0.35, // how often she runs to the next thing rather than walks
+    stopEverywhere: true, // a pause at every point of her round, not only at its ends
+  },
+};
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3(), _e = new THREE.Vector3();
@@ -70,6 +127,7 @@ export class Resident {
     this.ch = ch;
     this.world = world;
     this.voice = voice;
+    this.cast = o.cast;
     this.path = o.path; // [[x, z], ...] walked back and forth
     this.bench = o.bench; // { x, y, z, ry, it } or null
     const C = world.colliders;
@@ -77,7 +135,7 @@ export class Resident {
     ch.ground = this.ground;
     this.solid = C.addDynamicBox(0.26, 0.26, 0, 99, -99);
     this.solid.off = false;
-    this.interact = { kind: 'resident', label: '芽衣に話しかける', x: 0, z: 0, y: 0, r: 2.0, resident: this };
+    this.interact = { kind: 'resident', label: this.cast.label, x: 0, z: 0, y: 0, r: 2.0, resident: this };
     world.interactables.push(this.interact);
     this.walkRate = 1; // the clip is a stroll
     this.setWalk('walk');
@@ -98,10 +156,18 @@ export class Resident {
     this.spawn(0);
   }
 
-  // her walk: 'walk', or 'walkText' (looking at her phone as she goes)
+  // her walk: 'walk', 'walkText' (looking at her phone as she goes) or 'jog' (a child
+  // trotting to the next thing)
   setWalk(clip) {
     this.walkClip = clip;
     this.walkSpeed = this.ch.info[clip].speed * this.walkRate;
+  }
+
+  // on to the next point: now and then on her phone, or at a trot
+  walkOn() {
+    const c = this.cast;
+    const r = Math.random();
+    this.setWalk(r < (c.phoneWalk || 0) ? 'walkText' : r < (c.phoneWalk || 0) + (c.trot || 0) ? 'jog' : 'walk');
   }
 
   // at one end of her walk, setting off along it
@@ -150,7 +216,8 @@ export class Resident {
   }
 
   // speaks a line from her head; returns its length (s)
-  say(id) {
+  say(key) {
+    const id = this.cast.lines[key] || key;
     this.ch.root.updateMatrixWorld(true);
     this.ch.node('head').getWorldPosition(_a);
     this.voice?.play(id, { channel: 'resident', interrupt: true, at: { x: _a.x, y: _a.y, z: _a.z }, ref: 3, meter: this.meter });
@@ -169,6 +236,7 @@ export class Resident {
   // E pressed while she is focused
   talk() {
     if (this.home || this.state === 'sitDown' || this.state === 'standUp') return;
+    const TALK = this.cast.talk;
     let t = TALK[this.talkIdx % TALK.length];
     if (t.once && this.talkedIntro) t = TALK[++this.talkIdx % TALK.length];
     if (t.once) this.talkedIntro = true;
@@ -202,6 +270,7 @@ export class Resident {
 
   pickAmbient(hour) {
     const seaward = Math.cos(this.heading) > 0.7;
+    const AMBIENT = this.cast.ambient;
     const w = AMBIENT.map(([, f]) => f(hour, seaward));
     let r = Math.random() * w.reduce((a, b) => a + b, 0);
     for (let i = 0; i < w.length; i++) if ((r -= w[i]) <= 0) return AMBIENT[i][0];
@@ -218,18 +287,22 @@ export class Resident {
       if (a === 'blossoms') this.gaze = new THREE.Vector3(this.x + Math.sin(this.heading) * 2.5, this.ground(this.x, this.z) + 4.6, this.z + Math.cos(this.heading) * 2.5);
     } else {
       this.ch.play(a, 0.6);
-      this.timer = this.ch.clips[a].duration - 0.4;
+      this.timer = this.ch.clips[a].duration * (this.ch.info[a].reps || 1) - 0.4;
+      // (a looping cheer: a few rounds of it)
+      if (this.ch.info[a].loop) this.timer = 2.5 + Math.random() * 2;
       if (a === 'yawn') this.ch.setMood(0, 0.6);
     }
   }
 
   // ---------------------------------------------------------------- the bench
-  // her place: the half of the bench toward +z, hips a little in front of the backrest; she
-  // stands in front of it facing away, and sitting down takes her hips back onto it
+  // her place: one half of the bench (toward its local -x end), hips a little in front of the
+  // backrest; she stands in front of it facing away, and sitting down takes her hips back
+  // onto it
   benchSeat() {
     const B = this.bench;
     const fx = -Math.sin(B.ry), fz = -Math.cos(B.ry); // the way the seat faces
-    const sx = B.x + fx * 0.06, sz = B.z + fz * 0.06 + 0.42;
+    const lx = Math.cos(B.ry), lz = -Math.sin(B.ry); // along the bench
+    const sx = B.x + fx * 0.06 - lx * 0.42, sz = B.z + fz * 0.06 - lz * 0.42;
     const back = this.ch.sitBack;
     return { x: sx + fx * back, z: sz + fz * back, heading: Math.atan2(fx, fz) };
   }
@@ -241,10 +314,10 @@ export class Resident {
   }
 
   takeBench() {
-    const it = this.bench.it;
+    const it = this.bench.it, B = this.bench;
     this.benchSit = it.sit;
     // you can still sit down: on the other half, next to her
-    it.sit = { ...it.sit, z: it.sit.z - 0.45 };
+    it.sit = { ...it.sit, x: it.sit.x + Math.cos(B.ry) * 0.45, z: it.sit.z - Math.sin(B.ry) * 0.45 };
   }
 
   leaveBench() {
@@ -258,7 +331,8 @@ export class Resident {
   // player: { pos, head, sitting } or null (title screen); hour: time of day
   update(dt, player, hour = 10) {
     const ch = this.ch;
-    // her day: out between HOURS; she comes and goes while you are not near
+    // her day: out between her hours; she comes and goes while you are not near
+    const HOURS = this.cast.hours;
     const out = hour >= HOURS[0] && hour < HOURS[1];
     const far = !player || Math.hypot(player.pos.x - this.x, player.pos.z - this.z) > 30;
     if (!out && !this.home && far) this.setHome(true);
@@ -295,7 +369,7 @@ export class Resident {
       this.startleCool = 15;
       this.greeted = this.met = true;
       ch.setMood(0, 0, 0, 1);
-      const dur = this.say('mei_startle');
+      const dur = this.say('startle');
       if (this.seated) {
         this.resumeAfter = 'sit';
         this.act(null, dur);
@@ -332,12 +406,12 @@ export class Resident {
             }
           }
         }
-        if (!end && dist < 0.6) {
+        if (!end && !this.cast.stopEverywhere && dist < 0.6) {
           this.wp += this.step; // passing point of a detour
           break;
         }
         if (dist < 0.35) {
-          this.step = this.wp === 0 ? 1 : -1;
+          if (end) this.step = this.wp === 0 ? 1 : -1;
           this.wp += this.step;
           this.startPause(hour);
           break;
@@ -373,8 +447,8 @@ export class Resident {
           ch.play(err > 0.3 ? 'walk' : 'idle', 0.4, 0.6);
           if (err < 0.3) {
             this.state = 'walk';
-            // now and then she reads her phone as she walks on
-            this.setWalk(Math.random() < 0.3 ? 'walkText' : 'walk');
+            // now and then she reads her phone (or runs) as she goes on
+            this.walkOn();
           }
         }
         break;
@@ -426,14 +500,14 @@ export class Resident {
           this.greeted = this.met = true;
           ch.setMood(0.7);
           this.resumeAfter = 'sit';
-          this.act(null, this.say('mei_hello'));
+          this.act(null, this.say('hello'));
           break;
         }
         if (player && this.greeted && !this.waved && dP > 9) {
           this.waved = true;
           ch.setMood(0.5);
           this.resumeAfter = 'sit';
-          this.act(null, this.say('mei_bye'));
+          this.act(null, this.say('bye'));
           break;
         }
         // stays while you sit beside her, or while you are chatting
@@ -464,7 +538,7 @@ export class Resident {
           if (dP > 9 && this.greeted && !this.waved) {
             this.waved = true;
             ch.setMood(0.6);
-            this.act('wave', this.say('mei_bye'), true);
+            this.act('wave', this.say('bye'), true);
             break;
           }
           // you just stand there: she carries on with her walk
@@ -480,8 +554,9 @@ export class Resident {
           ch.setMood(0.7);
           const first = !this.met;
           this.met = true;
-          // a bow the first time; later a raised hand
-          this.act(first ? 'bow' : 'greet', this.say(first ? 'mei_hello' : 'mei_again'), true);
+          // a bow (or a wave) the first time; later a raised hand (or a cheer)
+          const [g0, g1] = this.cast.greet;
+          this.act(first ? g0 : g1, this.say(first ? 'hello' : 'again'), true);
         }
         break;
       }
@@ -621,13 +696,46 @@ function sidewalkPath(world) {
   return pts;
 }
 
+// 心愛's round of the playground in ひだまり公園: in front of the swings, the foot of the slide,
+// the sandbox, the spring riders, and over by the bench (she stops at each)
+function playgroundPath() {
+  const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
+  return [
+    [cx - 6, cz - 2.2], // swings
+    [cx + 9.3, cz - 1.5], // foot of the slide
+    [cx + 4, cz + 2.7], // sandbox
+    [cx - 2, cz + 4.5], // spring rider (panda)
+    [cx - 8.3, cz + 8.1], // by the bench
+  ];
+}
+
+// the park bench nearest a point, in the form the residents use
+function benchNear(world, x, z) {
+  const it = world.interactables.filter((i) => i.sit && i.label === '公園のベンチに座る').sort((a, b) => Math.hypot(a.sit.x - x, a.sit.z - z) - Math.hypot(b.sit.x - x, b.sit.z - z))[0];
+  if (!it) return null;
+  // (the seat is the bench's middle, 0.45 above its feet)
+  return { x: it.sit.x, y: it.sit.y - 0.45, z: it.sit.z, ry: it.sit.yaw, it };
+}
+
 export async function createResidents(world, scene, { voice } = {}) {
-  const ch = await loadCharacter('chars/mei.vrm', 'chars/motions.json', { name: 'mei' });
-  scene.add(ch.root);
-  const r = new Resident(ch, world, voice, { path: sidewalkPath(world), bench: world.spots?.sakuraBench || null });
-  scene.add(r.phone);
+  const make = async (key, o) => {
+    const cast = RESIDENTS[key];
+    const ch = await loadCharacter(cast.file, 'chars/motions.json', { name: key });
+    scene.add(ch.root);
+    const r = new Resident(ch, world, voice, { ...o, cast });
+    scene.add(r.phone);
+    return r;
+  };
+  const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
+  const got = await Promise.allSettled([
+    make('mei', { path: sidewalkPath(world), bench: world.spots?.sakuraBench || null }),
+    make('kokoa', { path: playgroundPath(), bench: benchNear(world, cx - 9, cz + 9.5) }),
+  ]);
+  for (const g of got) if (g.status === 'rejected') console.warn('resident not loaded:', g.reason);
+  const list = got.filter((g) => g.status === 'fulfilled').map((g) => g.value);
+  if (!list.length) throw new Error('no residents');
   return {
-    list: [r],
+    list,
     update(dt, player, hour) {
       for (const p of this.list) p.update(dt, player, hour);
     },

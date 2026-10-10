@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Sakura Crossing</title>
     <meta name="description" content="桜ヶ浜 — an explorable anime-style Japanese seaside town in spring." />
+    <!-- opened from the home screen (iPhone has no fullscreen button), the game shows without the browser bars -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="桜ヶ浜" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Zen+Old+Mincho:wght@700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=Noto+Sans+SC:wght@500;700;900&family=Noto+Serif+SC:wght@700;900&display=swap" />
@@ -29,9 +34,12 @@
             <span id="loadtext">町をつくっています…</span>
           </div>
           <button id="start" class="btn primary" type="button" hidden data-i18n>散歩をはじめる</button>
-          <div class="lang-switch" role="group" aria-label="言語 / 语言">
-            <button type="button" data-lang="ja">日本語</button>
-            <button type="button" data-lang="zh">中文</button>
+          <div class="title-tools">
+            <div class="lang-switch" role="group" aria-label="言語 / 语言">
+              <button type="button" data-lang="ja">日本語</button>
+              <button type="button" data-lang="zh">中文</button>
+            </div>
+            <button id="fs-title" class="fs-pill" type="button" hidden><svg class="fs-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="fs-in" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path class="fs-out" d="M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5"/></svg><span data-i18n>全画面</span></button>
           </div>
           <ul class="controls-hint" id="hint-desktop">
             <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span data-i18n>歩く</span></li>
@@ -43,6 +51,7 @@
             <li><kbd>B</kbd> <span data-i18n>自転車</span></li>
             <li><kbd>V</kbd> <span data-i18n>視点切替</span></li>
             <li><kbd>T</kbd> <span data-i18n>時間帯</span></li>
+            <li><kbd>F</kbd> <span data-i18n>全画面</span></li>
             <li><kbd>Esc</kbd> <span data-i18n>メニュー</span></li>
           </ul>
           <p class="controls-hint touch-only" data-i18n>左下で移動・右側をドラッグで見回し</p>
@@ -83,6 +92,7 @@
         <div id="subtitle" class="subtitle" aria-live="polite" hidden><span class="sub-who" id="sub-who"></span><span class="sub-text" id="sub-text"></span></div>
         <div id="crosshair" class="crosshair"></div>
         <button id="menu-btn" class="icon-btn" type="button" aria-label="メニュー" data-i18n-label>≡</button>
+        <button id="fs-btn" class="icon-btn fs-btn" type="button" aria-label="全画面" hidden><svg class="fs-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="fs-in" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path class="fs-out" d="M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5"/></svg></button>
       </section>
 
       <!-- touch controls -->
@@ -128,6 +138,8 @@
               <label class="row"><input type="checkbox" id="outline-toggle" checked /> <span data-i18n>輪郭線</span></label>
               <label class="row"><input type="checkbox" id="minimap-toggle" checked /> <span data-i18n>ミニマップ</span></label>
               <label class="row"><input type="checkbox" id="view-toggle" checked /> <span data-i18n>三人称視点</span></label>
+              <label class="row" id="fs-row" hidden><input type="checkbox" id="fs-toggle" /> <span data-i18n>全画面表示</span></label>
+              <p class="fs-note" id="fs-note" hidden data-i18n>iPhone では、共有メニューの「ホーム画面に追加」から開くと全画面で遊べます</p>
             </div>
             <div class="group">
               <h3 data-i18n>ななみの服装</h3>
@@ -154,12 +166,21 @@
                 <button type="button" data-lang="ja">日本語</button>
                 <button type="button" data-lang="zh">中文</button>
               </div>
-              <p class="credits"><span data-i18n>クレジット</span>: <span id="voice-credits"></span><br />主人公: Sakurai Nanami / 芽衣: 春野 芽衣 / 通行人: 女高中生1・2, 男学生1・2, 女路人1〜4, 男路人 (© Nanami Chiaki, VRM Public License 1.0)<br />Motion: Mixamo (Adobe)</p>
+              <p class="credits"><span data-i18n>クレジット</span>: <span id="voice-credits"></span><br />主人公: Sakurai Nanami / 芽衣: 春野 芽衣 / 心愛: 雪見 心愛 / 通行人: 女高中生1・2, 男学生1・2, 女路人1〜4, 男路人 (© Nanami Chiaki, VRM Public License 1.0)<br />Motion: Mixamo (Adobe)</p>
             </div>
             <div class="group notebook">
               <h3 data-i18n>散歩手帳</h3>
               <ul id="notebook"></ul>
-              <button class="btn ghost" id="open-map" type="button" data-i18n>地図をひらく</button>
+              <button class="btn ghost" id="open-map" type="button"><span data-i18n>地図をひらく</span> <kbd class="kb-hint">M</kbd></button>
+            </div>
+            <div class="group controls" id="controls">
+              <h3 data-i18n>操作方法</h3>
+              <div class="seg" id="controls-tabs">
+                <button type="button" data-ctl="kb" data-i18n>キーボード</button>
+                <button type="button" data-ctl="pad" data-i18n>コントローラー</button>
+                <button type="button" data-ctl="touch" data-i18n>タッチ</button>
+              </div>
+              <div class="ctl-cols" id="controls-list"></div>
             </div>
           </div>
         </div>
