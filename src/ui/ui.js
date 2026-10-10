@@ -1,4 +1,6 @@
-import { ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks } from '../world/layout.js';
+import { ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks, SCHOOL, EAST2 } from '../world/layout.js';
+import { MAIN, GYM } from '../world/school.js';
+import { HOSP, POST, KOBAN } from '../world/eastside.js';
 import { PRESETS } from '../systems/timeofday.js';
 import { tr, tf, getLang, setLang, onLang, applyStatic } from './i18n.js';
 
@@ -361,7 +363,7 @@ export class UI {
 // ---------------------------------------------------------------------------
 // Hand-drawn style town map (full map and the HUD minimap share the drawing)
 // ---------------------------------------------------------------------------
-const MAP = { x0: -300, x1: 382, z0: -182, z1: 122 };
+const MAP = { x0: -300, x1: 542, z0: -182, z1: 122 };
 
 const mapFont = (px) => `700 ${px}px ${getLang() === 'zh' ? '"Noto Sans SC", "PingFang SC", "Microsoft YaHei"' : '"Zen Maru Gothic", "Hiragino Maru Gothic ProN"'}, sans-serif`;
 
@@ -411,6 +413,29 @@ function drawMapBase(c, W, H, P, s, lots = []) {
   rect(PARK.x0, PARK.z0, PARK.x1, PARK.z1, '#bcd9a0');
   rect(PLAZA.x0, PLAZA.z0, PLAZA.x1, PLAZA.z1, '#e8dcc8');
   rect(SHRINE.terraceX0, SHRINE.terraceZ1, SHRINE.terraceX1, SHRINE.terraceZ0, '#e2d8c4');
+  // 東町: the high school (campus, the ground up the steps with its track), the hospital
+  // and its car park, the post office and the police box
+  rect(SCHOOL.x0, SCHOOL.z0, SCHOOL.x1, SCHOOL.z1, '#e6e1d2');
+  rect(SCHOOL.x0 + 2, SCHOOL.z0 + 2, SCHOOL.x1 - 2, SCHOOL.wall[0], '#ead6b0');
+  {
+    const cz = (SCHOOL.z0 + SCHOOL.wall[0]) / 2, half = 26, r = 17.4;
+    const [ax, az] = P(403 - half, cz - r), [bx] = P(403 + half, cz), rr = r * s;
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = Math.max(1.2, 1.4 * s);
+    c.beginPath();
+    c.moveTo(ax, az);
+    c.lineTo(bx, az);
+    c.arc(bx, az + rr, rr, -Math.PI / 2, Math.PI / 2);
+    c.lineTo(ax, az + 2 * rr);
+    c.arc(ax, az + rr, rr, Math.PI / 2, (3 * Math.PI) / 2);
+    c.stroke();
+  }
+  rect(MAIN.x0, MAIN.z0, MAIN.x1, MAIN.z1, '#c3cbd4');
+  rect(GYM.x0, GYM.z0, GYM.x1, GYM.z1, '#b9c6cf');
+  rect(EAST2.southW.x0, EAST2.southW.z0, EAST2.southW.x1, EAST2.southW.z1, '#e2e0da');
+  rect(HOSP.x0, HOSP.z0, HOSP.x1, HOSP.z1, '#cfe3e0');
+  rect(POST.x0, POST.z0, POST.x1, POST.z1, '#f1d2c8');
+  rect(KOBAN.x0, KOBAN.z0, KOBAN.x1, KOBAN.z1, '#d3d9e8');
   // house lots
   for (const l of lots) {
     const col = l.type === 'garden' || l.type === 'field' ? '#d3e3bd' : l.type === 'parking' ? '#e4e2dc' : l.type === 'shop' || l.type === 'cornershop' ? '#efd9c4' : '#e8dccb';
@@ -501,6 +526,13 @@ function mapLabels(landmarks) {
     ['中央通り', 252, -100, '#273049', true],
     ['Ⓜ 桜ヶ浜中央駅', 252, -30, '#2f6fb8', true],
     ['さくらモール', 274, 4, '#8a4a3a', true],
+    ['桜ヶ浜高校', (MAIN.x0 + MAIN.x1) / 2, MAIN.z1 + 6, '#273049', true],
+    ['グラウンド', 403, (SCHOOL.z0 + SCHOOL.wall[0]) / 2, '#8a6a3a', false],
+    ['体育館', (GYM.x0 + GYM.x1) / 2, (GYM.z0 + GYM.z1) / 2, '#273049', false],
+    ['総合病院', (HOSP.x0 + HOSP.x1) / 2, (HOSP.z0 + HOSP.z1) / 2, '#2f8a66', true],
+    ['郵便局', (POST.x0 + POST.x1) / 2, (POST.z0 + POST.z1) / 2, '#c0392b', true],
+    ['交番', KOBAN.x0 - 6, KOBAN.z1 + 2, '#273049', false],
+    ['東町', 445, 36, '#273049', true],
   ];
   for (const l of landmarks || []) {
     if (l.id === 'sento') L.push(['汐の湯', l.x, l.z + 6, '#273049', true]);

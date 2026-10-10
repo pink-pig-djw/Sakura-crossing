@@ -397,7 +397,7 @@ function pedHead(b, sb, p, fx, fz, axis) {
 // ---------------------------------------------------------------------------
 // street furniture for the district
 // ---------------------------------------------------------------------------
-function cityLamp(ctx, x, z, ax, az) {
+export function cityLamp(ctx, x, z, ax, az) {
   const y = roadSurfaceY(x, z);
   const b = ctx.builders.get('toon', x, z);
   b.cyl(x, y, z, 0.11, 0.08, 7.6, 8, 0x8a9096);

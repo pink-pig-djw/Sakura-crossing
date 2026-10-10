@@ -781,10 +781,14 @@ export function buildSento(ctx, lot) {
   const cz = front + hd / 2;
   const pad = padHeight(L, 0, cz, hw, hd);
   const y0 = pad.top + 0.3;
-  t.box(0, (pad.bottom - 0.5 + y0) / 2, cz, hw + 0.1, y0 - pad.bottom + 0.5, hd + 0.1, { color: 0xa9a49a, pattern: PAT.STONE });
-  t.box(0, y0 + 2.4, cz, hw, 4.8, hd, { color: '#efe7d6', ao: 0.1 });
-  t.box(0, y0 + 0.6, cz, hw + 0.04, 1.2, hd + 0.04, { color: 0x5d4636, pattern: PAT.BOARDS });
-  collide(ctx, L, 0, cz, hw + 0.1, hd + 0.1);
+  // the stone base stops just under the floor sento.js lays at y0
+  t.box(0, (pad.bottom - 0.5 + y0 - 0.02) / 2, cz, hw + 0.1, y0 - 0.02 - pad.bottom + 0.5, hd + 0.1, { color: 0xa9a49a, pattern: PAT.STONE });
+  // walk-in: the walls, the rooms and the bath inside come from sento.js; outside, a dark
+  // wooden skirting all round (open at the door)
+  ctx.sento = { L, hw, hd, front, y0, cz };
+  const F0 = boxFaces(0, y0, cz, hw + 0.04, hd + 0.04);
+  for (const key of ['back', 'left', 'right']) faceBox(t, F0[key], F0[key].len / 2, 0, F0[key].len, 1.2, 0.06, 0.06, 0x5d4636, PAT.BOARDS);
+  for (const [s0, s1] of [[0, hw / 2 - 1.35], [hw / 2 + 1.35, hw + 0.04]]) faceBox(t, F0.front, (s0 + s1) / 2, 0, s1 - s0, 1.2, 0.06, 0.06, 0x5d4636, PAT.BOARDS);
   const kc = 0x5c6674;
   t.push(new THREE.Matrix4().makeTranslation(0, 0, cz).multiply(new THREE.Matrix4().makeRotationY(Math.PI / 2)));
   gableRoof(t, 0, 0, hd, hw, y0 + 4.8, { color: kc, pattern: PAT.KAWARA, wallColor: '#efe7d6', slope: 0.55, ox: 0.8, oz: 0.8, fascia: 0x5d4636, th: 0.22 });
@@ -795,7 +799,8 @@ export function buildSento(ctx, lot) {
   gableRoof(t, 0, 0, 3.4, 1.8, y0 + 3.0, { color: kc, pattern: PAT.KAWARA, wallColor: '#5d4636', slope: 0.6, ox: 0.3, oz: 0.35, fascia: 0x5d4636 });
   t.pop();
   for (const e of [-1, 1]) t.boxMM(e * 1.6 - 0.09, Math.min(y0, L.yAt(e * 1.6, front - 0.5)) - 0.15, front - 0.59, e * 1.6 + 0.09, y0 + 3.0, front - 0.41, { color: 0x5d4636 });
-  koshiDoor(kit, F.front, hw / 2, 0, 2.6, 2.3, 0x5d4636);
+  // the lattice door stands slid open beside the doorway
+  koshiDoor(kit, F.front, hw / 2 - 2.0, 0, 1.3, 2.3, 0x5d4636);
   // noren with ゆ
   const nuv = ctx.atlas.draw('noren-yu', 256, 160, (c, w, h) => {
     c.fillStyle = '#2f4f8a';
@@ -811,9 +816,10 @@ export function buildSento(ctx, lot) {
   signOnFace(kit, F.front, hw / 2, 1.6, 2.4, 1.0, 0.12, nuv, 0.6);
   const suv = ctx.atlas.draw('sento-sign', 128, 400, (c, w, h) => drawVertical(c, w, h, { text: '汐の湯', bg: '#f3ead8', fg: '#2a2a2a', font: FONTS.brush, border: '#5d4636' }));
   signOnFace(kit, F.front, hw / 2 + 2.3, 1.6, 0.42, 1.4, 0.06, suv, 0.6, 0x5d4636);
-  // chimney
+  // chimney: the boiler sits behind the bath, so above the bath's ceiling it rises
+  // through the roof (the room below stays clear)
   const chx = hw / 2 - 1.2, chz = cz + hd / 2 - 1.5;
-  t.cyl(chx, y0, chz, 0.75, 0.48, 20, 10, 0xb7b3ab, PAT.CONCRETE);
+  t.cyl(chx, y0 + 4.85, chz, 0.69, 0.48, 20 - 4.85, 10, 0xb7b3ab, PAT.CONCRETE);
   t.cyl(chx, y0 + 15, chz, 0.56, 0.56, 1.0, 10, 0xc23a2e);
   const cuv = ctx.atlas.draw('chimney', 128, 512, (c, w, h) => {
     c.fillStyle = '#b7b3ab';
@@ -827,7 +833,6 @@ export function buildSento(ctx, lot) {
   });
   const face = { o: V(chx + 0.32, y0, chz - 0.62), r: V(-1, 0, 0), n: V(0, 0, -1), len: 1 };
   signOnFace(kit, face, 0.32, 8, 0.55, 4.5, 0.0, cuv, 0);
-  collide(ctx, L, chx, chz, 1.5, 1.5);
   paint(ctx, L, -L.W / 2, 0, L.W / 2, front, 0xc9c1b2, PAT.STONE);
   for (let i = 0; i < 3; i++) bicycle(t, -L.W / 2 + 1.2 + i * 0.9, 0, 1.0, Math.PI / 2, rng.pick([0xd8d8d0, 0x5a8fc4, 0xc44a4a]), L.yAt);
   ctx.landmarks.push({ id: 'sento', name: '汐の湯', x: L.toW(0, front)[0], z: L.toW(0, front)[1] });

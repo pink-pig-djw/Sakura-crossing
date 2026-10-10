@@ -19,6 +19,8 @@ import { buildRiver } from './river.js';
 import { buildCommercial } from './commercial.js';
 import { buildSubway } from './subway.js';
 import { buildInteriors } from './interiors.js';
+import { buildEastside } from './eastside.js';
+import { buildSentoInterior } from './sento.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -97,7 +99,7 @@ export async function buildWorld(scene, opts = {}) {
     scene,
     materials,
     builders: new ChunkedBuilders(48),
-    ground: new GroundMap(-300, -192, 380, 100, 3),
+    ground: new GroundMap(-300, -192, 540, 100, 3),
     colliders: new Colliders(8),
     atlas,
     atlas2,
@@ -188,6 +190,10 @@ export async function buildWorld(scene, opts = {}) {
   AUDIT.tag = 'commercial';
   buildCommercial(ctx, interiors.specials);
   ctx.autoDoors = interiors.doors;
+  AUDIT.tag = 'eastside';
+  buildEastside(ctx, interiors.doors);
+  AUDIT.tag = 'sento';
+  buildSentoInterior(ctx);
   AUDIT.tag = 'subway';
   const subway = buildSubway(ctx, scene);
   ctx.updaters.push((t, dt) => subway.update(dt));

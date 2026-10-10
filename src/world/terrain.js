@@ -140,9 +140,9 @@ export function buildTerrain(groundMap) {
   const xs = axisSamples([
     [-1000, -340, 20],
     [-340, -310, 4],
-    [-310, 390, 2],
-    [390, 420, 4],
-    [420, 1100, 20],
+    [-310, 550, 2],
+    [550, 580, 4],
+    [580, 1260, 20],
   ]);
   const zs = axisSamples([
     [-900, -260, 20],

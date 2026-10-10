@@ -355,6 +355,7 @@ export function createSmallAnimations(ctx, materials) {
       pm.add(mm);
       pivot.add(ph, pm);
       pivot.rotation.y = e > 0 ? 0 : Math.PI;
+      if (cl.scale) pivot.scale.setScalar(cl.scale); // big facade clocks
       ctx.scene.add(pivot);
       hands.push({ ph, pm, e });
     }

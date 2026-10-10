@@ -10,6 +10,8 @@
 //  z =  73 ..        sand beach, breakwater + lighthouse to the west, river mouth
 //  x ≈ 182           桜川 from a culvert under the hills down to the sea, sakura paths on both banks
 //  x = 198 .. 318    桜ヶ浜中央: avenue, mall, plaza and the underground subway station
+//  x = 324 .. 478    東町: 桜ヶ浜高校 on two terraces up the slope, the general hospital, post
+//                    office, police box and houses toward the railway
 
 import { RNG, fbm2, noise2, smoothstep, clamp, softPlus, lerp } from '../core/rng.js';
 
@@ -21,10 +23,10 @@ export const PROM = { z0: 68.5, z1: 73.0, y: 3.32 };
 export const SEAWALL_Z = 73.0;
 
 // flat valley north of the railway / flat coastal strip south of it / tunnel portals in the headlands
-export const TOWN = { x0: -236, x1: 318, zN: -127 };
-export const SHORE = { x0: -296, x1: 376 };
-export const TUNNEL = { w: -298, e: 378 };
-export const BOUNDS = { x0: -292, x1: 372, z0: -182, z1: 190 };
+export const TOWN = { x0: -236, x1: 478, zN: -127 };
+export const SHORE = { x0: -296, x1: 536 };
+export const TUNNEL = { w: -298, e: 538 };
+export const BOUNDS = { x0: -292, x1: 532, z0: -182, z1: 190 };
 
 // 桜川: channel between x = 174 and 190, 2 m revetment walls, 8 m sakura paths on both banks
 export const RIVER = { x: 182, inner: 8, wall: 2, zHead: -126, pathW: [166, 174], pathE: [190, 198] };
@@ -33,8 +35,8 @@ export const STATION = { x0: -46, x1: -24, z0: 41.5, z1: 51.5, platX0: -64, plat
 export const PLAZA = { x0: -67.5, x1: -8, z0: 22.5, z1: 50 };
 export const SHRINE = { x: 30, z0: -128.5, z1: -146, y: 20.6, terraceZ0: -146, terraceZ1: -172, terraceX0: 6, terraceX1: 54 };
 export const PARK = { x0: -67.5, x1: -37.5, z0: -47.5, z1: -17.5 };
-export const CROSSINGS = [-195, -70, 30, 115, 218];
-export const BEACH_STAIRS = [-252, -195, -70, 30, 115, 218, 300];
+export const CROSSINGS = [-195, -70, 30, 115, 218, 324];
+export const BEACH_STAIRS = [-252, -195, -70, 30, 115, 218, 300, 330, 430, 505];
 export const BREAKWATER = { x: -150, z0: 84, z1: 178, w: 5.2 };
 
 // Underground station 桜ヶ浜中央 under the avenue: B1 concourse at the north end, B2 island platform.
@@ -60,6 +62,24 @@ export const HOLES = [
   { x0: TUNNEL.w - 2, x1: TUNNEL.w, z0: 52, z1: 70 },
   { x0: TUNNEL.e, x1: TUNNEL.e + 2, z0: 52, z1: 70 },
 ];
+
+// 桜ヶ浜高校: the campus fills the block east of 東町通り between the 中央三丁目 and 中央一丁目
+// streets. The town slope is cut into two flat terraces, the school buildings (low, south)
+// and the sports ground (high, north), with a retaining wall between them at z = -62..-60;
+// grass banks two metres wide take up the difference to the streets around.
+export const SCHOOL = {
+  x0: 330, x1: 476, z0: -114, z1: -22,
+  wall: [-62, -60], // retaining wall between the terraces (its top is the ground's edge)
+  yLow: 6.5, // building terrace (z -60 .. -22)
+  yHigh: 9.9, // sports ground (z -114 .. -62)
+};
+// the other blocks of 東町 (south of the school)
+export const EAST2 = {
+  hospital: { x0: 329, x1: 395, z0: -9.6, z1: 14.6 },
+  post: { x0: 405, x1: 476, z0: -9.6, z1: 14.6 },
+  southW: { x0: 329, x1: 395, z0: 25.4, z1: 44.6 },
+  southE: { x0: 405, x1: 476, z0: 25.4, z1: 44.6 },
+};
 
 export const WORLD_SEED = 20260409;
 
@@ -154,6 +174,14 @@ export function groundH(x, z) {
       // the slope outside the corridor rises at least as fast as the stairs
       h = Math.max(h, ys * inX * smoothstep(sx.z0, sx.z0 - 4, z) - 0.2);
     }
+  }
+
+  // 桜ヶ浜高校: flat terraces (the step between them hides inside the retaining wall)
+  const sc = SCHOOL;
+  if (x >= sc.x0 && x <= sc.x1 && z >= sc.z0 && z <= sc.z1) {
+    if (z <= sc.wall[0]) return sc.yHigh;
+    if (z >= sc.wall[1]) return sc.yLow;
+    return lerp(sc.yHigh, sc.yLow, (z - sc.wall[0]) / (sc.wall[1] - sc.wall[0]));
   }
   return h;
 }
@@ -276,8 +304,9 @@ export const ROADS = [
   // east of the river (two lanes with sidewalks); two of them cross it on bridges
   { id: 'e20e', axis: 'x', c: 20, a: 166, b: TOWN.x1, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '桜橋通り' },
   { id: 'e-15e', axis: 'x', c: -15, a: 198, b: TOWN.x1, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '中央一丁目' },
-  { id: 'e-50e', axis: 'x', c: -50, a: 166, b: TOWN.x1, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '汐見橋通り' },
-  { id: 'e-85e', axis: 'x', c: -85, a: 198, b: TOWN.x1, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '中央二丁目' },
+  // these two end at 東町通り (the school is beyond)
+  { id: 'e-50e', axis: 'x', c: -50, a: 166, b: 328.5, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '汐見橋通り' },
+  { id: 'e-85e', axis: 'x', c: -85, a: 198, b: 328.5, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '中央二丁目' },
   { id: 'e-120e', axis: 'x', c: -120, a: 198, b: TOWN.x1, w: 6, sidewalk: 2, style: 12, swStyle: 13, name: '中央三丁目' },
   { id: 'n-195', axis: 'z', c: -195, a: -122.5, b: 61.5, w: 5, style: 1, crossing: true },
   { id: 'n-146', axis: 'z', c: -146, a: -122.5, b: 50, w: 4.6, style: 1 },
@@ -294,6 +323,9 @@ export const ROADS = [
   { id: 'n218', axis: 'z', c: 218, a: -125, b: 61.5, w: 6, sidewalk: 1.5, style: 12, swStyle: 13, crossing: true },
   { id: 'avenue', axis: 'z', c: 252, a: -125, b: 50, w: 10, sidewalk: 4, style: 11, swStyle: 13, name: '中央通り' },
   { id: 'n292', axis: 'z', c: 292, a: -125, b: 50, w: 6, sidewalk: 1.5, style: 12, swStyle: 13 },
+  // 東町: down from the school to the sea, across the railway; and past the hospital
+  { id: 'n324', axis: 'z', c: 324, a: -125, b: 61.5, w: 6, sidewalk: 1.5, style: 12, swStyle: 13, crossing: true, name: '東町通り' },
+  { id: 'n400', axis: 'z', c: 400, a: -20, b: 50, w: 6, sidewalk: 1.5, style: 12, swStyle: 13, name: '病院通り' },
 ];
 
 export function roadRect(r) {
@@ -472,7 +504,7 @@ function assignTypes(rng, lots) {
 // ---------------------------------------------------------------------------
 // Commercial district blocks (east of the river): columns A..D, rows 0 (south) .. 4 (north)
 // ---------------------------------------------------------------------------
-const EAST_XS = [RIVER.pathE[1], 218, 252, 292, TOWN.x1];
+const EAST_XS = [RIVER.pathE[1], 218, 252, 292, 324];
 export function eastBlocks() {
   const blocks = [];
   for (let i = 0; i < EAST_XS.length - 1; i++) {
@@ -480,7 +512,7 @@ export function eastBlocks() {
       const x0 = EAST_XS[i], x1 = EAST_XS[i + 1], z0 = ZS[j], z1 = ZS[j + 1];
       const midZ = (z0 + z1) / 2, midX = (x0 + x1) / 2;
       const hwW = i === 0 ? 0 : roadHalf('z', x0, midZ);
-      const hwE = i === EAST_XS.length - 2 ? 0 : roadHalf('z', x1, midZ);
+      const hwE = roadHalf('z', x1, midZ);
       const hwN = roadHalf('x', z0, midX);
       const hwS = roadHalf('x', z1, midX);
       blocks.push({
@@ -518,13 +550,17 @@ export const AREAS = [
   { name: '桜川の飛び石', sub: 'Stepping Stones', x0: 172, x1: 192, z0: STEPPING_Z - 8, z1: STEPPING_Z + 4 },
   { name: '桜川', sub: 'Sakura River', x0: 164, x1: 200, z0: -130, z1: 60 },
   { name: '桜川 河口', sub: 'River Mouth', x0: 164, x1: 200, z0: 60, z1: 112 },
+  { name: '桜ヶ浜高校', sub: 'Sakuragahama High School', x0: SCHOOL.x0 - 2, x1: SCHOOL.x1, z0: SCHOOL.z0 - 2, z1: SCHOOL.z1 + 2 },
+  { name: '桜ヶ浜総合病院', sub: 'Sakuragahama General Hospital', x0: EAST2.hospital.x0, x1: EAST2.hospital.x1, z0: EAST2.hospital.z0, z1: EAST2.hospital.z1 },
+  { name: '踏切', sub: 'Railway Crossing', x0: 316, x1: 332, z0: 50, z1: 61.5 },
   { name: 'さくらモール', sub: 'Sakura Mall', x0: 261, x1: 288, z0: -10, z1: 15 },
   { name: '中央広場', sub: 'Chuo Plaza', x0: 222, x1: 243, z0: -10, z1: 15 },
   { name: '中央通り', sub: 'Chuo-dori Avenue', x0: 243, x1: 261, z0: -125, z1: 50 },
   { name: '海岸通り', sub: 'Coastal Road', x0: TUNNEL.w - 10, x1: TUNNEL.e + 10, z0: 60, z1: 73 },
   { name: '防波堤', sub: 'Breakwater', x0: BREAKWATER.x - 8, x1: BREAKWATER.x + 8, z0: 95, z1: 190 },
   { name: '桜ヶ浜海岸', sub: 'Sakuragahama Beach', x0: TUNNEL.w - 10, x1: TUNNEL.e + 10, z0: 73, z1: 220 },
-  { name: '桜ヶ浜中央', sub: 'Chuo Commercial District', x0: 198, x1: 322, z0: -130, z1: 50 },
+  { name: '桜ヶ浜中央', sub: 'Chuo Commercial District', x0: 198, x1: 320, z0: -130, z1: 50 },
+  { name: '東町', sub: 'Higashimachi', x0: 320, x1: 482, z0: -130, z1: 50 },
   { name: '西町', sub: 'Nishimachi', x0: -240, x1: -150, z0: -130, z1: 50 },
   { name: '桜ヶ浜 三丁目', sub: 'Residential Area', x0: -150, x1: 166, z0: -130, z1: -67 },
   { name: '桜ヶ浜 二丁目', sub: 'Residential Area', x0: -150, x1: 166, z0: -67, z1: 2 },

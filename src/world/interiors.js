@@ -21,7 +21,7 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 // primitives
 // ---------------------------------------------------------------------------
 // vertical rect on the plane z = c (axis 'x', spanning x) or x = c (axis 'z', spanning z), facing ±dir
-function vrect(b, axis, c, a0, a1, y0, y1, dir, color, pattern = 0) {
+export function vrect(b, axis, c, a0, a1, y0, y1, dir, color, pattern = 0) {
   let p0, p1, p2, p3;
   if (axis === 'x') [p0, p1, p2, p3] = [V(a0, y0, c), V(a1, y0, c), V(a1, y1, c), V(a0, y1, c)];
   else [p0, p1, p2, p3] = [V(c, y0, a0), V(c, y0, a1), V(c, y1, a1), V(c, y1, a0)];
@@ -30,13 +30,13 @@ function vrect(b, axis, c, a0, a1, y0, y1, dir, color, pattern = 0) {
   else b.quad(p1, p0, p3, p2, color, pattern);
 }
 // horizontal rect facing up (+1) or down (-1)
-function hrect(b, x0, z0, x1, z1, y, up, color, pattern = 0) {
+export function hrect(b, x0, z0, x1, z1, y, up, color, pattern = 0) {
   const p0 = V(x0, y, z0), p1 = V(x1, y, z0), p2 = V(x1, y, z1), p3 = V(x0, y, z1);
   if (up > 0) b.quad(p0, p3, p2, p1, color, pattern);
   else b.quad(p0, p1, p2, p3, color, pattern);
 }
 // textured vertical rect on the interior sign material; `tile` repeats the texture every n meters
-function vsign(ctx, axis, c, a0, a1, y0, y1, dir, uv, emissive = 0, tile = 0) {
+export function vsign(ctx, axis, c, a0, a1, y0, y1, dir, uv, emissive = 0, tile = 0) {
   if (tile > 0 && a1 - a0 > tile * 1.4) {
     const n = Math.round((a1 - a0) / tile);
     for (let i = 0; i < n; i++) vsign(ctx, axis, c, a0 + ((a1 - a0) * i) / n, a0 + ((a1 - a0) * (i + 1)) / n, y0, y1, dir, uv, emissive, 0);
@@ -52,7 +52,7 @@ function vsign(ctx, axis, c, a0, a1, y0, y1, dir, uv, emissive = 0, tile = 0) {
   else [p0, p1, p2, p3] = [V(c, y0, a0), V(c, y0, a1), V(c, y1, a1), V(c, y1, a0)];
   b.quad(p0, p1, p2, p3, 0xffffff, emissive, { uvs: [[uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1]] });
 }
-function glassRect(ctx, axis, c, a0, a1, y0, y1) {
+export function glassRect(ctx, axis, c, a0, a1, y0, y1) {
   const b = ctx.builders.get('glass', axis === 'x' ? (a0 + a1) / 2 : c, axis === 'x' ? c : (a0 + a1) / 2);
   const uvs = { uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] };
   if (axis === 'x') b.quad(V(a0, y0, c), V(a1, y0, c), V(a1, y1, c), V(a0, y1, c), 0xffffff, 0, uvs);
@@ -60,7 +60,7 @@ function glassRect(ctx, axis, c, a0, a1, y0, y1) {
 }
 
 // subtract openings [a0,a1,yb,yt] from a wall [A0,A1]x[Y0,Y1] -> solid rects
-function wallRects(A0, A1, Y0, Y1, openings) {
+export function wallRects(A0, A1, Y0, Y1, openings) {
   const out = [];
   const ops = openings.slice().sort((p, q) => p.a0 - q.a0);
   let a = A0;
@@ -74,6 +74,63 @@ function wallRects(A0, A1, Y0, Y1, openings) {
   return out;
 }
 
+// One wall of a room between heights y and yTop, with openings (glass, doors) cut out:
+// exterior skin (sunlit toon), interior skin (ceiling lit) over R.inner = [a0, a1] along the
+// wall, colliders, frames, glass and inner sills. S: { axis, c, dir (+1: room on the +side),
+// A0, A1, body(a0, a1, yb, yt) -> box corners, skip }; ops: [{ a0, a1, yb, yt, kind }] with
+// absolute heights; t: wall thickness.
+export function openWall(ctx, S, ops, R, y, yTop, t) {
+  const IB = (x, z) => ctx.builders.get('interior', x, z);
+  const TB = (x, z) => ctx.builders.get('toon', x, z);
+  const DB = (x, z) => ctx.builders.get('detail', x, z);
+  const [in0, in1] = R.inner;
+  for (const [a0, a1, yb, yt] of wallRects(S.A0, S.A1, y, yTop, ops)) {
+    const bb = S.body(a0, a1, yb, yt);
+    TB((bb[0] + bb[3]) / 2, (bb[2] + bb[5]) / 2).boxMM(...bb, { color: R.out ?? 0xe9e6de, pattern: R.outPat ?? PAT.TILE, skip: S.skip });
+    // inner skin (inside the room only)
+    const ia0 = Math.max(a0, in0), ia1 = Math.min(a1, in1);
+    if (ia1 > ia0) vrect(IB(S.axis === 'x' ? (ia0 + ia1) / 2 : S.c, S.axis === 'x' ? S.c : (ia0 + ia1) / 2), S.axis, S.c, ia0, ia1, yb, yt, S.dir, R.inC ?? 0xf4f1ea, R.inPat ?? 0);
+    if (yb <= y + 0.01 && yt > y + 0.6) {
+      const c = S.axis === 'x' ? ctx.colliders.addSegment(a0, S.c - S.dir * t / 2, a1, S.c - S.dir * t / 2, t + 0.05) : ctx.colliders.addSegment(S.c - S.dir * t / 2, a0, S.c - S.dir * t / 2, a1, t + 0.05);
+      if (c) {
+        c.yTop = yt + 0.1;
+        c.yBottom = y - 1;
+      }
+    }
+  }
+  // openings: frames, glass, reveals
+  for (const o of ops) {
+    const fc = o.frame ?? 0x6c7076;
+    const d = DB(S.axis === 'x' ? (o.a0 + o.a1) / 2 : S.c, S.axis === 'x' ? S.c : (o.a0 + o.a1) / 2);
+    const mid = S.c - S.dir * t / 2;
+    const fb = (a0, a1, yb, yt) => (S.axis === 'x' ? d.boxMM(a0, yb, mid - t / 2 - 0.02, a1, yt, mid + t / 2 + 0.02, { color: fc }) : d.boxMM(mid - t / 2 - 0.02, yb, a0, mid + t / 2 + 0.02, yt, a1, { color: fc }));
+    fb(o.a0, o.a1, o.yt - 0.06, o.yt);
+    fb(o.a0, o.a0 + 0.06, o.yb, o.yt);
+    fb(o.a1 - 0.06, o.a1, o.yb, o.yt);
+    if (o.kind === 'glass') {
+      fb(o.a0, o.a1, o.yb, o.yb + 0.06);
+      const n = Math.max(1, Math.round((o.a1 - o.a0) / (o.pitch ?? 1.8)));
+      for (let k = 1; k < n; k++) {
+        const a = o.a0 + ((o.a1 - o.a0) * k) / n;
+        fb(a - 0.03, a + 0.03, o.yb, o.yt);
+      }
+      if (o.transom) fb(o.a0, o.a1, o.yb + o.transom - 0.03, o.yb + o.transom + 0.03);
+      glassRect(ctx, S.axis, mid, o.a0, o.a1, o.yb, o.yt);
+      const c = S.axis === 'x' ? ctx.colliders.addSegment(o.a0, mid, o.a1, mid, t) : ctx.colliders.addSegment(mid, o.a0, mid, o.a1, t);
+      if (c) {
+        c.yTop = o.yt;
+        c.yBottom = y - 1;
+      }
+      // inner sill
+      if (o.yb > y + 0.3) {
+        const sb = IB(S.axis === 'x' ? (o.a0 + o.a1) / 2 : S.c, S.axis === 'x' ? S.c : (o.a0 + o.a1) / 2);
+        if (S.axis === 'x') sb.boxMM(o.a0, o.yb - 0.05, Math.min(S.c, S.c + S.dir * 0.22), o.a1, o.yb, Math.max(S.c, S.c + S.dir * 0.22), { color: R.sill ?? 0xd8d2c4 });
+        else sb.boxMM(Math.min(S.c, S.c + S.dir * 0.22), o.yb - 0.05, o.a0, Math.max(S.c, S.c + S.dir * 0.22), o.yb, o.a1, { color: R.sill ?? 0xd8d2c4 });
+      }
+    }
+  }
+}
+
 // A box room with two-skinned walls: exterior (sunlit toon) and interior (ceiling lit).
 // R: { x0,x1,z0,z1, y, h, t, out, outPat, inC, inPat, floor, floorPat, ceil, base, open: {N,S,W,E: [{a0,a1,yb,yt,kind}]} , roof }
 export function buildRoom(ctx, R) {
@@ -82,7 +139,6 @@ export function buildRoom(ctx, R) {
   const xm = (x0 + x1) / 2, zm = (z0 + z1) / 2;
   const IB = (x, z) => ctx.builders.get('interior', x, z);
   const TB = (x, z) => ctx.builders.get('toon', x, z);
-  const DB = (x, z) => ctx.builders.get('detail', x, z);
   // floor + ceiling
   for (let x = x0; x < x1 - 0.01; x += 8) {
     for (let z = z0; z < z1 - 0.01; z += 8) {
@@ -106,51 +162,7 @@ export function buildRoom(ctx, R) {
   };
   for (const [key, S] of Object.entries(sides)) {
     const ops = (R.open?.[key] || []).map((o) => ({ ...o, yb: y + (o.yb ?? 0), yt: y + (o.yt ?? h) }));
-    for (const [a0, a1, yb, yt] of wallRects(S.A0, S.A1, y, y + h, ops)) {
-      const bb = S.body(a0, a1, yb, yt);
-      TB((bb[0] + bb[3]) / 2, (bb[2] + bb[5]) / 2).boxMM(...bb, { color: R.out ?? 0xe9e6de, pattern: R.outPat ?? PAT.TILE, skip: S.skip });
-      // inner skin (inside the room only)
-      const ia0 = Math.max(a0, S.axis === 'x' ? x0 : z0), ia1 = Math.min(a1, S.axis === 'x' ? x1 : z1);
-      if (ia1 > ia0) vrect(IB(S.axis === 'x' ? (ia0 + ia1) / 2 : S.c, S.axis === 'x' ? S.c : (ia0 + ia1) / 2), S.axis, S.c, ia0, ia1, yb, yt, S.dir, R.inC ?? 0xf4f1ea, R.inPat ?? 0);
-      if (yb <= y + 0.01 && yt > y + 0.6) {
-        const c = S.axis === 'x' ? ctx.colliders.addSegment(a0, S.c - S.dir * t / 2, a1, S.c - S.dir * t / 2, t + 0.05) : ctx.colliders.addSegment(S.c - S.dir * t / 2, a0, S.c - S.dir * t / 2, a1, t + 0.05);
-        if (c) {
-          c.yTop = yt + 0.1;
-          c.yBottom = y - 1;
-        }
-      }
-    }
-    // openings: frames, glass, reveals
-    for (const o of ops) {
-      const fc = o.frame ?? 0x6c7076;
-      const d = DB(S.axis === 'x' ? (o.a0 + o.a1) / 2 : S.c, S.axis === 'x' ? S.c : (o.a0 + o.a1) / 2);
-      const mid = S.c - S.dir * t / 2;
-      const fb = (a0, a1, yb, yt) => (S.axis === 'x' ? d.boxMM(a0, yb, mid - t / 2 - 0.02, a1, yt, mid + t / 2 + 0.02, { color: fc }) : d.boxMM(mid - t / 2 - 0.02, yb, a0, mid + t / 2 + 0.02, yt, a1, { color: fc }));
-      fb(o.a0, o.a1, o.yt - 0.06, o.yt);
-      fb(o.a0, o.a0 + 0.06, o.yb, o.yt);
-      fb(o.a1 - 0.06, o.a1, o.yb, o.yt);
-      if (o.kind === 'glass') {
-        fb(o.a0, o.a1, o.yb, o.yb + 0.06);
-        const n = Math.max(1, Math.round((o.a1 - o.a0) / (o.pitch ?? 1.8)));
-        for (let k = 1; k < n; k++) {
-          const a = o.a0 + ((o.a1 - o.a0) * k) / n;
-          fb(a - 0.03, a + 0.03, o.yb, o.yt);
-        }
-        if (o.transom) fb(o.a0, o.a1, o.yb + o.transom - 0.03, o.yb + o.transom + 0.03);
-        glassRect(ctx, S.axis, mid, o.a0, o.a1, o.yb, o.yt);
-        const c = S.axis === 'x' ? ctx.colliders.addSegment(o.a0, mid, o.a1, mid, t) : ctx.colliders.addSegment(mid, o.a0, mid, o.a1, t);
-        if (c) {
-          c.yTop = o.yt;
-          c.yBottom = y - 1;
-        }
-        // inner sill
-        if (o.yb > y + 0.3) {
-          const sb = IB(S.axis === 'x' ? (o.a0 + o.a1) / 2 : S.c, S.axis === 'x' ? S.c : (o.a0 + o.a1) / 2);
-          if (S.axis === 'x') sb.boxMM(o.a0, o.yb - 0.05, Math.min(S.c, S.c + S.dir * 0.22), o.a1, o.yb, Math.max(S.c, S.c + S.dir * 0.22), { color: R.sill ?? 0xd8d2c4 });
-          else sb.boxMM(Math.min(S.c, S.c + S.dir * 0.22), o.yb - 0.05, o.a0, Math.max(S.c, S.c + S.dir * 0.22), o.yb, o.a1, { color: R.sill ?? 0xd8d2c4 });
-        }
-      }
-    }
+    openWall(ctx, S, ops, { ...R, inner: S.axis === 'x' ? [x0, x1] : [z0, z1] }, y, y + h, t);
   }
   // roof slab (+ parapet); interiors keep their own ceiling
   if (R.roof !== false) {
@@ -165,7 +177,7 @@ export function buildRoom(ctx, R) {
 }
 
 // ceiling light panels in a grid (+ night light pools inside)
-function ceilingLights(ctx, x0, z0, x1, z1, y, step = 3, size = [1.2, 0.3]) {
+export function ceilingLights(ctx, x0, z0, x1, z1, y, step = 3, size = [1.2, 0.3]) {
   for (let x = x0 + step / 2; x < x1; x += step) {
     for (let z = z0 + step / 2; z < z1; z += step) ctx.builders.get('emissive', x, z).box(x, y - 0.02, z, size[0], 0.03, size[1], { color: 0xffffff });
   }
@@ -257,7 +269,7 @@ export class AutoDoors {
 // ---------------------------------------------------------------------------
 // product textures (atlas page 2)
 // ---------------------------------------------------------------------------
-function productTex(ctx, kind) {
+export function productTex(ctx, kind) {
   return ctx.atlas2.draw('prod:' + kind, 256, 128, (c, w, h) => {
     const rng = new RNG(kind.length * 977 + kind.charCodeAt(0));
     c.fillStyle = kind === 'drinks' ? '#e8eef2' : '#f4f2ee';

@@ -323,6 +323,26 @@ function interact() {
     case 'sign':
       ui.toast(it.text);
       break;
+    case 'hospital':
+    case 'post':
+    case 'koban':
+      ui.toast(it.text);
+      audio.sfx(it.kind === 'post' ? 'register' : 'ui');
+      break;
+    case 'sento':
+      ui.toast(it.text);
+      audio.sfx(it.what === 'milk' ? 'register' : it.what === 'shoes' ? 'page' : 'ui');
+      break;
+    case 'school':
+      if (it.what === 'ball' && world.gym) {
+        const made = world.gym.shoot(player.pos);
+        audio.sfx('ui');
+        setTimeout(() => ui.toast(made ? 'ナイスシュート！' : 'おしい、リングに当たった。'), 900);
+        break;
+      }
+      ui.toast(it.text);
+      audio.sfx(it.what === 'piano' ? 'chime' : it.what === 'shoes' ? 'page' : 'ui');
+      break;
     case 'shop':
       ui.toast(it.shopKind === 'city' ? tf('cityShop', { s: it.shop }) : SHOP_LINES[it.shopKind] || 'のんびりした店先。');
       break;
