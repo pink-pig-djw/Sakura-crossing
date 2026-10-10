@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel, SEAWALL_Z } from '../world/layout.js';
+import { onRoute } from '../world/routeplan.js';
 
 // The walker: keyboard + mouse (pointer lock or drag), touch joystick, gamepad.
 // Feet position is kept on the walkable height field; colliders push back.
@@ -371,7 +372,8 @@ export class Player {
 
   allowed(x, z, g) {
     if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return false;
-    if (outsideDist(x, z) > 18 && g > terrainH(x, z) - 0.01 && g > 22) return false;
+    // the hills are off limits but for the cycling loop's roads and the places along them
+    if (outsideDist(x, z) > 18 && g > terrainH(x, z) - 0.01 && g > 22 && !onRoute(x, z)) return false;
     // deep sea (the subway lies below sea level, so only out past the shoreline)
     if (g < -0.65 && z > shoreZ(x) - 4) return false;
     // no wading up the walled river: only the stones, stairs and the open mouth on the beach

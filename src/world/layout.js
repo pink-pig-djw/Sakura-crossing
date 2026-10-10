@@ -14,6 +14,7 @@
 //                    office, police box and houses toward the railway
 
 import { RNG, fbm2, noise2, smoothstep, clamp, softPlus, lerp } from '../core/rng.js';
+import { initSculpt, sculptDelta, sculptReady } from './routeplan.js';
 
 export const RAIL_Z = 56;
 export const RAIL_Y = 3.0;
@@ -26,7 +27,8 @@ export const SEAWALL_Z = 73.0;
 export const TOWN = { x0: -236, x1: 478, zN: -127 };
 export const SHORE = { x0: -296, x1: 536 };
 export const TUNNEL = { w: -298, e: 538 };
-export const BOUNDS = { x0: -292, x1: 532, z0: -182, z1: 190 };
+// (the cycling loop takes the walk out over both headlands and up the hills: routeplan.js)
+export const BOUNDS = { x0: -404, x1: 664, z0: -258, z1: 190 };
 
 // 桜川: channel between x = 174 and 190, 2 m revetment walls, 8 m sakura paths on both banks
 export const RIVER = { x: 182, inner: 8, wall: 2, zHead: -126, pathW: [166, 174], pathE: [190, 198] };
@@ -141,7 +143,29 @@ function hillHeight(x, z, d) {
 
 // Uncarved ground: town slope, beach, hills, shrine terrace, tunnel cuttings.
 // Roads and bridges follow this surface; the river channel is carved by terrainH.
+// The hills round the town are then shaped for the cycling loop (routeplan.js).
 export function groundH(x, z) {
+  if (!sculptReady()) initSculpt(baseGroundH, outsideDist, SCULPT_RULES);
+  return baseGroundH(x, z) + sculptDelta(x, z);
+}
+
+// what the shaping of the hills must respect: the railway, the coast road and the promenade
+// between the two portals stay as built, and the hill behind each portal stays up to its face
+// wall's coping and over the tubes the trains and cars run into (railway.js portal)
+const SCULPT_RULES = {
+  keep: (x, z) => z > 44 && z < 73.2 && x >= TUNNEL.w && x <= TUNNEL.e,
+  floor: (x, z) => {
+    const c = Math.max(TUNNEL.w - x, x - TUNNEL.e);
+    if (c <= 0 || c > 66 || z < 45 || z > 72.5) return -Infinity;
+    // up to the coping just behind the face, falling away to a cover over the tubes
+    const face = 15.2 - Math.max(0, c - 8);
+    const tubes = z > RAIL_Z - 4 && z < 70.5 ? 10.8 - Math.max(0, c - 58) : -Infinity;
+    return Math.max(face, tubes);
+  },
+};
+
+// the ground before the hills were shaped for the cycling loop
+export function baseGroundH(x, z) {
   let h;
   if (z <= SEAWALL_Z) h = townH(Math.min(z, 61));
   else h = beachH(x, z);
@@ -150,8 +174,10 @@ export function groundH(x, z) {
   let hill = hillHeight(x, z, d);
   if (z > 46 && z < 74) {
     // portals for rail and road: the hill rises right behind the concrete face walls
+    // (only near the portals: further out the strip would rise into a wedge hundreds of
+    // metres high at the edge of the world)
     const c = Math.max(TUNNEL.w - x, x - TUNNEL.e);
-    if (c > 0) hill = Math.max(hill, clamp(c / 2, 0, 1) * 10 + c * 0.35);
+    if (c > 0) hill = Math.max(hill, clamp(c / 2, 0, 1) * 10 + Math.min(c, 40) * 0.35);
     else if (z > 49 && z < 71) hill = 0;
   }
   h += hill;

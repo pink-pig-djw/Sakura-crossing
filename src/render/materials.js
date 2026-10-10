@@ -525,6 +525,69 @@ export function createRoadMaterial() {
           albedo = pv;
           float ts = band(u, W * 0.5 - 0.15, W * 0.5 + 0.15);
           albedo = mix(albedo, yellow * 0.92, ts * 0.9);
+        } else if (style >= 14) {
+          // さくら一周ライン (u across from the left edge, v along the way the loop runs)
+          vec3 blue = vec3(0.16, 0.45, 0.82);
+          float leaf = vnoise(vWorldPos.xz * 0.55) * vnoise(vWorldPos.xz * 2.3 + 4.1);
+          if (style == 14 || style == 18) {
+            // mountain road / plateau skyline: asphalt, white edge lines, the blue guide line
+            // inside the left one with an arrow every 25 m (the plateau also a yellow centre)
+            albedo = applyPattern(vec3(0.33, 0.34, 0.37), 6.0, vUv, vWorldPos, vNormalW);
+            float e = band(u, 0.18, 0.32) + band(u, W - 0.32, W - 0.18);
+            albedo = mix(albedo, white, e * wear);
+            if (style == 18) {
+              float c = band(u, W * 0.5 - 0.17, W * 0.5 - 0.05) + band(u, W * 0.5 + 0.05, W * 0.5 + 0.17);
+              albedo = mix(albedo, yellow, c * wear);
+            }
+            albedo = mix(albedo, blue, band(u, 0.42, 0.56) * (0.85 + 0.15 * wear));
+            float a = mod(v, 25.0);
+            float ax = (u - 0.95) / 0.5;
+            float arrow = band(a, 0.0, 1.6) * step(abs(ax - 0.5) * 2.0, 1.0 - a / 1.6);
+            albedo = mix(albedo, blue, arrow * 0.9);
+            // moss and fallen leaves gather at the edges in the woods
+            float edge = 1.0 - band(u, 0.7, W - 0.7);
+            albedo = mix(albedo, vec3(0.36, 0.42, 0.26), edge * smoothstep(0.32, 0.6, leaf) * 0.55 * float(style == 14));
+          } else if (style == 15) {
+            // steep concrete farm road with rings pressed in for grip (the mikan slopes)
+            vec3 conc = vec3(0.68, 0.67, 0.63) * (0.92 + 0.1 * vnoise(vWorldPos.xz * 1.3));
+            vec2 rc = vec2(u, v) / 0.42;
+            vec2 cell = floor(rc) + 0.5;
+            float d = length((rc - cell) * 0.42);
+            float ring = band(d, 0.11, 0.135);
+            conc *= 1.0 - 0.32 * ring * band(u, 0.25, W - 0.25);
+            albedo = conc * (1.0 - 0.1 * aaLines(v, 6.0, 0.02));
+          } else if (style == 20) {
+            // gravel farm track between the paddies: two wheel ruts and grass down the middle
+            vec3 grav = vec3(0.6, 0.55, 0.47) * (0.85 + 0.25 * hash12(floor(vWorldPos.xz * 9.0)));
+            float mid = band(u, W * 0.5 - 0.42, W * 0.5 + 0.42) * smoothstep(0.25, 0.55, vnoise(vec2(u * 3.0, v * 1.4)));
+            float rut = band(u, W * 0.5 - 1.2, W * 0.5 - 0.6) + band(u, W * 0.5 + 0.6, W * 0.5 + 1.2);
+            grav *= 1.0 - 0.12 * rut;
+            float verge = 1.0 - band(u, 0.25, W - 0.25);
+            albedo = mix(grav, vec3(0.42, 0.56, 0.28) * (0.85 + 0.2 * vnoise(vWorldPos.xz * 3.0)), max(mid, verge * 0.85));
+          } else if (style == 16) {
+            // stone slabs (石畳) under the torii, moss in the joints
+            float row = floor(v / 0.55);
+            float ux = u + hash12(vec2(row, 7.7)) * 0.6;
+            float cellH = hash12(vec2(floor(ux / 0.75), row));
+            vec3 stone = mix(vec3(0.62, 0.6, 0.55), vec3(0.5, 0.49, 0.46), cellH) * (0.92 + 0.1 * vnoise(vWorldPos.xz * 2.0));
+            float j = max(aaLines(v, 0.55, 0.035), aaLines(ux, 0.75, 0.035));
+            albedo = mix(stone, vec3(0.3, 0.4, 0.22), j * 0.85);
+            float edge = 1.0 - band(u, 0.2, W - 0.2);
+            albedo = mix(albedo, vec3(0.34, 0.42, 0.25), edge * 0.6);
+          } else if (style == 17) {
+            // harbour concrete: big cast slabs, rust and fish-box stains
+            vec3 conc = vec3(0.7, 0.69, 0.66) * (0.9 + 0.12 * vnoise(vWorldPos.xz * 0.6));
+            conc *= 1.0 - 0.2 * max(aaLines(vWorldPos.x, 5.0, 0.03), aaLines(vWorldPos.z, 5.0, 0.03));
+            conc = mix(conc, vec3(0.55, 0.5, 0.44), smoothstep(0.62, 0.75, vnoise(vWorldPos.xz * 0.35)) * 0.4);
+            albedo = mix(conc, blue, band(u, 0.45, 0.59) * 0.9);
+          } else if (style == 19) {
+            // the hand-dug tunnel's floor: old concrete, damp
+            vec3 conc = vec3(0.46, 0.45, 0.42) * (0.85 + 0.2 * vnoise(vWorldPos.xz * 1.1));
+            albedo = mix(conc, conc * 0.7, smoothstep(0.55, 0.75, vnoise(vWorldPos.xz * 0.4 + 3.0)));
+          } else if (style == 21) {
+            // the blue line painted along the promenade, an arrow and a bicycle mark now and then
+            albedo = blue;
+          }
         }
         vec3 N = normalize(vNormalW);
         float sh = getShadowMask();
@@ -628,6 +691,108 @@ export function createRiverWaterMaterial() {
         float alpha = mix(0.5, 0.82, mid) + 0.15 * fres;
         alpha = max(alpha, max(foam, petal * 0.95));
         gl_FragColor = vec4(col, alpha);
+      }
+    `,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// A waterfall: a sheet of water falling over a lip. uv.x across (0..1), uv.y metres down
+// from the lip; vColor.r = how far down the sheet reaches (for the foam at its foot)
+// ---------------------------------------------------------------------------
+export function createFallsMaterial() {
+  const uniforms = makeUniforms();
+  return new THREE.ShaderMaterial({
+    name: 'falls',
+    lights: true,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms,
+    vertexShader: /* glsl */ `
+      ${VERT_COMMON}
+      void main() {
+        ${VERT_MAIN}
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD}
+      void main() {
+        float u = vUv.x, d = vUv.y, H = vColor.r;
+        float t = uTime;
+        // streaks of white water racing down, stretched as they fall
+        float s1 = vnoise(vec2(u * 26.0, d * 0.55 - t * 3.4));
+        float s2 = vnoise(vec2(u * 61.0 + 3.0, d * 1.3 - t * 5.2));
+        float streak = smoothstep(0.42, 0.78, s1 * 0.65 + s2 * 0.45);
+        float sh = getShadowMask();
+        vec3 lit = mix(uSkyAmb * 1.1, uSkyAmb + uSunColor, 0.35 + 0.65 * sh);
+        vec3 body = vec3(0.55, 0.68, 0.7) * lit;
+        vec3 white = vec3(0.93, 0.97, 1.0) * mix(uSkyAmb * 1.25, uSkyAmb + uSunColor, 0.45 + 0.55 * sh);
+        vec3 col = mix(body, white, streak * 0.85 + smoothstep(H - 1.6, H, d) * 0.7);
+        col = applyHaze(col, vWorldPos);
+        // thin and broken at the edges, solid in the middle, frothing at the foot
+        float edge = smoothstep(0.0, 0.14, u) * smoothstep(1.0, 0.86, u);
+        float alpha = (0.55 + 0.4 * streak) * edge;
+        alpha *= 0.75 + 0.25 * vnoise(vec2(u * 8.0, d * 0.3 - t * 2.0));
+        gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.95));
+      }
+    `,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Flooded rice paddies (水鏡): still water holding the sky, faint wind ripples, the
+// seedlings of a planted field in rows. vColor.g = 1 where planted.
+// ---------------------------------------------------------------------------
+export function createPaddyMaterial() {
+  const uniforms = makeUniforms();
+  uniforms.uOutline.value = 0.35;
+  return new THREE.ShaderMaterial({
+    name: 'paddy',
+    lights: true,
+    vertexColors: true,
+    uniforms,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+    vertexShader: /* glsl */ `
+      ${VERT_COMMON}
+      void main() {
+        ${VERT_MAIN}
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${FRAG_HEAD}
+      uniform vec3 uZenith;
+      uniform vec3 uHorizon;
+      void main() {
+        vec2 p = vWorldPos.xz;
+        float t = uTime;
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        // cat's-paws of wind now and then, otherwise a mirror
+        float gust = smoothstep(0.55, 0.85, vnoise(p * 0.05 + vec2(t * 0.05, -t * 0.03)));
+        float nx = vnoise(p * 2.1 + vec2(t * 0.6, 0.0)) - 0.5;
+        float nz = vnoise(p * 2.3 + vec2(0.0, t * 0.5) + 7.0) - 0.5;
+        vec3 N = normalize(vec3(nx * (0.015 + 0.08 * gust), 1.0, nz * (0.015 + 0.08 * gust)));
+        float fres = 0.25 + 0.75 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+        vec3 R = reflect(-V, N);
+        vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.6));
+        float sh = getShadowMask();
+        // muddy water over the soil, darker where it is deeper in the middle
+        vec3 body = vec3(0.26, 0.24, 0.18) * mix(uSkyAmb * 1.05, uSkyAmb + uSunColor, 0.3 + 0.7 * sh);
+        vec3 col = mix(body, sky * (0.75 + 0.25 * sh), clamp(fres, 0.0, 0.92));
+        // seedlings in rows (planted fields)
+        vec2 g = p / vec2(0.3, 0.22);
+        vec2 f = abs(fract(g) - 0.5);
+        float dot1 = smoothstep(0.2, 0.08, max(f.x * 1.3, f.y));
+        float fade = 1.0 - smoothstep(18.0, 40.0, distance(cameraPosition, vWorldPos));
+        col = mix(col, vec3(0.35, 0.52, 0.22) * mix(uSkyAmb * 1.1, uSkyAmb + uSunColor, 0.4 + 0.6 * sh), dot1 * vColor.g * fade * 0.85);
+        // the sun's glitter
+        float sd = max(dot(R, uSunDir), 0.0);
+        col += (uSunColor * 1.5 + uSunGlow) * pow(sd, 220.0) * 2.0 * sh * (1.0 - uNight);
+        col = applyHaze(col, vWorldPos);
+        gl_FragColor = vec4(col, uOutline);
       }
     `,
   });

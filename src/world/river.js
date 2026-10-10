@@ -87,7 +87,8 @@ function buildWalls(ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// headwall + box culvert where the river comes out from under the hill
+// headwall + box culvert where the river comes out from under the hill (its upper course,
+// the stream down the gorge, is in hills.js)
 // ---------------------------------------------------------------------------
 function buildHeadwall(ctx) {
   const b = ctx.builders.get('toon', RX, ZH);
@@ -116,7 +117,8 @@ function buildHeadwall(ctx) {
     if (n.dot(new THREE.Vector3().subVectors(ctr, f)) < 0) b.quad(bb, a, dd, c, dark, 0);
     else b.quad(a, bb, c, dd, dark, 0);
   };
-  inQuad(V(o0, bot, zi), V(o1, bot, zi), V(o1, oTop, zi), V(o0, oTop, zi)); // back
+  // (no back: the culvert runs through to its inlet, where the stream comes down the gorge;
+  // the inlet's headwall is built with the gorge in hills.js)
   inQuad(V(o0, bot, zi), V(o0, bot, z0), V(o0, oTop, z0), V(o0, oTop, zi)); // west side
   inQuad(V(o1, bot, z0), V(o1, bot, zi), V(o1, oTop, zi), V(o1, oTop, z0)); // east side
   inQuad(V(o0, oTop, zi), V(o1, oTop, zi), V(o1, oTop, z0), V(o0, oTop, z0)); // ceiling

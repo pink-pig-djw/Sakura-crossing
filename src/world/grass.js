@@ -4,6 +4,7 @@ import { PAT } from '../core/builder.js';
 import { terrainH, outsideDist, roadAt, overRiver, RAIL_Z, HOLES } from './layout.js';
 import { grassTint } from './terrain.js';
 import { createGrassMaterial } from '../render/materials.js';
+import { roadDist } from './routeplan.js';
 import { grassTexture, canvasTexture } from './greenery.js';
 
 // Grass tufts: crossed blade cards scattered over lawns, verges, embankments and
@@ -49,7 +50,8 @@ export function buildGrass(ctx) {
       const px = x + rng.range(-0.5, 0.5) * cell, pz = z + rng.range(-0.5, 0.5) * cell;
       const keep = rng.next();
       const out = outsideDist(px, pz);
-      if (out > 14) continue;
+      // (the hills are left bare but along the cycling loop's verges)
+      if (out > 14 && roadDist(px, pz) > 7.5) continue;
       const ti = (Math.floor((pz - gm.z0) * gm.ppm) * gm.w + Math.floor((px - gm.x0) * gm.ppm)) * 4;
       const type = gm.data[ti + 3];
       if (type !== 0 && type !== grassType) continue;
@@ -58,7 +60,7 @@ export function buildGrass(ctx) {
       const n = fbm2(px * 0.09, pz * 0.09, 2);
       const p = type === grassType ? 0.85 : out > 0 ? 0.25 + 0.55 * smoothstep(0.3, 0.7, n) : 0.15 + 0.8 * smoothstep(0.35, 0.68, n);
       if (keep > p) continue;
-      if (Math.abs(pz - RAIL_Z) < 2.1 || overRiver(px, pz, 0.4) || roadAt(px, pz, 0.25)) continue;
+      if (Math.abs(pz - RAIL_Z) < 2.1 || overRiver(px, pz, 0.4) || roadAt(px, pz, 0.25) || roadDist(px, pz) < 2.3) continue;
       const th = terrainH(px, pz);
       const gy = C.groundAt(px, pz);
       if (Math.abs(gy - th) > 0.03) continue; // something walkable is built over it

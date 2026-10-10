@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RNG, noise2 } from '../core/rng.js';
 import { PAT, MeshBuilder } from '../core/builder.js';
 import { terrainH, shoreZ, beachH, SEAWALL_Z, PROM, COAST, BEACH_STAIRS, BREAKWATER, SHORE, RIVER } from './layout.js';
+import { HARBOR } from './routeplan.js';
 import { G } from '../render/materials.js';
 import { NOISE } from '../render/glsl.js';
 
@@ -201,7 +202,8 @@ export function buildCoast(ctx) {
     ctx.colliders.addSurface(r0, zA, r1, zB, (px) => COAST.y + (wallTop - COAST.y) * Math.min(1, Math.max(0, (r1 - px) / RAMP_LEN)), 2);
   }
   // the parapet runs on over the river's wall tops up to the bridge railings
-  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0 + RIVER.wall, RW1 - RIVER.wall]]);
+  // (and where the cycling loop's ramp goes down through the wall onto the harbour quay)
+  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0 + RIVER.wall, RW1 - RIVER.wall], HARBOR.ramp]);
   const inGap = (x) => gaps.some(([a, b]) => x > a && x < b);
   let x = X0;
   while (x < X1) {
@@ -219,6 +221,15 @@ export function buildCoast(ctx) {
   for (let x = X0; x < X1; x += 4) {
     const x1 = Math.min(X1, x + 4);
     if (x1 > RW0 && x < RW1) continue;
+    if (x1 > HARBOR.ramp[0] && x < HARBOR.ramp[1]) {
+      // (the face either side of the ramp's gap)
+      for (const [a, b] of [[x, HARBOR.ramp[0]], [HARBOR.ramp[1], x1]]) {
+        if (b - a < 0.05) continue;
+        const by = beachH(a, SEAWALL_Z + 0.5);
+        B(a, 74).boxMM(a, by - 1.0, SEAWALL_Z, b, wallTop + 0.01, SEAWALL_Z + 0.6, { color: 0xc4c0b5, pattern: PAT.CONCRETE, ao: 0.15 });
+      }
+      continue;
+    }
     const by = Math.min(beachH(x, SEAWALL_Z + 0.5), beachH(x1, SEAWALL_Z + 0.5));
     B(x, 74).boxMM(x, by - 1.0, SEAWALL_Z, x1, wallTop + 0.01, SEAWALL_Z + 0.6, { color: 0xc4c0b5, pattern: PAT.CONCRETE, ao: 0.15 });
     B(x, 74).boxMM(x, by - 0.6, SEAWALL_Z + 0.6, x1, by + 0.35, SEAWALL_Z + 1.4, { color: 0xbdb9ae, pattern: PAT.CONCRETE, ao: 0.2 });
@@ -372,7 +383,8 @@ function palm(ctx, x, y, z, rng) {
 
 // Small FRP fishing boat hauled up the beach bow-first to the sea, resting on two
 // wooden blocks (盤木) with its outboard tilted up. Returns a seat point for a cat.
-function boat(ctx, x, z, ry, rng) {
+// a small fishing boat hauled up on the sand (o.float: afloat at that water height instead)
+export function boat(ctx, x, z, ry, rng, o = {}) {
   const L = rng.range(5.4, 6.3), Bm = rng.range(1.7, 1.92);
   const hullC = rng.pick([0xf4f4f0, 0xeceae2, 0xe3ebf1]);
   const band = rng.pick([0x2f6fb0, 0xc0392b, 0x2e8a5a, 0x1f4f8a]);
@@ -382,8 +394,8 @@ function boat(ctx, x, z, ry, rng) {
   const fx = Math.sin(ry), fz = Math.cos(ry);
   const sA = -0.3 * L, sB = 0.24 * L;
   const gA = terrainH(x + fx * sA, z + fz * sA), gB = terrainH(x + fx * sB, z + fz * sB);
-  const pitch = Math.atan2(gB - gA, sB - sA);
-  const y0 = gA + blockH - sA * Math.tan(pitch);
+  const pitch = o.float !== undefined ? 0 : Math.atan2(gB - gA, sB - sA);
+  const y0 = o.float !== undefined ? o.float - 0.28 : gA + blockH - sA * Math.tan(pitch);
   const m = new THREE.Matrix4().compose(V(x, y0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, ry, 0, 'YXZ')), V(1, 1, 1));
   const b = ctx.builders.get('toon', x, z);
   const d = b.detail || b;
@@ -468,7 +480,7 @@ function boat(ctx, x, z, ry, rng) {
   if (d !== b) d.pop();
   // wooden blocks under the keel, bedded in the sand
   const wb = ctx.builders.get('toon', x, z);
-  for (const sl of [sA, sB]) {
+  for (const sl of o.float !== undefined ? [] : [sA, sB]) {
     const top = V(0, 0, sl).applyMatrix4(m);
     const g = terrainH(top.x, top.z);
     const h = top.y - g + 0.12;
@@ -482,7 +494,7 @@ function boat(ctx, x, z, ry, rng) {
 }
 
 // a tetrapod resting on the ground: its lowest leg tip bites a little into the sand
-function tetrapod(b, x, ground, z, s, rng) {
+export function tetrapod(b, x, ground, z, s, rng) {
   const c = rng.pick([0xbab6ad, 0xc4c0b6, 0xafaba2]);
   const legs = [V(0, 1, 0), V(0.943, -0.333, 0), V(-0.471, -0.333, 0.816), V(-0.471, -0.333, -0.816)];
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)));

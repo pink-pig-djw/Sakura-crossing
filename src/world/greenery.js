@@ -239,6 +239,148 @@ function pineTexture() {
   return c;
 }
 
+// cedar (杉) foliage: drooping sprays fanning down and out from the top of the card, ragged
+// with needles, darker underneath (a tier of the spire seen from the side)
+function cedarTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const g = c.getContext('2d');
+  const rnd = new RNG(29);
+  const sprays = [];
+  for (let i = 0; i < 16; i++) {
+    const a = Math.PI * (0.12 + 0.76 * rnd.next());
+    sprays.push({ a, len: rnd.range(60, 110), w: rnd.range(16, 26), x: S / 2 + rnd.range(-26, 26), y: S * 0.22 + rnd.range(-10, 26), v: rnd.range(120, 215) });
+  }
+  sprays.sort((p, q) => p.v - q.v);
+  for (const sp of sprays) {
+    const ca = Math.cos(sp.a), sa = Math.sin(sp.a);
+    const nx = -sa, ny = ca;
+    // the spray's body: tapered, slightly arched
+    g.fillStyle = gray(sp.v * 0.82);
+    g.beginPath();
+    g.moveTo(sp.x + nx * sp.w * 0.5, sp.y + ny * sp.w * 0.5);
+    g.quadraticCurveTo(sp.x + ca * sp.len * 0.5 + nx * sp.w * 0.45, sp.y + sa * sp.len * 0.55 + ny * sp.w * 0.45, sp.x + ca * sp.len, sp.y + sa * sp.len);
+    g.quadraticCurveTo(sp.x + ca * sp.len * 0.5 - nx * sp.w * 0.45, sp.y + sa * sp.len * 0.55 - ny * sp.w * 0.45, sp.x - nx * sp.w * 0.5, sp.y - ny * sp.w * 0.5);
+    g.closePath();
+    g.fill();
+    // needles bristling along it, lit from above
+    for (let k = 0; k < sp.len; k += 2.6) {
+      const t = k / sp.len;
+      const px = sp.x + ca * k, py = sp.y + sa * k;
+      const half = sp.w * 0.5 * (1 - t * 0.85) + 2;
+      for (const e of [-1, 1]) {
+        const ox = px + nx * half * e, oy = py + ny * half * e;
+        g.strokeStyle = gray(sp.v * (e * ny < 0 ? 1.08 : 0.78) + rnd.range(-12, 12));
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.moveTo(px + nx * half * 0.6 * e, py + ny * half * 0.6 * e);
+        g.lineTo(ox + ca * 3 + rnd.range(-1.5, 1.5), oy + sa * 3 + 2.5);
+        g.stroke();
+      }
+    }
+  }
+  return c;
+}
+
+// a bunch of bamboo leaves: slender blades fanning down from a twig
+function bambooTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const g = c.getContext('2d');
+  const rnd = new RNG(43);
+  for (let b = 0; b < 7; b++) {
+    const ox = S / 2 + rnd.range(-50, 50), oy = S * 0.3 + rnd.range(-40, 40);
+    const n = rnd.int(4, 7);
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI * 0.5 + rnd.range(-1.15, 1.15);
+      const len = rnd.range(46, 78);
+      const v = 150 + rnd.next() * 100;
+      g.fillStyle = gray(v);
+      leafPath(g, ox, oy, a, len, len * 0.11);
+      g.fill();
+      g.strokeStyle = gray(v - 35);
+      g.lineWidth = 0.8;
+      g.beginPath();
+      g.moveTo(ox, oy);
+      g.lineTo(ox + Math.cos(a) * len * 0.8, oy + Math.sin(a) * len * 0.8);
+      g.stroke();
+    }
+  }
+  return c;
+}
+
+// round fruit (mikan) hanging among the leaves: shaded discs with a highlight
+function fruitTexture() {
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const g = c.getContext('2d');
+  const rnd = new RNG(61);
+  for (let i = 0; i < 7; i++) {
+    const x = S / 2 + rnd.range(-36, 36), y = S / 2 + rnd.range(-30, 34), r = rnd.range(9, 13);
+    const gr = g.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    gr.addColorStop(0, gray(255));
+    gr.addColorStop(0.55, gray(205));
+    gr.addColorStop(1, gray(150));
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  return c;
+}
+
+// pampas (ススキ): long arching blades and a silky plume on top of each stem
+export function pampasTexture() {
+  const W = 128, H = 256;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d');
+  const rnd = new RNG(151);
+  // blades
+  for (let i = 0; i < 26; i++) {
+    const bx = rnd.range(20, W - 20), h = H * rnd.range(0.3, 0.62);
+    const lean = rnd.range(-0.6, 0.6) * h;
+    const gr = g.createLinearGradient(0, H, 0, H - h);
+    gr.addColorStop(0, gray(60));
+    gr.addColorStop(1, gray(rnd.range(150, 200)));
+    g.fillStyle = gr;
+    g.beginPath();
+    g.moveTo(bx - 2, H);
+    g.quadraticCurveTo(bx + lean * 0.2, H - h * 0.7, bx + lean, H - h);
+    g.quadraticCurveTo(bx + lean * 0.25, H - h * 0.65, bx + 2.5, H);
+    g.fill();
+  }
+  // stems with plumes (the tint's brightest part)
+  for (let i = 0; i < 7; i++) {
+    const bx = rnd.range(26, W - 26), top = H * rnd.range(0.06, 0.2);
+    const lean = rnd.range(-16, 16);
+    g.strokeStyle = gray(120);
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(bx, H);
+    g.quadraticCurveTo(bx + lean * 0.3, H * 0.5, bx + lean, top + 34);
+    g.stroke();
+    for (let k = 0; k < 30; k++) {
+      const t = k / 30;
+      const px = bx + lean + Math.sin(t * 3 + i) * 4, py = top + 34 - t * 40;
+      g.strokeStyle = gray(225 + rnd.range(-10, 30));
+      g.lineWidth = 1.3;
+      g.beginPath();
+      g.moveTo(px, py);
+      g.quadraticCurveTo(px + 8 + rnd.range(0, 6), py + 4, px + 14 + rnd.range(0, 8), py + 12 + rnd.range(0, 6));
+      g.stroke();
+    }
+  }
+  return c;
+}
+
 // blades fanning up from the bottom edge, dark at the root
 export function grassTexture() {
   const W = 128, H = 128;
@@ -504,8 +646,13 @@ export function buildFoliageMeshes(fs, scene) {
     hedge: canvasTexture(clumpTexture('hedge')),
     shrub: canvasTexture(clumpTexture('shrub')),
     flower: canvasTexture(flowerTexture()),
+    cedar: canvasTexture(cedarTexture()),
+    bamboo: canvasTexture(bambooTexture()),
+    fruit: canvasTexture(fruitTexture()),
   };
   tex.forest = tex.leaf;
+  tex.mikan = tex.shrub;
+  tex.tea = tex.hedge;
   const opts = {
     blossom: { outline: 0.3, soft: 0.22, wrap: 0.2, ambTint: 0xf8d6e4, shadeSat: 0.85, trans: 0.14 },
     leaf: { outline: 0.3, soft: 0.2, wrap: 0.05, ambTint: 0xd8ecd8 },
@@ -514,6 +661,11 @@ export function buildFoliageMeshes(fs, scene) {
     hedge: { outline: 0.22, soft: 0.24, wrap: 0.06, ambTint: 0xd4e8d2 },
     shrub: { outline: 0.25, soft: 0.22, wrap: 0.06, ambTint: 0xd4e8d2 },
     flower: { outline: 0.2, soft: 0.3, wrap: 0.15, ambTint: 0xffe8f0 },
+    cedar: { outline: 0.15, soft: 0.22, wrap: 0.02, ambTint: 0xc8d8d4, shadeSat: 0.9 },
+    bamboo: { outline: 0.15, soft: 0.3, wrap: 0.15, ambTint: 0xe0f0d0, trans: 0.22 },
+    fruit: { outline: 0.25, soft: 0.25, wrap: 0.1, ambTint: 0xfff0e0 },
+    mikan: { outline: 0.25, soft: 0.2, wrap: 0.05, ambTint: 0xd0e4d0 },
+    tea: { outline: 0.2, soft: 0.26, wrap: 0.08, ambTint: 0xd8ecd0 },
   };
   const mats = {};
   for (const k of Object.keys(opts)) mats[k] = createFoliageMaterial(tex[k], opts[k]);
@@ -525,7 +677,7 @@ export function buildFoliageMeshes(fs, scene) {
     const mesh = new THREE.Mesh(fb.toGeometry(), m.material);
     mesh.customDepthMaterial = m.depth;
     // low planting is shadowed through its own core boxes; only tree crowns cast
-    mesh.castShadow = !['flower', 'hedge', 'shrub'].includes(fb.kind);
+    mesh.castShadow = !['flower', 'hedge', 'shrub', 'fruit', 'tea'].includes(fb.kind);
     mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     group.add(mesh);

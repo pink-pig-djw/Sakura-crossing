@@ -21,6 +21,11 @@ import { buildSubway } from './subway.js';
 import { buildInteriors } from './interiors.js';
 import { buildEastside } from './eastside.js';
 import { buildSentoInterior } from './sento.js';
+import { buildCycleRoute } from './cycleroute.js';
+import { buildHills, openGround } from './hills.js';
+import { buildHills2 } from './hills2.js';
+import { buildShores } from './shores.js';
+import { roadDist } from './routeplan.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -58,6 +63,9 @@ function forest(ctx) {
     const z = rng.range(-520, 175);
     const d = outsideDist(x, z);
     if (d < 6) continue;
+    // clear of the cycling loop's roads and the open ground along them (their own planting
+    // is done with them)
+    if (roadDist(x, z) < 11 || openGround(x, z)) continue;
     const y = terrainH(x, z);
     if (y < 2.0 || y > 90) continue;
     if (x > SHRINE.terraceX0 - 6 && x < SHRINE.terraceX1 + 6 && z > SHRINE.terraceZ1 - 6 && z < SHRINE.z0 + 2) continue;
@@ -69,7 +77,7 @@ function forest(ctx) {
   // a few sakura on the hillsides (yamazakura)
   for (let i = 0; i < 56; i++) {
     const x = rng.range(-380, 460), z = rng.range(-300, -140);
-    if (outsideDist(x, z) < 8) continue;
+    if (outsideDist(x, z) < 8 || roadDist(x, z) < 9 || openGround(x, z)) continue;
     ctx.trees.push({ kind: 'sakura', x, z, seed: rng.int(1, 1e9), scale: rng.range(1.0, 1.3) });
   }
 }
@@ -102,7 +110,7 @@ export async function buildWorld(scene, opts = {}) {
     scene,
     materials,
     builders: new ChunkedBuilders(48),
-    ground: new GroundMap(-300, -192, 540, 100, 3),
+    ground: new GroundMap(-440, -264, 700, 112, 3),
     colliders: new Colliders(8),
     atlas,
     atlas2,
@@ -129,6 +137,8 @@ export async function buildWorld(scene, opts = {}) {
   await tick();
   paintRoadsides(ctx);
   buildRoads(ctx);
+  AUDIT.tag = 'cycleroute';
+  buildCycleRoute(ctx);
 
   progress(0.08, '家を建てています');
   await tick();
@@ -185,6 +195,12 @@ export async function buildWorld(scene, opts = {}) {
   buildCoast(ctx);
   AUDIT.tag = 'river';
   buildRiver(ctx);
+  AUDIT.tag = 'hills';
+  ctx.hills = buildHills(ctx, scene);
+  AUDIT.tag = 'hills2';
+  ctx.hills2 = buildHills2(ctx, scene);
+  AUDIT.tag = 'shores';
+  ctx.shores = buildShores(ctx, scene);
 
   progress(0.68, '街をつくっています');
   await tick();

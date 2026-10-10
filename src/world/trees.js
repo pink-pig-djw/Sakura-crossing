@@ -18,6 +18,10 @@ const DARK_GREENS = ['#4f7f52', '#5b8c56', '#467548', '#5f8f5a'].map((h) => new 
 const PINE_COLS = ['#3f6b48', '#4a7a50', '#38623f'].map((h) => new THREE.Color(h));
 // fresh spring leaves of the avenue zelkovas (けやき)
 const ZELKOVA_COLS = ['#a9c97a', '#9cc070', '#b5d189', '#8fb867', '#a3c574'].map((h) => new THREE.Color(h));
+// cedar spires: deep blue-greens; mikan: dark glossy leaves and the fruit
+const CEDAR_COLS = ['#3d5f4c', '#46684f', '#355747', '#4c6e55'].map((h) => new THREE.Color(h));
+const MIKAN_COLS = ['#3f6e3c', '#4a7a42', '#386537', '#52823f'].map((h) => new THREE.Color(h));
+const FRUIT_COLS = ['#f7a02a', '#f39424', '#fbb03a', '#f08a1e'].map((h) => new THREE.Color(h));
 
 function branchPath(start, dir, len, bend, rng, segs = 5) {
   const pts = [start.clone()];
@@ -83,6 +87,9 @@ const CROWN = {
   shrubTree: { r: 1.4, cy: 1.75 },
   zelkova: { r: 4.1, cy: 7.5 },
   pine: { r: 1.6, cy: 3.5 },
+  cedar: { r: 2.4, cy: 11 },
+  blackpine: { r: 2.6, cy: 8.5 },
+  mikan: { r: 1.5, cy: 1.6 },
 };
 
 // Keep crowns out of buildings: shrink a tree until its crown clears every solid
@@ -237,6 +244,86 @@ export function buildTrees(ctx, specs) {
       const cc = V(top.x, y0 + H - R * 0.55, top.z);
       canopy(fol.get('leaf', sp.x, sp.z), cc, R, R * 0.62, ZELKOVA_COLS, rng, { puffs: 16, cardsPer: 6, cardSize: [1.2, 1.8], flatBottom: -0.1 });
       ctx.colliders.addCircle(sp.x, sp.z, 0.32);
+    } else if (sp.kind === 'cedar') {
+      // 杉: a straight reddish trunk and a slim dark spire of drooping sprays, tier on tier
+      const H = rng.range(15, 21) * s;
+      const r0 = rng.range(0.22, 0.3) * s;
+      const lean = V(rng.range(-0.02, 0.02), 1, rng.range(-0.02, 0.02));
+      const trunk = branchPath(V(sp.x, y0 - 0.4, sp.z), lean, H * 0.92, 0.01, rng, 4);
+      tb.tube(trunk, trunk.map((_, i) => r0 * (1 - i * 0.2) + 0.02), 6, 0x7a5444, PAT.BARK);
+      const fb = fol.get('cedar', sp.x, sp.z);
+      const top = V(sp.x + lean.x * H, y0 + H, sp.z + lean.z * H);
+      const R = rng.range(2.2, 2.8) * s;
+      const base = rng.range(0.3, 0.4);
+      const tiers = 9;
+      for (let k = 0; k < tiers; k++) {
+        const t = k / (tiers - 1);
+        const y = y0 + H * (base + (1 - base) * t * 0.95);
+        const r = R * Math.pow(1 - t * 0.88, 1.05) + 0.2;
+        const n = Math.max(3, Math.round(7 - t * 4));
+        const a0 = rng.next() * Math.PI * 2;
+        const cy = V(sp.x + lean.x * (y - y0), y, sp.z + lean.z * (y - y0));
+        for (let i = 0; i < n; i++) {
+          const a = a0 + (i / n) * Math.PI * 2 + rng.range(-0.25, 0.25);
+          const p = V(cy.x + Math.cos(a) * r * 0.58, y + rng.range(-0.2, 0.2), cy.z + Math.sin(a) * r * 0.58);
+          const nrm = V(Math.cos(a), 0.4, Math.sin(a)).normalize();
+          const col = CEDAR_COLS[(k + i) % CEDAR_COLS.length].clone().multiplyScalar(0.86 + t * 0.2);
+          fb.card4(p, nrm, col, cy, (0.5 + r * 0.36) * rng.range(0.9, 1.12), rng.range(-0.25, 0.25));
+        }
+        // a darker core so the spire reads solid between the sprays
+        const dk = CEDAR_COLS[2].clone().multiplyScalar(0.62);
+        fb.card4(cy.clone(), V(0, 0.3, 1).normalize(), dk, cy, 0.35 + r * 0.32, 0);
+      }
+      fb.card4(top.clone().add(V(0, -0.5, 0)), V(0, 1, 0), CEDAR_COLS[1], top, 1.1 * s, 0);
+      ctx.colliders.addCircle(sp.x, sp.z, r0 + 0.1);
+    } else if (sp.kind === 'blackpine') {
+      // クロマツ by the sea: a tall trunk bent by the wind, flat pads of needles at the top
+      const H = rng.range(8, 12) * s;
+      const pts = [base.clone()];
+      let p = base.clone();
+      const lean = sp.lean ?? [rng.range(-0.3, 0.3), rng.range(0.1, 0.35)];
+      let d = V(lean[0], 1, lean[1]).normalize();
+      for (let i = 0; i < 6; i++) {
+        d = V(d.x + rng.range(-0.18, 0.18), 1, d.z + rng.range(-0.18, 0.18)).normalize();
+        p = p.clone().addScaledVector(d, H / 6);
+        pts.push(p);
+      }
+      tb.tube(pts, pts.map((_, i) => 0.26 * s * (1 - i * 0.12)), 6, 0x4a3a32, PAT.BARK);
+      const fb = fol.get('pine', sp.x, sp.z);
+      const npads = rng.int(5, 8);
+      for (let i = 0; i < npads; i++) {
+        const k = 3 + Math.floor(rng.next() * (pts.length - 3));
+        const from = pts[Math.min(k, pts.length - 1)];
+        const a = rng.next() * Math.PI * 2;
+        const L = rng.range(1.0, 2.6) * s;
+        const to = from.clone().add(V(Math.cos(a) * L, rng.range(-0.2, 0.5), Math.sin(a) * L));
+        tb.rod(from, to, 0.1 * s, 0.05 * s, 4, 0x4a3a32);
+        const padC = to.clone().add(V(0, 0.3, 0));
+        const pr = rng.range(1.2, 2.0) * s;
+        for (let c = 0; c < 7; c++) {
+          const q = V(padC.x + rng.range(-pr, pr) * 0.8, padC.y + rng.range(-0.2, 0.25), padC.z + rng.range(-pr, pr) * 0.8);
+          fb.card4(q, V(0, 1, 0).add(q.clone().sub(padC).multiplyScalar(0.3)).normalize(), PINE_COLS[c % 3], padC, rng.range(1.0, 1.5) * s, rng.range(-0.3, 0.3));
+        }
+      }
+      ctx.colliders.addCircle(sp.x, sp.z, 0.34 * s);
+    } else if (sp.kind === 'mikan') {
+      // a low, round orange tree, pruned wide, fruit hanging on the outside of the crown
+      const H = rng.range(2.3, 3.0) * s;
+      const R = rng.range(1.25, 1.6) * s;
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + rng.range(-0.4, 0.4);
+        const pts = branchPath(base, V(Math.cos(a) * 0.5, 1, Math.sin(a) * 0.5), H * 0.5, 0.15, rng, 3);
+        tb.tube(pts, pts.map((_, k) => 0.07 * s * (1 - k * 0.2) + 0.015), 4, 0x6b5848, PAT.BARK);
+      }
+      const cc = V(sp.x, y0 + H * 0.55, sp.z);
+      canopy(fol.get('mikan', sp.x, sp.z), cc, R, R * 0.8, MIKAN_COLS, rng, { puffs: 7, cardsPer: 4, cardSize: [0.75, 1.05], puffScale: 0.55, flatBottom: -0.45 });
+      const fr = fol.get('fruit', sp.x, sp.z);
+      for (let i = 0; i < 9; i++) {
+        const u = rng.next() * Math.PI * 2, v = Math.acos(rng.range(-0.5, 0.7));
+        const q = V(cc.x + Math.sin(v) * Math.cos(u) * R * 0.92, cc.y + Math.cos(v) * R * 0.7, cc.z + Math.sin(v) * Math.sin(u) * R * 0.92);
+        fr.card4(q, q.clone().sub(cc).normalize(), FRUIT_COLS[i % FRUIT_COLS.length], cc, rng.range(0.32, 0.42) * s, rng.range(0, 6.28));
+      }
+      ctx.colliders.addCircle(sp.x, sp.z, 0.5 * s);
     } else if (sp.kind === 'pine') {
       const H = rng.range(3.5, 5.5) * s;
       const pts = [base.clone()];

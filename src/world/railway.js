@@ -204,6 +204,24 @@ function portal(ctx, side) {
     fitText(c, side > 0 ? '汐見トンネル' : '稲荷山トンネル', w * 0.9, h * 0.6, FONTS.mincho, '700');
     c.fillText(side > 0 ? '汐見トンネル' : '稲荷山トンネル', w / 2, h * 0.55);
   });
+  // a wing wall back along the south end, as far as the hill behind stands above the ground
+  // beside it (where the cycling loop comes down past the portal's corner); its top follows
+  // the hill, a coping along it
+  const xb = side > 0 ? fx1 : fx0;
+  const cols = [];
+  for (let k = 0; k <= 48; k++) {
+    const xx = xb + side * k * 0.5;
+    const top = Math.min(wallTop, groundH(xx, 72) + 0.35);
+    const foot = Math.min(groundH(xx, 74.6), groundH(xx, 76)) - 0.4;
+    cols.push({ x: xx, top, foot });
+    if (k > 2 && top - foot < 0.3) break;
+  }
+  for (let k = 0; k < cols.length - 1; k++) {
+    const [l, r] = side > 0 ? [cols[k], cols[k + 1]] : [cols[k + 1], cols[k]];
+    b.quad(V(l.x, l.foot, 74), V(r.x, r.foot, 74), V(r.x, r.top, 74), V(l.x, l.top, 74), 0xb9b5ab, PAT.CONCRETE);
+    b.quad(V(l.x, l.top - 0.02, 74.1), V(r.x, r.top - 0.02, 74.1), V(r.x, r.top + 0.22, 74.1), V(l.x, l.top + 0.22, 74.1), 0xc8c4ba, PAT.CONCRETE);
+    b.quad(V(l.x, l.top + 0.22, 74.1), V(r.x, r.top + 0.22, 74.1), V(r.x, r.top + 0.22, 72.5), V(l.x, l.top + 0.22, 72.5), 0xc8c4ba, PAT.CONCRETE);
+  }
   const kit = new Kit(ctx, x, 65);
   const f = { o: V(face - side * 0.31, 0, 65 + side * 2.0), r: V(0, 0, -side), n: V(-side, 0, 0), len: 4 };
   signOnFace(kit, f, 0, 10.2, 3.2, 0.8, 0.0, sign, 0);

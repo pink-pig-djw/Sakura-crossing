@@ -62,6 +62,35 @@ export class GroundMap {
     }
   }
 
+  // paint texel by texel over a box: fn(x, z) -> null (leave it) or [color, pattern, jitter?]
+  paint(x0, z0, x1, z1, fn) {
+    const ppm = this.ppm;
+    const px0 = Math.max(0, Math.floor((Math.min(x0, x1) - this.x0) * ppm));
+    const px1 = Math.min(this.w, Math.ceil((Math.max(x0, x1) - this.x0) * ppm));
+    const pz0 = Math.max(0, Math.floor((Math.min(z0, z1) - this.z0) * ppm));
+    const pz1 = Math.min(this.h, Math.ceil((Math.max(z0, z1) - this.z0) * ppm));
+    const d = this.data;
+    let lastHex = null, rgb = null;
+    for (let pz = pz0; pz < pz1; pz++) {
+      for (let px = px0; px < px1; px++) {
+        const wx = this.x0 + (px + 0.5) / ppm;
+        const wz = this.z0 + (pz + 0.5) / ppm;
+        const r = fn(wx, wz);
+        if (!r) continue;
+        if (r[0] !== lastHex) {
+          lastHex = r[0];
+          rgb = this._rgb(r[0]);
+        }
+        const n = 1 + (noise2(wx * 0.35, wz * 0.35) - 0.5) * (r[2] ?? 0.06) * 2;
+        const i = (pz * this.w + px) * 4;
+        d[i] = clamp(rgb[0] * n, 0, 255);
+        d[i + 1] = clamp(rgb[1] * n, 0, 255);
+        d[i + 2] = clamp(rgb[2] * n, 0, 255);
+        d[i + 3] = r[1] + 1;
+      }
+    }
+  }
+
   circle(x, z, r, color, pattern, opts = {}) {
     this.rect(x - r, z - r, x + r, z + r, color, pattern, { ...opts, round: true });
   }
@@ -138,17 +167,17 @@ export function buildTerrain(groundMap) {
   // 2 m grid over the town (aligned to even coordinates: stairwell holes and the river
   // walls sit on grid lines), coarser over the hills and the sea
   const xs = axisSamples([
-    [-1000, -340, 20],
-    [-340, -310, 4],
-    [-310, 550, 2],
-    [550, 580, 4],
-    [580, 1260, 20],
+    [-1000, -480, 20],
+    [-480, -440, 4],
+    [-440, 700, 2],
+    [700, 740, 4],
+    [740, 1300, 20],
   ]);
   const zs = axisSamples([
-    [-900, -260, 20],
-    [-260, -182, 4],
-    [-182, 140, 2],
-    [140, 260, 5],
+    [-900, -332, 20],
+    [-332, -292, 4],
+    [-292, 150, 2],
+    [150, 260, 5],
     [260, 700, 25],
   ]);
   const nx = xs.length, nz = zs.length;

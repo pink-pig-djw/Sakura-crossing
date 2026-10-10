@@ -2,6 +2,7 @@ import { ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAK
 import { MAIN, GYM } from '../world/school.js';
 import { HOSP, POST, KOBAN } from '../world/eastside.js';
 import { PRESETS } from '../systems/timeofday.js';
+import { route } from '../world/routeplan.js';
 import { tr, tf, getLang, setLang, onLang, applyStatic } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -531,7 +532,7 @@ export class UI {
 // ---------------------------------------------------------------------------
 // Hand-drawn style town map (full map and the HUD minimap share the drawing)
 // ---------------------------------------------------------------------------
-const MAP = { x0: -300, x1: 542, z0: -182, z1: 122 };
+const MAP = { x0: -404, x1: 664, z0: -258, z1: 122 };
 
 const mapFont = (px) => `700 ${px}px ${getLang() === 'zh' ? '"Noto Sans SC", "PingFang SC", "Microsoft YaHei"' : '"Zen Maru Gothic", "Hiragino Maru Gothic ProN"'}, sans-serif`;
 
@@ -674,6 +675,43 @@ function drawMapBase(c, W, H, P, s, lots = []) {
     c.arc(px, pz, 2.8 * s, 0, Math.PI * 2);
     c.fill();
   }
+  drawRoute(c, P, s);
+}
+
+// さくら一周ライン: the loop in coral on a white casing, the river spine lighter and dashed
+function drawRoute(c, P, s) {
+  const legs = route().legs;
+  const path = (leg) => {
+    c.beginPath();
+    leg.samples.forEach((o, i) => (i ? c.lineTo(...P(o.x, o.z)) : c.moveTo(...P(o.x, o.z))));
+  };
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  for (const pass of [0, 1]) {
+    for (const leg of legs) {
+      path(leg);
+      if (pass === 0) {
+        c.strokeStyle = 'rgba(255,255,255,0.95)';
+        c.lineWidth = Math.max(4, 3.4 * s);
+        c.setLineDash([]);
+      } else {
+        c.strokeStyle = leg.spine ? '#5fa8d8' : '#f0647e';
+        c.lineWidth = Math.max(2, 1.7 * s);
+        c.setLineDash(leg.spine ? [Math.max(4, 3 * s), Math.max(3, 2.2 * s)] : []);
+      }
+      c.stroke();
+    }
+  }
+  c.setLineDash([]);
+  // the cycle station at the river mouth
+  const [px, pz] = P(214, 70.75);
+  c.beginPath();
+  c.arc(px, pz, Math.max(5, 4 * s), 0, Math.PI * 2);
+  c.fillStyle = '#ffffff';
+  c.fill();
+  c.lineWidth = Math.max(2, 1.4 * s);
+  c.strokeStyle = '#f0647e';
+  c.stroke();
 }
 
 // place names: [japanese, x, z, color, minimap?]
@@ -701,6 +739,19 @@ function mapLabels(landmarks) {
     ['郵便局', (POST.x0 + POST.x1) / 2, (POST.z0 + POST.z1) / 2, '#c0392b', true],
     ['交番', KOBAN.x0 - 6, KOBAN.z1 + 2, '#273049', false],
     ['東町', 445, 36, '#273049', true],
+    // さくら一周ライン
+    ['サイクルステーション', 214, 80, '#d24a66', true],
+    ['漁港', 528, 118, '#2f6fb8', true],
+    ['みかん畑', 600, 48, '#c56a1a', true],
+    ['風車の丘', 420, -214, '#4a7a3a', true],
+    ['源流の森', 290, -150, '#3f6b48', true],
+    ['沢の橋', 182, -160, '#2f6fb8', true],
+    ['茶畑', 112, -200, '#4a7a3a', true],
+    ['千本鳥居', 30, -188, '#c0392b', true],
+    ['棚田', -104, -205, '#4a7a3a', true],
+    ['竹林', -238, -100, '#3f6b48', true],
+    ['素掘りトンネル', -318, 24, '#5a4a3a', false],
+    ['岬の灯台', -362, 120, '#2f6fb8', true],
   ];
   for (const l of landmarks || []) {
     if (l.id === 'sento') L.push(['汐の湯', l.x, l.z + 6, '#273049', true]);
