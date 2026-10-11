@@ -351,8 +351,9 @@ export class Resident {
   }
 
   // ---------------------------------------------------------------- update
-  // player: { pos, head, sitting } or null (title screen); hour: time of day
-  update(dt, player, hour = 10) {
+  // player: { pos, head, sitting } or null (title screen, menus); hour: time of day; block:
+  // where you stand while a menu or the map is open (she still doesn't walk through you)
+  update(dt, player, hour = 10, block = null) {
     const ch = this.ch;
     // her day: out between her hours; she comes and goes while you are not near
     const HOURS = this.cast.hours;
@@ -440,7 +441,8 @@ export class Resident {
           break;
         }
         // someone standing in her way: wait
-        if (player && dP < 1.1 && Math.abs(rel) < 0.7) {
+        const bp = player?.pos ?? block;
+        if (bp && Math.hypot(bp.x - this.x, bp.z - this.z) < 1.1 && Math.abs(wrap(Math.atan2(bp.x - this.x, bp.z - this.z) - this.heading)) < 0.7) {
           ch.play('idle', 0.4);
           break;
         }
@@ -760,8 +762,8 @@ export async function createResidents(world, scene, { voice } = {}) {
   if (!list.length) throw new Error('no residents');
   return {
     list,
-    update(dt, player, hour) {
-      for (const p of this.list) p.update(dt, player, hour);
+    update(dt, player, hour, block = null) {
+      for (const p of this.list) p.update(dt, player, hour, block);
     },
     // rain falling (umbrellas up); covered(x, y, z): a roof over that point
     setRain(on, covered) {

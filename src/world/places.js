@@ -981,6 +981,28 @@ export function buildShrine(ctx) {
   ctx.ground.rect(S.terraceX0, S.terraceZ1, S.terraceX1, S.terraceZ0, 0xc9c2b2, PAT.GRAVEL);
   ctx.ground.rect(S.x - 1.4, S.terraceZ1 + 6, S.x + 1.4, S.terraceZ0, 0xb9b2a4, PAT.STONE);
   ctx.colliders.addSurface(S.terraceX0, S.terraceZ1, S.terraceX1, S.terraceZ0, () => S.y, 1);
+  // stone retaining walls (石垣) at the back and the sides of the terrace, where the slopes
+  // under the torii path above come down to it: 2 m bays, each as high as the ground behind
+  // it (and as deep as the grid the ground is drawn on, which they hide), walkable on top
+  const D = 2.5;
+  const bay = (x0, z0, x1, z1, ox, oz) => {
+    let top = -Infinity;
+    for (let q = 0; q <= 4; q++) {
+      const x = x0 + ((x1 - x0) * q) / 4, z = z0 + ((z1 - z0) * q) / 4;
+      top = Math.max(top, terrainH(x + ox * 2, z + oz * 2), terrainH(x + ox * D, z + oz * D));
+    }
+    if (top < S.y + 0.35) return;
+    top += 0.05;
+    const bx0 = Math.min(x0, x0 + ox * D), bx1 = Math.max(x1, x1 + ox * D), bz0 = Math.min(z0, z0 + oz * D), bz1 = Math.max(z1, z1 + oz * D);
+    t.boxMM(bx0, S.y - 0.6, bz0, bx1, top, bz1, { color: 0x9a9488, pattern: PAT.STONE });
+    ctx.colliders.addBox((bx0 + bx1) / 2, (bz0 + bz1) / 2, (bx1 - bx0) / 2, (bz1 - bz0) / 2, 0, top, S.y - 0.6);
+    ctx.colliders.addSurface(bx0, bz0, bx1, bz1, () => top, 1, { min: top - 0.6 });
+  };
+  for (let x = S.terraceX0 - D; x < S.terraceX1 + D; x += 2) bay(Math.max(x, S.terraceX0 - D), S.terraceZ1, Math.min(x + 2, S.terraceX1 + D), S.terraceZ1, 0, -1);
+  for (let z = S.terraceZ1; z < S.terraceZ0; z += 2) {
+    bay(S.terraceX0, z, S.terraceX0, Math.min(z + 2, S.terraceZ0), -1, 0);
+    bay(S.terraceX1, z, S.terraceX1, Math.min(z + 2, S.terraceZ0), 1, 0);
+  }
   // haiden (worship hall)
   const hx = S.x, hz = S.terraceZ1 + 6.5;
   const hy = S.y;

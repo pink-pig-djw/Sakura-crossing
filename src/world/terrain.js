@@ -180,14 +180,6 @@ export function buildTerrain(groundMap) {
     [150, 260, 5],
     [260, 700, 25],
   ]);
-  // finer patches where the ground has sharp small steps (the rice terraces: 1.6 m steps
-  // with risers a metre or so across, which a 2 m grid smooths into slopes, leaving the
-  // paddies and their bunds hanging over it); cut out of the 2 m grid, their edges kept on
-  // its straight lines so the two meet without a crack
-  const PATCHES = [
-    { x0: -158, x1: -50, z0: -240, z1: -130, step: 0.5 }, // rice terraces
-    { x0: 536, x1: 650, z0: -30, z1: 104, step: 1 }, // mikan terraces
-  ];
   const pos = [], nor = [], col = [], uv = [], pat = [], idx = [];
   const tmp = new THREE.Color();
   const vertex = (x, z, yAt = null) => {
@@ -242,8 +234,45 @@ export function buildTerrain(groundMap) {
   };
   const nx = xs.length, nz = zs.length;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) vertex(xs[i], zs[j]);
-  // stairwell openings (subway exits) and the fine patches are cut out of the mesh
-  const inHole = (x, z) => HOLES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1) || PATCHES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1);
+  // finer tiles where the 2 m grid can't follow the ground (rice terrace risers, mikan
+  // walls, road cuttings and embankments on steep slopes, the shrine's retaining walls):
+  // there the 2 m triangles would show the ground metres away from where you stand on it.
+  // Each 8 m tile whose 2 m triangles miss the ground by more than ERR is cut out of the
+  // grid and remade at 1 m, or 0.5 m where even that misses
+  const T = 8, ERR = 0.18, TX0 = -440, TX1 = 700, TZ0 = -292, TZ1 = 150;
+  const TW = Math.floor((TX1 - TX0) / T), TH = Math.floor((TZ1 - TZ0) / T);
+  const tileStep = new Float32Array(TW * TH).fill(2);
+  // (the triangles of a grid of step s over the tile at (tx, tz), whose corners are cs)
+  const missBy = (tx, tz, s, q) => {
+    const n = T / s, cs = [];
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) cs.push(terrainH(tx + i * s, tz + j * s));
+    let m = 0;
+    for (let z = 0; z <= T + 1e-6; z += q) {
+      for (let x = 0; x <= T + 1e-6; x += q) {
+        const i = Math.min(n - 1, Math.floor(x / s)), j = Math.min(n - 1, Math.floor(z / s)), u = x / s - i, v = z / s - j;
+        if ((u === 0 || u === 1) && (v === 0 || v === 1)) continue;
+        const a = cs[j * (n + 1) + i], b = cs[j * (n + 1) + i + 1], c = cs[(j + 1) * (n + 1) + i], d = cs[(j + 1) * (n + 1) + i + 1];
+        const y = u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (c - d) * (1 - u) + (b - d) * (1 - v);
+        m = Math.max(m, Math.abs(terrainH(tx + x, tz + z) - y));
+        if (m > ERR) return m;
+      }
+    }
+    return m;
+  };
+  for (let tj = 0; tj < TH; tj++) {
+    for (let ti = 0; ti < TW; ti++) {
+      const tx = TX0 + ti * T, tz = TZ0 + tj * T;
+      if (HOLES.some((h) => tx < h.x1 && tx + T > h.x0 && tz < h.z1 && tz + T > h.z0)) continue;
+      if (missBy(tx, tz, 2, 1) <= ERR) continue;
+      tileStep[tj * TW + ti] = missBy(tx, tz, 1, 0.5) <= ERR ? 1 : 0.5;
+    }
+  }
+  const tileAt = (x, z) => {
+    const ti = Math.floor((x - TX0) / T), tj = Math.floor((z - TZ0) / T);
+    return ti < 0 || tj < 0 || ti >= TW || tj >= TH ? 2 : tileStep[tj * TW + ti];
+  };
+  // stairwell openings (subway exits) and the finer tiles are cut out of the mesh
+  const inHole = (x, z) => HOLES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1) || tileAt(x, z) < 2;
   for (let j = 0; j < nz - 1; j++) {
     for (let i = 0; i < nx - 1; i++) {
       if (inHole((xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2)) continue;
@@ -254,29 +283,41 @@ export function buildTerrain(groundMap) {
       idx.push(a, c, b, b, c, d);
     }
   }
-  for (const P of PATCHES) {
-    const s = P.step, mx = Math.round((P.x1 - P.x0) / s), mz = Math.round((P.z1 - P.z0) / s);
-    const base = pos.length / 3;
-    // (on the edge, between the 2 m grid's points: on the straight line between them)
-    const edge = (x, z, alongX) => {
-      const c = alongX ? x : z;
-      const a = Math.floor(c / 2) * 2, b = a + 2, t = (c - a) / 2;
-      const ya = alongX ? terrainH(a, z) : terrainH(x, a), yb = alongX ? terrainH(b, z) : terrainH(x, b);
-      return ya + (yb - ya) * t;
-    };
-    for (let j = 0; j <= mz; j++) {
-      for (let i = 0; i <= mx; i++) {
-        const x = P.x0 + i * s, z = P.z0 + j * s;
-        let y = null;
-        if (j === 0 || j === mz) y = edge(x, z, true);
-        else if (i === 0 || i === mx) y = edge(x, z, false);
-        vertex(x, z, y);
+  let fine = 0;
+  for (let tj = 0; tj < TH; tj++) {
+    for (let ti = 0; ti < TW; ti++) {
+      const s = tileStep[tj * TW + ti];
+      if (s >= 2) continue;
+      fine++;
+      const tx = TX0 + ti * T, tz = TZ0 + tj * T, m = T / s;
+      // (on an edge shared with a coarser neighbour: on the straight line between its points,
+      // so the two meet without a crack)
+      const sw = Math.max(s, tileAt(tx - 1, tz + 1)), se = Math.max(s, tileAt(tx + T + 1, tz + 1));
+      const sn = Math.max(s, tileAt(tx + 1, tz - 1)), ss = Math.max(s, tileAt(tx + 1, tz + T + 1));
+      const along = (x, z, alongX, st) => {
+        const c = alongX ? x : z;
+        const a = Math.floor(c / st + 1e-6) * st, t = (c - a) / st;
+        if (t < 1e-6) return alongX ? terrainH(a, z) : terrainH(x, a);
+        const ya = alongX ? terrainH(a, z) : terrainH(x, a), yb = alongX ? terrainH(a + st, z) : terrainH(x, a + st);
+        return ya + (yb - ya) * t;
+      };
+      const base = pos.length / 3;
+      for (let j = 0; j <= m; j++) {
+        for (let i = 0; i <= m; i++) {
+          const x = tx + i * s, z = tz + j * s;
+          let y = null;
+          if (j === 0) y = along(x, z, true, sn);
+          else if (j === m) y = along(x, z, true, ss);
+          else if (i === 0) y = along(x, z, false, sw);
+          else if (i === m) y = along(x, z, false, se);
+          vertex(x, z, y);
+        }
       }
-    }
-    for (let j = 0; j < mz; j++) {
-      for (let i = 0; i < mx; i++) {
-        const a = base + j * (mx + 1) + i, b = a + 1, c = a + mx + 1, d = c + 1;
-        idx.push(a, c, b, b, c, d);
+      for (let j = 0; j < m; j++) {
+        for (let i = 0; i < m; i++) {
+          const a = base + j * (m + 1) + i, b = a + 1, c = a + m + 1, d = c + 1;
+          idx.push(a, c, b, b, c, d);
+        }
       }
     }
   }
@@ -295,6 +336,7 @@ export function buildTerrain(groundMap) {
   mesh.receiveShadow = true;
   mesh.castShadow = false;
   mesh.name = 'terrain';
+  mesh.userData.fineTiles = fine;
   mesh.matrixAutoUpdate = false;
   return mesh;
 }

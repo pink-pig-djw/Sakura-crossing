@@ -1,8 +1,8 @@
-import { ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks, SCHOOL, EAST2 } from '../world/layout.js';
+import { BOUNDS, terrainH, ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks, SCHOOL, EAST2 } from '../world/layout.js';
 import { MAIN, GYM } from '../world/school.js';
 import { HOSP, POST, KOBAN } from '../world/eastside.js';
 import { PRESETS } from '../systems/timeofday.js';
-import { route } from '../world/routeplan.js';
+import { route, HARBOR } from '../world/routeplan.js';
 import { tr, tf, getLang, setLang, onLang, applyStatic } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -570,7 +570,8 @@ export class UI {
 // ---------------------------------------------------------------------------
 // Hand-drawn style town map (full map and the HUD minimap share the drawing)
 // ---------------------------------------------------------------------------
-const MAP = { x0: -404, x1: 664, z0: -258, z1: 122 };
+// (the whole world you can walk in: the capes, the harbour and the breakwater reach far south)
+const MAP = { ...BOUNDS };
 
 const mapFont = (px) => `700 ${px}px ${getLang() === 'zh' ? '"Noto Sans SC", "PingFang SC", "Microsoft YaHei"' : '"Zen Maru Gothic", "Hiragino Maru Gothic ProN"'}, sans-serif`;
 
@@ -610,6 +611,20 @@ function drawMapBase(c, W, H, P, s, lots = []) {
   c.lineTo(...P(SHORE.x1, SEAWALL_Z));
   c.closePath();
   c.fill();
+  // the headlands either side reach out into the sea (the cape with its lighthouse, the mikan
+  // hill), and the harbour's quay at the foot of the east one
+  // (in 1 m cells: a coastline, not a staircase)
+  for (let z = SEAWALL_Z - 14; z < MAP.z1; z += 1) {
+    for (let x = MAP.x0; x < MAP.x1; x += 1) {
+      const mx = x + 0.5, mz = z + 0.5;
+      const quay = mx > HARBOR.x0 && mx < HARBOR.x1 && mz > HARBOR.z0 && mz < HARBOR.quay;
+      if (!quay && mx > SHORE.x0 && mx < SHORE.x1) continue;
+      if (terrainH(mx, mz) < 0.4) continue;
+      c.fillStyle = quay ? '#e3ded2' : '#cfe0b8';
+      const [px, pz] = P(x, z);
+      c.fillRect(px, pz, s + 0.6, s + 0.6);
+    }
+  }
   const rect = (a, b, d, e, col) => {
     const [ax, az] = P(a, b), [bx, bz] = P(d, e);
     c.fillStyle = col;

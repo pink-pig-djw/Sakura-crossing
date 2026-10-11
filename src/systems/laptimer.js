@@ -23,8 +23,10 @@ function save(v) {
 }
 
 export function lapTime(s) {
-  const m = Math.floor(s / 60);
-  return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
+  // (rounded to the tenth first, so 59.96 reads 1:00.0, not 0:60.0)
+  const d = Math.round(s * 10);
+  const m = Math.floor(d / 600), r = d - m * 600;
+  return `${m}:${String(Math.floor(r / 10)).padStart(2, '0')}.${r % 10}`;
 }
 
 export class LapTimer {
@@ -50,7 +52,8 @@ export class LapTimer {
     const g = this.gate;
     const crossed = this.prevX !== null && this.prevX < g.x && x >= g.x && x - this.prevX < 5 && z > g.z0 && z < g.z1;
     this.prevX = x;
-    if (this.running && this.next < this.cps.length) {
+    // (on the bike: a walk past a checkpoint doesn't count it)
+    if (this.running && riding && this.next < this.cps.length) {
       const c = this.cps[this.next];
       if (Math.hypot(x - c.x, z - c.z) < c.r) {
         this.next++;

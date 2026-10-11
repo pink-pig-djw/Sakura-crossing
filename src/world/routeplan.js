@@ -331,7 +331,7 @@ export function sculptReady() {
 
 // nat(x, z): the natural ground; outside(x, z): distance outside the town's valley;
 // rules.keep(x, z): ground left exactly as it is, rules.shape(x, z): shaped though in town,
-// rules.floor(x, z): the least it may be
+// rules.floor(x, z): the least it may be, rules.fix(x, z): a height it must have (or null)
 export function initSculpt(nat, outside, rules = {}) {
   if (SC) return SC;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -340,6 +340,7 @@ export function initSculpt(nat, outside, rules = {}) {
   const N = W * H;
   const active = new Uint8Array(N);
   const base = new Float32Array(N);
+  const town = new Uint8Array(N);
   const inBox = (x, z, b, m = 0) => x >= b.x0 - m && x <= b.x1 + m && z >= b.z0 - m && z <= b.z1 + m;
   for (let j = 0; j < H; j++) {
     const z = z0 + j;
@@ -350,7 +351,7 @@ export function initSculpt(nat, outside, rules = {}) {
       if (outside(x, z) > -4 || inBox(x, z, HARBOR, 6) || rules.shape?.(x, z)) {
         active[k] = 1;
         base[k] = nat(x, z);
-      }
+      } else if (z < 44) town[k] = 1; // (the valley; the shore keeps its own edges)
     }
   }
   const F = base.slice();
@@ -418,8 +419,9 @@ export function initSculpt(nat, outside, rules = {}) {
     const wob = (noise2(x * 0.15, z * 0.15) - 0.5) * 1.6 * smoothstep(1, 6, d);
     let y = bed + d * STREAM.wall + Math.max(0, d - 14) * 0.25 + wob;
     // the waterfall's rock face: steeper walls round the plunge pool
+    // (below the lip only: above it the stream runs on at the top of the fall)
     const pool = Math.hypot(n.x - 183, n.z - (STREAM.fall + 6));
-    if (pool < 11) y = Math.min(y, 15.6 + Math.max(0, n.d - 5.5) * 1.6);
+    if (pool < 11 && n.z > STREAM.fall - 0.6) y = Math.min(y, 15.6 + Math.max(0, n.d - 5.5) * 1.6);
     // (no carving into the town: the channel takes over at the headwall; upstream the gorge
     // closes into the hills before the shaped ground ends)
     const keep = smoothstep(STREAM.inlet + 0.5, STREAM.inlet - 1.5, z) * (1 - smoothstep(-246, -288, z));
@@ -445,7 +447,8 @@ export function initSculpt(nat, outside, rules = {}) {
   // --- mikan terraces: a sunny stepped face from the harbour up to the headland's top,
   // blending into the wooded headland behind; never so low over the coast tunnels' mouths
   // that their portals show their backs
-  each({ x0: MIKAN.x0 - 4, x1: MIKAN.x1 + 48, z0: MIKAN.z0 - 40, z1: MIKAN.z1 + 10 }, (x, z, k) => {
+  // (the box as wide as the blend: cut short, the shaped ground ended in a cliff)
+  each({ x0: MIKAN.x0 - 4, x1: MIKAN.x1 + 50, z0: MIKAN.z0 - 40, z1: MIKAN.z1 + 26 }, (x, z, k) => {
     const b = mikanBlend(x, z);
     if (b <= 0) return;
     const m = mikanMask(x, z);
@@ -482,8 +485,20 @@ export function initSculpt(nat, outside, rules = {}) {
       const a = S[i], b = S[i + 1];
       // inside the tunnel the hill stays over the road; the gorge stays open under the bridge
       const bored = (leg.id === 'zuido' && a.z > BORE.z0 + 0.5 && b.z < BORE.z1 - 0.5) || (leg.id === 'sawa' && a.x > BRIDGE.x0 && b.x > BRIDGE.x0 && a.x < BRIDGE.x1 && b.x < BRIDGE.x1);
+      // (how far its slopes reach: out to wherever the ground across it still stands outside
+      // them, not just as far as the ground at the road itself would need: a hillside rising
+      // on beyond a shorter reach would end in a cliff where the slope stopped)
       const fa = F[at(a.x, a.z)] ?? a.y;
-      const reach = half + Math.min(42, (Math.abs(fa - a.y) + 6) / S_FILL);
+      let reach = half + Math.min(46, (Math.abs(fa - a.y) + 6) / S_FILL);
+      const nx = -(b.z - a.z), nz = b.x - a.x, nl = Math.hypot(nx, nz) || 1;
+      for (let o = 8; o <= 46; o += 4) {
+        for (const sg of [-1, 1]) {
+          const f = F[at(clamp(a.x + (nx / nl) * o * sg, x0, SCULPT.x1), clamp(a.z + (nz / nl) * o * sg, z0, SCULPT.z1))];
+          if (f === undefined) continue;
+          const e = Math.max(0, o - half);
+          if (f > a.y + e * S_CUT - 1 || f < a.y - e * S_FILL + 1) reach = Math.max(reach, Math.min(half + 46, o + 6));
+        }
+      }
       const bx0 = Math.floor(Math.min(a.x, b.x) - reach), bx1 = Math.ceil(Math.max(a.x, b.x) + reach);
       const bz0 = Math.floor(Math.min(a.z, b.z) - reach), bz1 = Math.ceil(Math.max(a.z, b.z) + reach);
       const dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz || 1;
@@ -560,6 +575,55 @@ export function initSculpt(nat, outside, rules = {}) {
       }
     }
   }
+  // the town's edge: the town's ground is left as it is, so shaped ground beside it may rise
+  // above it no more steeply than a cutting (a road's embankment up against it otherwise ended
+  // in a cliff; held up here, the road gets a retaining wall instead)
+  {
+    const R = 30;
+    const td = new Float32Array(N).fill(1e9), th = new Float32Array(N);
+    for (let k = 0; k < N; k++) {
+      if (!town[k]) continue;
+      const i = k % W, j = (k - i) / W;
+      if ((i > 0 && active[k - 1]) || (i < W - 1 && active[k + 1]) || (j > 0 && active[k - W]) || (j < H - 1 && active[k + W])) {
+        td[k] = 0;
+        th[k] = nat(x0 + i, z0 + j);
+      }
+    }
+    // (two-pass chamfer distance, carrying the height of the nearest edge cell)
+    const D = Math.SQRT2;
+    const relax = (k, q, c) => {
+      if (td[q] + c < td[k]) {
+        td[k] = td[q] + c;
+        th[k] = th[q];
+      }
+    };
+    for (let j = 0; j < H; j++) {
+      for (let i = 0; i < W; i++) {
+        const k = j * W + i;
+        if (i > 0) relax(k, k - 1, 1);
+        if (j > 0) {
+          relax(k, k - W, 1);
+          if (i > 0) relax(k, k - W - 1, D);
+          if (i < W - 1) relax(k, k - W + 1, D);
+        }
+      }
+    }
+    for (let j = H - 1; j >= 0; j--) {
+      for (let i = W - 1; i >= 0; i--) {
+        const k = j * W + i;
+        if (i < W - 1) relax(k, k + 1, 1);
+        if (j < H - 1) {
+          relax(k, k + W, 1);
+          if (i < W - 1) relax(k, k + W + 1, D);
+          if (i > 0) relax(k, k + W - 1, D);
+        }
+      }
+    }
+    for (let k = 0; k < N; k++) {
+      if (!active[k] || td[k] > R) continue;
+      hi[k] = Math.min(hi[k], th[k] + 0.4 + td[k] * S_CUT);
+    }
+  }
   let walls = 0;
   const conflict = new Uint8Array(N);
   const zuido = rt.legs.find((l) => l.id === 'zuido');
@@ -609,6 +673,13 @@ export function initSculpt(nat, outside, rules = {}) {
   }
   if (rules.floor) {
     for (let k = 0; k < N; k++) if (active[k]) F[k] = Math.max(F[k], rules.floor(x0 + (k % W), z0 + Math.floor(k / W)));
+  }
+  if (rules.fix) {
+    for (let k = 0; k < N; k++) {
+      if (!active[k]) continue;
+      const y = rules.fix(x0 + (k % W), z0 + Math.floor(k / W));
+      if (y !== null) F[k] = y;
+    }
   }
   const delta = new Float32Array(N);
   for (let k = 0; k < N; k++) if (active[k]) delta[k] = F[k] - base[k];

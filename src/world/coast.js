@@ -198,7 +198,9 @@ export function buildCoast(ctx) {
   // ramps (スロープ) up the curb beside each flight of beach stairs, for bicycles, buggies and
   // wheelchairs: running along the road edge, rising toward the stairs
   const RAMP_LEN = 3.4, RAMP_IN = 1.0;
-  const ramps = BEACH_STAIRS.filter((sx) => !nearRiver(sx + 3.7, 4) && sx + 2 + RAMP_LEN < X1).map((sx) => [sx + 2.0, sx + 2.0 + RAMP_LEN]);
+  // (at the cycle station's crossing, x = 218, the ramp lies across the line 桜川の道 takes
+  // from the promenade over the road)
+  const ramps = BEACH_STAIRS.filter((sx) => !nearRiver(sx + 3.7, 4) && sx + 2 + RAMP_LEN < X1).map((sx) => (sx === 218 ? [sx - RAMP_LEN / 2, sx + RAMP_LEN / 2] : [sx + 2.0, sx + 2.0 + RAMP_LEN]));
   const cuts = (a, b) => {
     // [a, b] minus the ramps
     let out = [[a, b]];

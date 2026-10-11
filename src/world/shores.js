@@ -573,13 +573,15 @@ function station(ctx) {
   b.boxMM(x0 + 0.6, y + 2.7, z0 - 0.5, x1 - 0.6, y + 2.84, z1 + 0.6, { color: 0x3f7fbf, top: 0x5a9ad8 });
   b.boxMM(x0 + 0.4, y + 2.62, z0 - 0.6, x1 - 0.4, y + 2.72, z0 - 0.45, { color: 0xe8e8e2 });
   b.boxMM(x0 + 0.4, y + 2.62, z1 + 0.5, x1 - 0.4, y + 2.72, z1 + 0.65, { color: 0xe8e8e2 });
-  for (let x = x0 + 2; x < x1 - 1.5; x += 1.1) {
+  // (the racks stop short of the crossing at x = 218, where 桜川の道 leaves the promenade)
+  const rx1 = 218 - 2.8;
+  for (let x = x0 + 2; x < rx1; x += 1.1) {
     const d = b.detail;
     d.rod(V(x, y, z0 + 0.25), V(x, y + 0.75, z0 + 0.25), 0.025, 0.025, 5, 0xbfc4c8);
     d.rod(V(x, y + 0.75, z0 + 0.25), V(x, y + 0.75, z0 + 1.15), 0.025, 0.025, 5, 0xbfc4c8);
     d.rod(V(x, y + 0.75, z0 + 1.15), V(x, y, z0 + 1.15), 0.025, 0.025, 5, 0xbfc4c8);
   }
-  ctx.colliders.addBox((x0 + x1) / 2, z0 + 0.7, (x1 - x0) / 2 - 1.5, 0.5, 0, y + 0.8);
+  ctx.colliders.addBox((x0 + 1.5 + rx1) / 2, z0 + 0.7, (rx1 - x0 - 1.5) / 2, 0.5, 0, y + 0.8);
   // an air pump on a post and a vending machine by the sea wall
   const zs = SEAWALL_Z - 0.75;
   b.cyl(x0 + 0.8, y, zs + 0.2, 0.07, 0.07, 1.0, 8, 0x3f7fbf);

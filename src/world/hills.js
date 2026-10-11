@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PAT } from '../core/builder.js';
 import { RNG, noise2, smoothstep, clamp, lerp } from '../core/rng.js';
-import { terrainH, groundH, outsideDist, RIVER } from './layout.js';
+import { terrainH, groundH, outsideDist, RIVER, SHRINE } from './layout.js';
 import { route, roadDist, STREAM, streamBed, BRIDGE, TEA, PAMPAS, MIKAN, CAPE, HARBOR, riceMask } from './routeplan.js';
 import { createRiverWaterMaterial, createFallsMaterial } from '../render/materials.js';
 
@@ -72,6 +72,8 @@ function plantWoods(ctx) {
     // (broad crowns keep off the road; a cherry may lean out over it)
     if (d < 8 || d > 44) continue;
     if (x > 125 && x < 385 && z < -120) continue; // (the cedars)
+    // (not on the shrine's terrace, which has its own trees: they grew through the haiden)
+    if (x > SHRINE.terraceX0 - 3 && x < SHRINE.terraceX1 + 3 && z > SHRINE.terraceZ1 - 3 && z < SHRINE.z0 + 2) continue;
     if (openGround(x, z)) continue;
     if (terrainH(x, z) < 2.2) continue;
     if (rng.next() > 1 - smoothstep(10, 44, d) * 0.85) continue;

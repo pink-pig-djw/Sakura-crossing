@@ -1090,10 +1090,13 @@ function simulate(dt) {
   passersby?.setRain?.(umbrellas, covered);
   avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
-  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
-  // the passers-by keep clear of you and of Mei
+  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour, here);
+  // the passers-by keep clear of you and of Mei (you take up room behind a menu or the map too)
   aroundThem.length = 0;
-  if (state.mode === 'play') aroundThem.push(bike.on ? { x: player.pos.x, z: player.pos.z, vx: player.vel.x, vz: player.vel.z, bike: true } : player.pos);
+  if (walking) {
+    const moving = state.mode === 'play';
+    aroundThem.push(bike.on ? { x: player.pos.x, z: player.pos.z, vx: moving ? player.vel.x : 0, vz: moving ? player.vel.z : 0, bike: true } : player.pos);
+  }
   bike.obstacles(aroundThem);
   for (const r of residents?.list ?? []) if (!r.home) aroundThem.push(r);
   passersby?.update(dt, state.mode === 'play' ? { pos: player.pos, head } : null, camera, tod.hour, aroundThem);

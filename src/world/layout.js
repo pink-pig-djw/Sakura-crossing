@@ -164,6 +164,9 @@ const SCULPT_RULES = {
     const tubes = z > RAIL_Z - 4 && z < 70.5 ? 10.8 - Math.max(0, c - 58) : -Infinity;
     return Math.max(face, tubes);
   },
+  // the shrine's terrace stays level under the slopes of the torii path above it (they end
+  // against its retaining walls: places.js shrineWalls)
+  fix: (x, z) => (x >= SHRINE.terraceX0 && x <= SHRINE.terraceX1 && z >= SHRINE.terraceZ1 && z <= SHRINE.terraceZ0 ? SHRINE.y : null),
 };
 
 // the ground before the hills were shaped for the cycling loop
