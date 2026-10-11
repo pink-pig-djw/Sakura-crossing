@@ -10,7 +10,8 @@ export class AudioEngine {
     this.started = false;
     this.ambVol = 0.7;
     this.musicVol = 0.45;
-    this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, frog: 2, knock: 2, pfrog: 1, lark: 6, gull: 4, drip: 1, lap: 1 };
+    this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, frog: 2, knock: 2, pfrog: 1, lark: 6, gull: 4, drip: 1, lap: 1, eave: 1, rfrog: 2 };
+    this.wet = 0; // the ground (wet footsteps and tyres)
   }
 
   start() {
@@ -65,6 +66,7 @@ export class AudioEngine {
     this.setupNight();
     this.setupPlaces();
     this.setupRoute();
+    this.setupRain();
     this.crossingVoices = new Map();
     this.music = new PianoMusic(this);
     this.music.start();
@@ -498,6 +500,8 @@ export class AudioEngine {
     this.ease(B.fg.gain, s.coast && v > 0.5 ? 0.006 + Math.min(v, 6) * 0.0012 : 0, 0.05);
     this.ease(B.wg.gain, Math.max(0, v - 2.5) ** 2 * 0.0011, 0.25);
     this.ease(B.sg.gain, s.brake > 0.6 && v > 2.4 ? 0.006 * Math.min(1, (v - 2.4) / 2) : 0, 0.04);
+    // the tyres hissing through the wet
+    if (this.rainSet) this.ease(this.rainSet.tyreG.gain, sand ? 0 : Math.min(1, v / 6) * 0.07 * this.wet, 0.1);
   }
 
   step(surface, running) {
@@ -512,6 +516,8 @@ export class AudioEngine {
     } else {
       this.noiseHit(this.sfxBus, t, rand(1800, 2600), 1.4, 0.05, 0.06 * v);
       this.noiseHit(this.sfxBus, t, 160, 1, 0.07, 0.08 * v, 'lowpass');
+      // on a wet street: a splash in each step
+      if (this.wet > 0.25) this.noiseHit(this.sfxBus, t + 0.01, rand(2600, 3800), 0.9, 0.09, 0.05 * v * this.wet);
     }
   }
 
@@ -894,6 +900,151 @@ export class AudioEngine {
     this.tone(p, t, f, f * 0.55, 0.07, 0.04);
   }
 
+  // ------------------------------------------------------------------ rain
+  // The rain's hiss over everything (and its low roar when it pours), drops pattering near
+  // by, on her vinyl umbrella a quick light drumming close overhead; under a roof the rain
+  // outside, a drip from the eaves; indoors it is muffled behind the walls. Thunder rolls far
+  // off in a downpour, and the frogs (雨蛙) call in the rain.
+  setupRain() {
+    const ctx = this.ctx;
+    const R = {};
+    R.bus = ctx.createGain();
+    R.bus.gain.value = 1;
+    // muffled indoors: a lowpass on the whole of it
+    R.muff = ctx.createBiquadFilter();
+    R.muff.type = 'lowpass';
+    R.muff.frequency.value = 18000;
+    R.bus.connect(R.muff).connect(this.amb);
+    const bed = (buf, type, f, q) => {
+      const n = this.loopNoise(buf);
+      const fl = ctx.createBiquadFilter();
+      fl.type = type;
+      fl.frequency.value = f;
+      fl.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      n.connect(fl).connect(g).connect(R.bus);
+      return { g, fl };
+    };
+    R.hiss = bed(this.white, 'bandpass', 5200, 0.35);
+    R.wash = bed(this.pink, 'bandpass', 1500, 0.5);
+    R.roar = bed(this.brown, 'lowpass', 420, 0.6);
+    // drops near by: a few short buffers, played at random rates and pans
+    R.drops = [0, 1, 2, 3].map((k) => {
+      const n = Math.floor(ctx.sampleRate * 0.05);
+      const b = ctx.createBuffer(1, n, ctx.sampleRate);
+      const d = b.getChannelData(0);
+      const f = 2400 + k * 900;
+      for (let i = 0; i < n; i++) {
+        const tt = i / ctx.sampleRate;
+        d[i] = ((Math.random() * 2 - 1) * 0.6 + Math.sin(tt * f * Math.PI * 2) * 0.5) * Math.exp(-tt * (90 + k * 25));
+      }
+      return b;
+    });
+    R.dropBus = ctx.createGain();
+    R.dropBus.gain.value = 0;
+    R.dropBus.connect(R.bus);
+    // the umbrella: taps on the vinyl, right over her
+    R.umbBus = ctx.createGain();
+    R.umbBus.gain.value = 0;
+    const umbF = ctx.createBiquadFilter();
+    umbF.type = 'peaking';
+    umbF.frequency.value = 1900;
+    umbF.gain.value = 6;
+    R.umbBus.connect(umbF).connect(this.amb);
+    // tyres through the wet
+    const tn = this.loopNoise(this.white);
+    const tf = ctx.createBiquadFilter();
+    tf.type = 'highpass';
+    tf.frequency.value = 2400;
+    R.tyreG = ctx.createGain();
+    R.tyreG.gain.value = 0;
+    tn.connect(tf).connect(R.tyreG).connect(this.sfxBus);
+    R.dropAcc = 0;
+    R.umbAcc = 0;
+    this.rainSet = R;
+  }
+
+  rainDrop(dest, vol, rate, pan) {
+    const ctx = this.ctx;
+    const s = ctx.createBufferSource();
+    s.buffer = pick(this.rainSet.drops);
+    s.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = vol;
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    s.connect(g).connect(p).connect(dest);
+    s.start(ctx.currentTime + Math.random() * 0.02);
+  }
+
+  // far off, rolling (k: how near, 0..1)
+  thunder(k = 0.6) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + rand(0.2, 1.2);
+    const s = ctx.createBufferSource();
+    s.buffer = this.brown;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(160 + 260 * k, t);
+    f.frequency.exponentialRampToValueAtTime(70, t + 5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16 * k + 0.05, t + 0.35 + (1 - k) * 0.6);
+    for (let i = 0; i < 3; i++) g.gain.setTargetAtTime((0.1 * k + 0.03) * rand(0.6, 1), t + 0.8 + i * rand(0.5, 1.1), 0.25);
+    g.gain.setTargetAtTime(0.0001, t + 2.6, 1.1);
+    s.connect(f).connect(g).connect(this.rainSet ? this.rainSet.bus : this.amb);
+    g.connect(this.revSend);
+    s.start(t, rand(0, 2));
+    s.stop(t + 8);
+  }
+
+  // r: { amount 0..1, wet, umbrella (her open umbrella over the listener 0..1), shelter (a roof
+  // over the listener), indoor }
+  rainUpdate(dt, s) {
+    const R = this.rainSet;
+    const r = s.rain;
+    if (!R || !r) return;
+    const a = r.amount;
+    this.wet = r.wet;
+    const inside = s.indoor || 0;
+    const roof = Math.max(r.shelter ? 1 : 0, inside);
+    this.ease(R.muff.frequency, inside ? 700 : roof ? 6000 : 18000, 0.3);
+    this.ease(R.bus.gain, inside ? 0.45 : 1, 0.3);
+    this.ease(R.hiss.g.gain, 0.05 * Math.min(1, a * 1.4), 0.6);
+    this.ease(R.wash.g.gain, 0.06 * a * a, 0.8);
+    this.ease(R.roar.g.gain, 0.12 * Math.max(0, a - 0.55) * (1 - 0.5 * inside), 1.0);
+    this.ease(R.dropBus.gain, roof ? 0.35 : 1, 0.3);
+    this.ease(R.umbBus.gain, r.umbrella, 0.15);
+    // drops landing round about
+    R.dropAcc += dt * a * 26;
+    while (R.dropAcc > 1) {
+      R.dropAcc -= 1;
+      this.rainDrop(R.dropBus, rand(0.01, 0.035), rand(0.55, 1.3), rand(-1, 1));
+    }
+    // on the umbrella: quick light taps, close
+    if (r.umbrella > 0.05) {
+      R.umbAcc += dt * a * 42;
+      while (R.umbAcc > 1) {
+        R.umbAcc -= 1;
+        this.rainDrop(R.umbBus, rand(0.03, 0.09), rand(0.35, 0.65), rand(-0.45, 0.45));
+      }
+    } else R.umbAcc = 0;
+    // a drip from the eaves when under a roof (out of the rain)
+    const T = this.timers;
+    if (roof && !inside && a > 0.2 && T.eave <= 0) {
+      this.drip(s.x + rand(-2, 2), s.y + rand(0.5, 1.5), s.z + rand(-2, 2));
+      T.eave = rand(0.3, 1.2);
+    }
+    // the tree frogs call when it rains, by day as well
+    if (a > 0.25 && !inside && T.rfrog <= 0 && s.inTown !== undefined) {
+      const ang = rand(0, Math.PI * 2), d = rand(8, 30);
+      this.frogAt(s.x + Math.cos(ang) * d, s.y - 1.5, s.z + Math.sin(ang) * d, 0.035 + 0.02 * a);
+      T.rfrog = rand(1.2, 5) / (0.5 + a);
+    }
+  }
+
   // ------------------------------------------------------------------ per frame
   update(dt, s) {
     if (!this.ctx || this.ctx.state !== 'running') return;
@@ -932,8 +1083,8 @@ export class AudioEngine {
     this.ease(this.windG.gain, Math.max(0.005, wv * outside), 0.8);
     this.ease(this.windF.frequency, 420 + 260 * Math.sin(this.windT * 0.13), 1);
 
-    // birds by time of day
-    const day = s.night < 0.5 && !s.indoor;
+    // birds by time of day (they keep under cover while it rains)
+    const day = s.night < 0.5 && !s.indoor && !(s.rain && s.rain.amount > 0.15);
     const T = this.timers;
     for (const k in T) T[k] -= dt;
     if (day && T.sparrow <= 0 && s.inTown) {
@@ -1076,6 +1227,7 @@ export class AudioEngine {
         T.drip = rand(0.6, 2.4);
       }
     }
+    this.rainUpdate(dt, s);
     if (this.music) this.music.update(t);
   }
 }

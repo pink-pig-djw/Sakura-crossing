@@ -270,6 +270,20 @@ vec3 applyPattern(vec3 albedo, float patF, vec2 uv, vec3 wp, vec3 N) {
 // Anime lighting: hard terminator, colored (lavender) shadows that keep the local colour
 // rich, sunlit faces that stay warm, a warm band at the light/shadow edge, sky-tinted
 // ambient and aerial perspective.
+// the rain map (render/rainmap.js): the highest surface over (x, z), a roof, a canopy, a
+// bridge, or the ground itself
+export const RAINTOP = /* glsl */ `
+uniform sampler2D uRainMap;
+uniform vec4 uRainRect;
+uniform vec2 uRainRange;
+float rainTop(vec2 xz) {
+  vec2 uv = (xz - uRainRect.xy) * uRainRect.zw;
+  if (uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return -1e4;
+  vec4 t = texture2D(uRainMap, uv);
+  return uRainRange.x + (floor(t.r * 255.0 + 0.5) + t.g) / 255.0 * uRainRange.y;
+}
+`;
+
 export const LIGHTING = /* glsl */ `
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
@@ -283,6 +297,63 @@ uniform float uTime;
 uniform vec3 uShadowTint;
 uniform float uShadowSat;
 uniform float uAmbLit;
+uniform vec3 uZenith;
+uniform vec3 uHorizon;
+uniform float uRain;
+uniform float uWet;
+${RAINTOP}
+
+// ---- rain (see systems/weather.js, render/rainmap.js) ----
+// how wet a surface is: out in the rain (nothing over it), more so facing up
+float wetness(vec3 wp, vec3 N) {
+  if (uWet < 0.002) return 0.0;
+  float open = smoothstep(-0.45, -0.12, wp.y - rainTop(wp.xz));
+  return uWet * open * mix(0.4, 1.0, smoothstep(0.2, 0.85, N.y));
+}
+// puddles gather on the flat (where the ground dips), more the longer it rains
+float puddle(vec3 wp, vec3 N, float w) {
+  float flat_ = smoothstep(0.96, 0.995, N.y);
+  if (flat_ <= 0.0 || w <= 0.0) return 0.0;
+  float n = vnoise(wp.xz * 0.5) * 0.6 + vnoise(wp.xz * 1.6 + 7.3) * 0.4;
+  return smoothstep(0.725, 0.75, n + 0.06 * w * w) * flat_ * smoothstep(0.35, 0.9, w);
+}
+// raindrops landing: rings spreading on the water (a slope in xz to tilt the normal by)
+vec2 rainRings(vec2 p, float t) {
+  vec2 acc = vec2(0.0);
+  for (int k = 0; k < 2; k++) {
+    vec2 q = p * (k == 0 ? 2.6 : 3.7) + float(k) * 17.3;
+    vec2 cell = floor(q);
+    vec2 f = fract(q) - 0.5;
+    float h = hash12(cell + float(k) * 3.1);
+    vec2 c = vec2(hash12(cell + 1.7), hash12(cell + 9.2)) - 0.5;
+    float age = fract(t * (0.9 + 0.5 * h) + h);
+    vec2 d = f - c * 0.5;
+    float dl = length(d);
+    float r = age * 0.45;
+    float ring = sin((dl - r) * 46.0) * smoothstep(0.07, 0.0, abs(dl - r)) * (1.0 - age);
+    acc += ring * d / max(dl, 1e-3) * step(h, 0.35 + 0.65 * uRain);
+  }
+  return acc;
+}
+// the wet look: darker, deeper colour, and the grey sky (or the lit street) in the sheen
+vec3 wetAlbedo(vec3 albedo, float w, float pd) {
+  vec3 a = mix(vec3(luma(albedo)), albedo, 1.0 + 0.25 * w);
+  return max(a, 0.0) * (1.0 - 0.36 * w) * (1.0 - 0.35 * pd);
+}
+vec3 wetSheen(vec3 col, vec3 N, vec3 wp, float w, float pd) {
+  if (w <= 0.0) return col;
+  vec3 V = normalize(cameraPosition - wp);
+  vec3 n = N;
+  if (uRain > 0.01 && pd > 0.01) {
+    vec2 s = rainRings(wp.xz, uTime) * 0.35 * pd;
+    n = normalize(N + vec3(s.x, 0.0, s.y));
+  }
+  vec3 R = reflect(-V, n);
+  float F = 0.04 + 0.96 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
+  vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.6));
+  float k = w * (0.3 + 0.7 * pd) * F * smoothstep(0.3, 0.9, N.y) * step(0.0, R.y);
+  return mix(col, sky * 0.85 * (1.0 - 0.6 * uNight), clamp(k, 0.0, 0.7));
+}
 
 vec3 hazeColorFor(vec3 viewDir) {
   float s = max(dot(viewDir, uSunDir), 0.0);

@@ -360,6 +360,7 @@ export function buildBike(fit, P, mats) {
   // bell, the gear shifter; turns about the head tube's axis
   const steer = new THREE.Group();
   const gripL = new THREE.Object3D(), gripR = new THREE.Object3D();
+  const basketAt = new THREE.Object3D(); // the middle of the basket's floor (her umbrella stands in it)
   steer.position.copy(H_BOT);
   const front = wheel(true);
   front.position.copy(FA).sub(H_BOT);
@@ -427,6 +428,8 @@ export function buildBike(fit, P, mats) {
     // the basket over the front wheel, on a bracket from the stem and stays to the axle
     const bx0 = -0.185, bx1 = 0.185, bz0 = FA.z - 0.08, bz1 = FA.z + 0.215, by0 = FA.y + TYRE + 0.075, by1 = by0 + 0.225;
     const bc = P.basket, bk = P.basketKind;
+    basketAt.position.set(0, by0, (bz0 + bz1) / 2).sub(H_BOT);
+    steer.add(basketAt);
     const rr = 0.035; // rounded corners
     const loop = (y, inset = 0) => {
       const pts = [];
@@ -493,7 +496,7 @@ export function buildBike(fit, P, mats) {
       o.receiveShadow = true;
     }
   });
-  return { group, rear, front, crank, pedals, steer, stand, grips: [gripL, gripR] };
+  return { group, rear, front, crank, pedals, steer, stand, grips: [gripL, gripR], basket: basketAt };
 }
 
 // ---------------------------------------------------------------------------- the lamp's beam

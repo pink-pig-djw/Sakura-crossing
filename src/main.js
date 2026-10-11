@@ -8,6 +8,9 @@ import { createSky } from './render/sky.js';
 import { createClouds } from './render/clouds.js';
 import { Pipeline } from './render/pipeline.js';
 import { TimeOfDay, PRESETS } from './systems/timeofday.js';
+import { Weather } from './systems/weather.js';
+import { RainMap } from './render/rainmap.js';
+import { createRain, createLampGlints } from './render/rain.js';
 import { Player } from './systems/player.js';
 import { AudioEngine } from './systems/audio.js';
 import { buildWorld } from './world/world.js';
@@ -75,6 +78,15 @@ sun.shadow.radius = 1.5;
 scene.add(sun);
 
 const tod = new TimeOfDay(sun);
+// the weather lays its overcast over the light of each hour (?rain: raining from the start)
+const weather = new Weather();
+tod.after = (t) => weather.apply(t);
+if (params.has('rain')) {
+  weather.set(true, 'manual', params.get('rain') || 'rain');
+  weather.cloud = 1;
+  weather.rain = weather.amount;
+  weather.wet = 1;
+}
 tod.setHour(params.has('t') ? parseFloat(params.get('t')) : 10.4);
 scene.add(createSky());
 const clouds = createClouds();
@@ -82,6 +94,7 @@ scene.add(clouds);
 
 const pipe = new Pipeline(renderer, { msaa: QUALITY[quality].msaa });
 let petals = null;
+let rainfall = null;
 
 function applyQuality(q) {
   quality = q;
@@ -101,6 +114,7 @@ function applyQuality(q) {
     }
   }
   if (petals) petals.geometry.instanceCount = Math.min(Q.petals, petals.userData.max);
+  rainfall?.userData.setDensity(Q.lite ? 0.5 : 1);
   try {
     localStorage.setItem('sakura-quality', q);
   } catch {
@@ -178,6 +192,14 @@ player.indoors = world.indoorRects || [];
 Character.indoorAt = isIndoors;
 // counter seats: sitting keeps her knees out of the counter (see avatar.js)
 for (const it of world.interactables) if (it.sit && /カウンター/.test(it.label || '')) it.sit.counter = true;
+// the rain map (what the rain falls on: roofs, canopies, the ground), drawn once the town
+// stands and before anything that moves is in it; then the rain itself
+const rainMap = new RainMap().build(renderer, scene);
+rainfall = createRain();
+rainfall.userData.setDensity(QUALITY[quality].lite ? 0.5 : 1);
+scene.add(rainfall);
+const glints = createLampGlints(world.lamps, (x, z) => world.colliders.groundAt(x, z));
+scene.add(glints);
 // her bicycle (B to get on and off), in the colour picked last time
 const bike = new Bicycle(world, scene, { audio });
 // さくら一周ライン: timed from the START / GOAL arch (across the promenade and the coast road)
@@ -646,6 +668,8 @@ function menuState() {
     luck: state.luck,
     trains: state.trains,
     lapBest: lap.best ? lapTime(lap.best) : null,
+    raining: weather.raining,
+    weatherAuto: weather.auto,
   };
 }
 
@@ -757,6 +781,7 @@ pad.on('minimap', () => toggleMinimap());
 pad.on('view', () => toggleView());
 pad.on('menu', openMenu);
 pad.on('time', (d) => (bike.riding ? shiftGear(d) : cycleTime(d)));
+pad.on('rain', () => weather.toggle());
 pad.on('confirm', () => activateFocused(modalRoot()));
 pad.on('close', backToPlay);
 pad.on('nav', (dx, dy) => moveFocus(modalRoot(), dx, dy));
@@ -772,6 +797,18 @@ ui.on('time', (h) => {
   ui.syncMenu(menuState());
 });
 ui.on('flow', (v) => (tod.flowing = v));
+ui.on('weather', (w) => {
+  weather.set(w === 'rain', 'manual');
+  ui.syncMenu(menuState());
+});
+ui.on('weatherAuto', (v) => weather.setAuto(v));
+// the rain starting and stopping (by itself or called for), the rainbow after
+weather.onChange = (raining) => {
+  if (state.mode === 'play') ui.toast(tr(raining ? (weather.kind === 'drizzle' ? '小雨が降りだした' : weather.kind === 'heavy' ? '雨が強くなってきた' : '雨が降りだした') : '雨があがった'), 2.6);
+  if (state.mode === 'menu') ui.syncMenu(menuState());
+};
+let rainbowSeen = false;
+weather.onThunder = (k) => audio.thunder(k);
 ui.on('volume', (k, v) => {
   volumes[k] = v;
   if (k === 'voice') voice.setVolume(v);
@@ -865,6 +902,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyN') toggleMinimap();
   if (e.code === 'KeyV') toggleView();
   if (e.code === 'KeyT') cycleTime(1);
+  if (e.code === 'KeyR' && !e.repeat) weather.toggle();
   if (e.code === 'KeyH') document.getElementById('hud').classList.toggle('photo');
 });
 
@@ -913,6 +951,8 @@ let lastTrainState = 'wait';
 let rumbleT = 0;
 const walkers = []; // feet positions of everyone the train must not run into
 let prevHour = tod.hour;
+let umbrellas = false;
+const covered = (x, y, z) => rainMap.covered(x, y, z, 0.3);
 const fwd = new THREE.Vector3();
 const headPos = new THREE.Vector3(), focusAt = new THREE.Vector3();
 // where the protagonist looks: what she is about to use (a person's face, a thing at chest height)
@@ -949,12 +989,21 @@ function frame() {
 function simulate(dt) {
   const t = (G.uTime.value += dt);
 
+  const h0 = tod.hour;
   if (state.mode === 'title') {
     tod.update(dt * 0.25);
     if (!debug) attract(t);
   } else if (state.mode !== 'loading') {
     if (state.mode === 'play') tod.update(dt);
     player.update(state.mode === 'play' ? dt : 0);
+  }
+  // the weather goes by the town's clock (a jump to another time of day does not count);
+  // behind the menu the clock stops, but rain called for there still comes (or goes)
+  if (state.mode !== 'loading') {
+    let dh = tod.hour - h0;
+    if (dh < -23) dh += 24;
+    weather.update(dt, dh > 0 && dh < 0.5 ? dh : 0, tod);
+    if (state.mode !== 'play' && state.mode !== 'title') tod.update(0);
   }
 
   // controller
@@ -1003,6 +1052,15 @@ function simulate(dt) {
   // (she stays on screen behind menus, the map and the fortune slip)
   const tpOn = !!avatar && state.mode !== 'title' && state.mode !== 'loading' && player.view === 'third';
   const tpShown = tpOn && player.boomNow > 0.75;
+  // umbrellas go up once the rain is really falling (and down once it has all but stopped)
+  umbrellas = umbrellas ? weather.rain > 0.05 : weather.rain > 0.08;
+  if (avatar) {
+    avatar.rain = umbrellas;
+    avatar.rainNow = weather.rain;
+    avatar.shelter ||= covered;
+  }
+  residents?.setRain?.(umbrellas, covered);
+  passersby?.setRain?.(umbrellas, covered);
   avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
   residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour);
@@ -1015,6 +1073,8 @@ function simulate(dt) {
   birds.userData.update(t);
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);
+  rainfall.userData.update(dt, avatar?.canopy?.() ?? null);
+  glints.visible = G.uWet.value > 0.01 && G.uNight.value > 0.35;
   G.uTide.value = 0.06 * Math.sin(t * 0.42) + 0.025 * Math.sin(t * 1.13);
   gustT -= dt;
   if (gustT <= 0) {
@@ -1059,6 +1119,12 @@ function simulate(dt) {
     ui.setLap(null);
   }
   ui.setClock(tod.label, tod.period.label, tod.hour);
+  ui.setRain(weather.raining || weather.rain > 0.05);
+  if (weather.rainbow > 0.4 && !rainbowSeen && state.mode === 'play') {
+    rainbowSeen = true;
+    ui.toast(tr('雨上がりの空に虹がかかった'), 3.2);
+  }
+  if (weather.rainbow === 0) rainbowSeen = false;
   const lastHour = prevHour;
   prevHour = tod.hour;
   ui.update(dt);
@@ -1115,6 +1181,12 @@ function simulate(dt) {
       chime,
       station: { x: (STATION.platX0 + STATION.platX1) / 2, z: STATION.platZ0 },
       route: routeAmbience(cx, cz),
+      rain: {
+        amount: weather.rain,
+        wet: weather.wet,
+        umbrella: avatar?.canopy() && player.view === 'third' ? 1 : 0,
+        shelter: weather.rain > 0.01 && rainMap.covered(cx, camera.position.y + 0.4, cz),
+      },
     });
   }
 }
@@ -1167,7 +1239,7 @@ window.__setView = (cam, hour) => {
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, THREE, i18n: { tr, tf, setLang } };
+window.__game = { world, player, tod, weather, rainMap, rainfall, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, THREE, i18n: { tr, tf, setLang } };
 // debug: subway trains standing at the platform with doors open (?subway)
 if (params.has('subway') && world.subway) {
   for (const tr of world.subway.trains) {

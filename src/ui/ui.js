@@ -22,6 +22,7 @@ const CONTROLS = {
       [['V'], '視点切替'],
       [['ホイール'], 'カメラの距離'],
       [['T'], '時間帯'],
+      [['R'], '雨を降らせる・やませる'],
       [['B'], '自転車に乗る・降りる'],
       [['F'], '全画面'],
       [['H'], '画面の文字を隠す（写真用）'],
@@ -51,6 +52,7 @@ const CONTROLS = {
       [['⧉'], 'ミニマップの表示'],
       [['R+'], '視点切替（右スティック押し込み）'],
       [['✚↑'], '自転車に乗る・降りる'],
+      [['✚↓'], '雨を降らせる・やませる'],
       [['≡'], 'メニュー'],
     ]],
     ['自転車に乗っているとき', [
@@ -73,6 +75,7 @@ const CONTROLS = {
       [['ミニマップ'], 'タップで地図をひらく'],
       [['≡'], 'メニュー'],
       [['全画面ボタン'], '全画面'],
+      [['≡'], '天気（メニューの「天気」から）'],
     ]],
     ['自転車に乗っているとき', [
       [['スティック'], 'こぐ・ブレーキ・ハンドル'],
@@ -164,6 +167,8 @@ export class UI {
       tb.appendChild(b);
     }
     $('flow').addEventListener('change', (ev) => this.emit('flow', ev.target.checked));
+    for (const b of document.querySelectorAll('#weather-buttons button')) b.addEventListener('click', () => this.emit('weather', b.dataset.weather));
+    $('weather-auto').addEventListener('change', (ev) => this.emit('weatherAuto', ev.target.checked));
     $('vol-amb').addEventListener('input', (ev) => this.emit('volume', 'amb', ev.target.value / 100));
     $('vol-music').addEventListener('input', (ev) => this.emit('volume', 'music', ev.target.value / 100));
     $('sens').addEventListener('input', (ev) => this.emit('sens', ev.target.value / 100));
@@ -359,6 +364,13 @@ export class UI {
     this.el.prompt.querySelector('kbd').hidden = this.isTouch && this.inputMode !== 'pad';
   }
 
+  // the umbrella by the clock while it rains
+  setRain(on) {
+    if (on === this.rainOn) return;
+    this.rainOn = on;
+    $('rain-icon').toggleAttribute('hidden', !on);
+  }
+
   setClock(label, period, hour) {
     this.el.clock.textContent = label;
     if (period !== this.periodJa || getLang() !== this.periodLang) {
@@ -512,6 +524,12 @@ export class UI {
       b.classList.toggle('on', Math.abs(h - state.hour) < 0.6);
     }
     $('flow').checked = state.flowing;
+    for (const b of document.querySelectorAll('#weather-buttons button')) {
+      const on = (b.dataset.weather === 'rain') === !!state.raining;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    $('weather-auto').checked = !!state.weatherAuto;
     for (const b of document.querySelectorAll('#quality-buttons button')) b.classList.toggle('on', b.dataset.q === state.quality);
     const nb = this.el.notebook;
     nb.innerHTML = '';

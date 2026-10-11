@@ -50,7 +50,9 @@ for (const s of ['left', 'right']) {
 }
 
 // bones the procedural layers touch (breathing, looking, ground fitting)
-const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot'];
+// (and the right arm, hand and fingers: an umbrella held in that hand, see umbrella.js)
+const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
+  'rightLowerArm', 'rightHand', ...['Index', 'Middle', 'Ring', 'Little'].flatMap((f) => ['Proximal', 'Intermediate', 'Distal'].map((j) => `right${f}${j}`)), 'rightThumbMetacarpal', 'rightThumbProximal', 'rightThumbDistal'];
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -496,6 +498,8 @@ export class Character {
     this._fitGround();
     // a pose laid over the clip (a cyclist on her bike), before the skin and the hair follow
     if (this.pose) this.pose(this, dt);
+    // something held in the hand (an umbrella)
+    if (this.hold) this.hold(this, dt);
     this._drapeSkirt();
     this._blowHair();
     if (this.lite) {

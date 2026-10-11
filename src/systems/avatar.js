@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { loadCharacter } from './character.js';
+import { Umbrella, UmbrellaCarrier, Drips } from './umbrella.js';
 
 // 桜井ななみ (Sakurai Nanami), the protagonist, seen from behind in third person.
 //
@@ -39,6 +40,30 @@ export class Avatar {
     this.gait = 'idle';
     this.airT = 0;
     this.seat = null;
+    // her clear umbrella (ビニール傘): up while it rains (set by the game), closed and carried
+    // under a roof or while she does something with her hands, in the basket on her bicycle
+    this.umbrella = new Umbrella({ canopy: 'clear' });
+    this.carrier = new UmbrellaCarrier(this.umbrella);
+    this.drips = new Drips();
+    scene.add(this.drips.mesh);
+    this.rain = false;
+    this.rainNow = 0; // how hard it falls (drips off the umbrella)
+    this.shelter = null; // (x, y, z) => is there a roof over that point
+  }
+
+  // what to do with the umbrella (her feet at x, y, z)
+  _umbrellaWant(x, y, z) {
+    if (!this.rain) return 'away';
+    if (this.bike?.on) return 'basket';
+    if (this.act || this.shelter?.(x, y + 1.8, z)) return 'hang';
+    return 'open';
+  }
+
+  // the open canopy over her (for the rain to keep off), or null
+  canopy() {
+    const U = this.umbrella;
+    if (!this.ch?.root.visible || !this.carrier.shown || U.open < 0.35 || U.group.parent === this.carrier.basket) return null;
+    return U.cover();
   }
 
   // wear outfit i (loads it the first time); resolves once she has changed
@@ -62,6 +87,8 @@ export class Avatar {
     if (old) old.root.removeFromParent();
     this.scene.add(ch.root);
     ch.root.visible = old ? old.root.visible : false;
+    if (old) old.hold = null;
+    ch.hold = (c, dt) => this.carrier.pose(c, dt);
     this.ch = ch;
     this.outfit = i;
     // start the new one in the same pose
@@ -89,7 +116,11 @@ export class Avatar {
     const ch = this.ch, p = this.player;
     if (!ch) return;
     ch.root.visible = active && visible;
-    if (!active) return;
+    if (!active) {
+      this.umbrella.group.visible = false;
+      this.drips.mesh.visible = false;
+      return;
+    }
     // on her bicycle (getting on, riding, getting off)
     if (this.bike?.on) {
       this._ride(dt, still);
@@ -194,6 +225,10 @@ export class Avatar {
     } else this.bodyY = y;
     ch.root.position.set(x, y, z);
     ch.root.rotation.set(0, this.heading, 0);
+    this.carrier.want = this._umbrellaWant(x, y, z);
+    // running, she tips it forward into the rain
+    const run = this.gait === 'run' ? THREE.MathUtils.clamp((Math.hypot(p.vel.x, p.vel.z) - 2.4) / 2.5, 0, 1) : 0;
+    this.carrier.lean += (run * 0.32 - this.carrier.lean) * Math.min(1, dt * 4);
 
     // her head turns toward what you look at or are about to use (not behind her)
     let target = look;
@@ -206,6 +241,9 @@ export class Avatar {
     const ahead = Math.cos(wrap(Math.atan2(_w.x, _w.z) - this.heading));
     ch.lookAt(this.act ? null : ahead > -0.2 ? target : null, look ? 1 : 0.7);
     ch.update(dt);
+    // water dripping off the rib tips
+    const U = this.umbrella;
+    this.drips.update(dt, U, U.group.visible && U.open > 0.9 && U.group.parent !== this.carrier.basket ? this.rainNow * 9 : 0);
     if (this.fresh) {
       // just changed clothes: hair and skirt start at rest
       this.fresh = false;
@@ -236,6 +274,8 @@ export class Avatar {
       this.from = { x: ch.root.position.x, y: ch.root.position.y, z: ch.root.position.z, h: this.heading };
     }
     B.placeRider(ch.root);
+    this.carrier.want = this._umbrellaWant(0, 0, 0);
+    this.carrier.basket = B.parts?.basket ?? null;
     const k = B.k * B.k * (3 - 2 * B.k);
     if (k < 1) {
       const f = B.state === 'dismounting' && B.offSpot ? B.offSpot : this.from;
@@ -264,6 +304,7 @@ export class Avatar {
     wind.set(-Math.sin(B.h) * B.v, 0.02 * v, -Math.cos(B.h) * B.v).multiplyScalar(0.07 * gust);
     ch.wind = still ? null : wind;
     ch.update(dt);
+    this.drips.update(dt, this.umbrella, 0);
   }
 
   _offBike() {

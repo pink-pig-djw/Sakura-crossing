@@ -388,6 +388,21 @@ kbd {
 #clock-icon.dusk {
   background: radial-gradient(circle, #ff9a7a 55%, #e2708f 100%);
 }
+.rain-ico {
+  width: 15px;
+  height: 15px;
+  margin-left: -0.15rem;
+}
+.rain-ico path {
+  fill: #9cc6e8;
+  stroke: #4f7fae;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+}
+.rain-ico path.stick {
+  fill: none;
+  stroke-linecap: round;
+}
 #clock-icon.moon {
   background: #f6f2d8;
   box-shadow: inset -4px -2px 0 #c9c3a6;

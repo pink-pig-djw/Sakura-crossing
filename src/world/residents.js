@@ -3,6 +3,7 @@ import { loadCharacter } from '../systems/character.js';
 import { createCharacterMaterial } from '../render/materials.js';
 import { VOICE_LINES } from '../systems/voiceLines.js';
 import { PARK } from './layout.js';
+import { Umbrella, UmbrellaCarrier } from '../systems/umbrella.js';
 
 // 芽衣 (Mei), a second-year at 桜ヶ浜高校, out on 桜坂 from early morning until dusk.
 //
@@ -87,6 +88,7 @@ const RESIDENTS = {
     lines: { hello: 'mei_hello', again: 'mei_again', bye: 'mei_bye', startle: 'mei_startle' },
     greet: ['bow', 'greet'], // the first meeting, later ones
     phoneWalk: 0.3, // how often she reads her phone as she walks on
+    umbrella: { canopy: 0xf3c6d2, handle: 0xf6efe6, frame: 0xe4e6ea }, // pale sakura pink
   },
   kokoa: {
     file: 'chars/kokoa.vrm',
@@ -100,6 +102,8 @@ const RESIDENTS = {
     phoneWalk: 0,
     trot: 0.35, // how often she runs to the next thing rather than walks
     stopEverywhere: true, // a pause at every point of her round, not only at its ends
+    // a child's yellow umbrella with a clear window in it (to see where she is going)
+    umbrella: { canopy: 0xf6cf3a, handle: 0xf6cf3a, frame: 0xd8dade, window: true, size: 0.74, grip: [-0.1, 0.07, 0.17], apex: [-0.03, 0.42, -0.05] },
   },
 };
 
@@ -153,7 +157,23 @@ export class Resident {
     this.attendT = 0;
     this.ignore = false;
     this.home = false;
+    // in the rain: her umbrella up (closed under a roof); no phone
+    this.rain = false;
+    this.covered = null;
+    this.umb = null;
     this.spawn(0);
+  }
+
+  umbrella() {
+    const o = this.cast.umbrella;
+    if (this.rain && !this.umb && o) {
+      this.umb = new UmbrellaCarrier(new Umbrella(o), o);
+      this.ch.hold = (ch, dt) => this.umb.pose(ch, dt);
+    }
+    if (!this.umb) return;
+    const r = this.ch.root.position;
+    this.umb.want = this.home || !this.rain ? 'away' : this.covered?.(r.x, r.y + 1.6, r.z) ? 'hang' : 'open';
+    if (this.home) this.umb.u.group.visible = false;
   }
 
   // her walk: 'walk', 'walkText' (looking at her phone as she goes) or 'jog' (a child
@@ -167,7 +187,8 @@ export class Resident {
   walkOn() {
     const c = this.cast;
     const r = Math.random();
-    this.setWalk(r < (c.phoneWalk || 0) ? 'walkText' : r < (c.phoneWalk || 0) + (c.trot || 0) ? 'jog' : 'walk');
+    const phone = this.rain ? 0 : c.phoneWalk || 0;
+    this.setWalk(r < phone ? 'walkText' : r < phone + (c.trot || 0) ? 'jog' : 'walk');
   }
 
   // at one end of her walk, setting off along it
@@ -192,6 +213,7 @@ export class Resident {
     this.interact.off = home; // (no "talk to her" while she is not there)
     this.phone.visible = false;
     if (home) this.leaveBench();
+    if (this.umb) this.umb.u.group.visible = false;
   }
 
   place() {
@@ -272,7 +294,7 @@ export class Resident {
   pickAmbient(hour) {
     const seaward = Math.cos(this.heading) > 0.7;
     const AMBIENT = this.cast.ambient;
-    const w = AMBIENT.map(([, f]) => f(hour, seaward));
+    const w = AMBIENT.map(([k, f]) => (this.rain && k === 'phone' ? 0 : f(hour, seaward)));
     let r = Math.random() * w.reduce((a, b) => a + b, 0);
     for (let i = 0; i < w.length; i++) if ((r -= w[i]) <= 0) return AMBIENT[i][0];
     return 'idle';
@@ -607,6 +629,7 @@ export class Resident {
     ch.mouth += (mouth - ch.mouth) * Math.min(1, dt * 18);
 
     this.place();
+    this.umbrella();
     ch.update(dt);
     this.updatePhone();
   }
@@ -739,6 +762,13 @@ export async function createResidents(world, scene, { voice } = {}) {
     list,
     update(dt, player, hour) {
       for (const p of this.list) p.update(dt, player, hour);
+    },
+    // rain falling (umbrellas up); covered(x, y, z): a roof over that point
+    setRain(on, covered) {
+      for (const p of this.list) {
+        p.rain = on;
+        p.covered = covered;
+      }
     },
     // where everyone stands (feet), for the train to look out for
     positions(out = []) {

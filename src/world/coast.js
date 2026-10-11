@@ -40,6 +40,7 @@ export function createWater() {
       uNight: G.uNight,
       uMoonDir: G.uMoonDir,
       uSkyAmb: G.uSkyAmb,
+      uRain: G.uRain,
     },
     vertexShader: /* glsl */ `
       uniform float uTide;
@@ -66,8 +67,27 @@ export function createWater() {
       uniform float uNight;
       uniform vec3 uMoonDir;
       uniform vec3 uSkyAmb;
+      uniform float uRain;
       varying vec3 vWorldPos;
       ${NOISE}
+
+      // raindrops on the sea: rings spreading (a slope to tilt the normal by)
+      vec2 seaRings(vec2 p, float t) {
+        vec2 acc = vec2(0.0);
+        for (int k = 0; k < 2; k++) {
+          vec2 q = p * (k == 0 ? 1.9 : 2.9) + float(k) * 11.7;
+          vec2 cell = floor(q);
+          vec2 f = fract(q) - 0.5;
+          float h = hash12(cell + float(k) * 5.3);
+          vec2 c = vec2(hash12(cell + 2.3), hash12(cell + 8.1)) - 0.5;
+          float age = fract(t * (0.8 + 0.6 * h) + h);
+          vec2 d = f - c * 0.5;
+          float dl = length(d);
+          float ring = sin((dl - age * 0.45) * 40.0) * smoothstep(0.08, 0.0, abs(dl - age * 0.45)) * (1.0 - age);
+          acc += ring * d / max(dl, 1e-3) * step(h, 0.3 + 0.7 * uRain);
+        }
+        return acc;
+      }
 
       float shoreZ(float x) { return 98.0 + 3.5 * sin(0.011 * x + 0.6) + 1.8 * sin(0.027 * x + 2.1); }
       float seabed(vec2 p) {
@@ -96,6 +116,10 @@ export function createWater() {
         float hx = waveH(p + vec2(e, 0.0), t) - waveH(p - vec2(e, 0.0), t);
         float hz = waveH(p + vec2(0.0, e), t) - waveH(p - vec2(0.0, e), t);
         vec3 N = normalize(vec3(-hx * amp / e, 1.0, -hz * amp / e));
+        if (uRain > 0.01 && dist < 70.0) {
+          vec2 rs = seaRings(p, t) * 0.45 * uRain * (1.0 - smoothstep(25.0, 70.0, dist));
+          N = normalize(N + vec3(rs.x, 0.0, rs.y));
+        }
         float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
         vec3 R = reflect(-V, N);
         vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.45));

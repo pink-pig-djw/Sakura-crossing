@@ -174,6 +174,8 @@ export class TimeOfDay {
       this.sun.updateMatrixWorld();
       this.sun.intensity = 1;
     }
+    // laid over the light of the hour (the weather)
+    this.after?.(this);
   }
 
   applyGrade(h) {

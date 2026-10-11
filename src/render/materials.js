@@ -34,7 +34,23 @@ export const G = {
   uTopTint: { value: new THREE.Color(0.88, 0.92, 1.0) },
   uShadowTone: { value: new THREE.Color(0.012, 0.0, 0.04) },
   uLightTone: { value: new THREE.Color(0.02, 0.012, -0.015) },
+  // the weather (systems/weather.js): rain falling now, how wet the ground is, overcast,
+  // the rainbow after; and the rain map (render/rainmap.js): the highest surface over every
+  // spot of the town, so the rain, the splashes and the wet stop under roofs
+  uRain: { value: 0 },
+  uWet: { value: 0 },
+  uOvercast: { value: 0 },
+  uRainbow: { value: 0 },
+  uRainMap: { value: emptyRainMap() },
+  uRainRect: { value: new THREE.Vector4(0, 0, 1, 1) }, // x0, z1, 1 / width, -1 / depth
+  uRainRange: { value: new THREE.Vector2(-60, 400) }, // heights: y0 + v * span
 };
+
+function emptyRainMap() {
+  const t = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+  t.needsUpdate = true;
+  return t;
+}
 
 const VERT_COMMON = /* glsl */ `
 #include <common>
@@ -175,14 +191,18 @@ export function createToonMaterial(opts = {}) {
         #endif
         vec3 N = normalize(vNormalW);
         if (!gl_FrontFacing) N = -N;
+        float wet = wetness(vWorldPos, N);
+        float pd = puddle(vWorldPos, N, wet);
+        vec3 lit = wet > 0.0 ? wetAlbedo(albedo, wet, pd) : albedo;
         float sh = getShadowMask();
-        vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
+        vec3 col = toonShade(lit, N, sh, uSoft, uWrap);
         #ifdef EMISSIVE_FLAG
           // emis: 0 = none, 0..1 = glows at night (signs), >1 = always glowing (vending machines)
           float glow = emis > 1.5 ? (0.55 + 0.9 * uNight) : emis * uNight * 1.2;
           col = mix(col, albedo * (1.0 + 0.6 * uNight), clamp(glow, 0.0, 1.0));
           col += albedo * max(glow - 1.0, 0.0) * 0.8;
         #endif
+        col = wetSheen(col, N, vWorldPos, wet, pd);
         col = applyHaze(col, vWorldPos);
         gl_FragColor = vec4(col, uOutline * cov);
       }
@@ -211,8 +231,6 @@ export function createWindowMaterial() {
     `,
     fragmentShader: /* glsl */ `
       ${FRAG_HEAD}
-      uniform vec3 uZenith;
-      uniform vec3 uHorizon;
       uniform vec3 uCloudLit;
       void main() {
         float seed = vPattern / 255.0;
@@ -376,8 +394,12 @@ export function createGroundMaterial(groundMap, mapRect) {
         wet *= step(vWorldPos.y, 2.0);
         albedo *= mix(1.0, 0.72, wet);
         vec3 N = normalize(vNormalW);
+        float rw = wetness(vWorldPos, N);
+        float pd = puddle(vWorldPos, N, rw);
+        if (rw > 0.0) albedo = wetAlbedo(albedo, rw, pd);
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
+        col = wetSheen(col, N, vWorldPos, rw, pd);
         col = applyHaze(col, vWorldPos);
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
@@ -590,8 +612,17 @@ export function createRoadMaterial() {
           }
         }
         vec3 N = normalize(vNormalW);
+        // wet: puddles gather along the gutters and in the ruts more than mid-lane
+        float rw = wetness(vWorldPos, N);
+        float pd = puddle(vWorldPos, N, rw);
+        if (rw > 0.0) {
+          float edge = (1.0 - band(u, 0.9, W - 0.9)) * float(style <= 3 || style == 11 || style == 12 || style == 14 || style == 18 || style == 20);
+          pd = max(pd, edge * smoothstep(0.45, 0.62, vnoise(vWorldPos.xz * 0.35 + 2.0)) * smoothstep(0.4, 0.9, rw));
+          albedo = wetAlbedo(albedo, rw, pd);
+        }
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
+        col = wetSheen(col, N, vWorldPos, rw, pd);
         col = applyHaze(col, vWorldPos);
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
@@ -631,8 +662,6 @@ export function createRiverWaterMaterial() {
     `,
     fragmentShader: /* glsl */ `
       ${FRAG_HEAD}
-      uniform vec3 uZenith;
-      uniform vec3 uHorizon;
       void main() {
         vec2 p = vWorldPos.xz;
         float t = uTime;
@@ -764,8 +793,6 @@ export function createPaddyMaterial() {
     `,
     fragmentShader: /* glsl */ `
       ${FRAG_HEAD}
-      uniform vec3 uZenith;
-      uniform vec3 uHorizon;
       void main() {
         vec2 p = vWorldPos.xz;
         float t = uTime;
@@ -900,8 +927,6 @@ export function createGlassMaterial() {
     `,
     fragmentShader: /* glsl */ `
       ${FRAG_HEAD}
-      uniform vec3 uZenith;
-      uniform vec3 uHorizon;
       void main() {
         vec3 N = normalize(vNormalW);
         vec3 V = normalize(cameraPosition - vWorldPos);
@@ -1162,8 +1187,6 @@ export function createBikeMaterial(opts = {}) {
     `,
     fragmentShader: /* glsl */ `
       ${FRAG_HEAD}
-      uniform vec3 uZenith;
-      uniform vec3 uHorizon;
       uniform float uLamp;
       void main() {
         vec3 albedo = vColor;

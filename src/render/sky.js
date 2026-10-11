@@ -27,6 +27,9 @@ export function createSky() {
       uMoonDir: G.uMoonDir,
       uSunDisk: G.uSunDisk,
       uSkyAmb: G.uSkyAmb,
+      uOvercast: G.uOvercast,
+      uRain: G.uRain,
+      uRainbow: G.uRainbow,
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -56,6 +59,9 @@ export function createSky() {
       uniform float uStars;
       uniform float uNight;
       uniform float uSunDisk;
+      uniform float uOvercast;
+      uniform float uRain;
+      uniform float uRainbow;
       varying vec3 vDir;
       ${NOISE}
 
@@ -166,7 +172,7 @@ export function createSky() {
         col += uSunGlow * (pow(sd, 5.0) * 0.35 + pow(sd, 48.0) * 0.6);
 
         // stars
-        if (uStars > 0.01) {
+        if (uStars > 0.01 && uOvercast < 0.95) {
           vec3 sp = d * 220.0;
           vec3 cell = floor(sp);
           float h = hash13(cell);
@@ -184,8 +190,8 @@ export function createSky() {
         // moon
         float md = max(dot(d, uMoonDir), 0.0);
         float moon = smoothstep(0.99955, 0.9997, md);
-        col += vec3(0.6, 0.65, 0.8) * pow(md, 60.0) * 0.4 * uNight;
-        col = mix(col, vec3(1.25, 1.22, 1.1), moon * uNight);
+        col += vec3(0.6, 0.65, 0.8) * pow(md, 60.0) * 0.4 * uNight * (1.0 - uOvercast);
+        col = mix(col, vec3(1.25, 1.22, 1.1), moon * uNight * (1.0 - uOvercast));
 
         // sun disk (HDR so it blooms)
         float disk = smoothstep(0.99935, 0.99965, sd) * uSunDisk;
@@ -210,6 +216,41 @@ export function createSky() {
         } else {
           // below horizon (normally covered by the sea)
           col = mix(uHorizon * 0.85, uSkyAmb * 0.6, clamp(-e * 6.0, 0.0, 1.0));
+        }
+
+        // overcast: a low grey deck of rain cloud, its darker folds driven along by the wind,
+        // paling into the rain toward the horizon (the far mountains go first)
+        if (uOvercast > 0.001) {
+          vec2 p = d.xz / max(d.y + 0.08, 0.06) * 0.8 + vec2(t * 0.012, t * 0.005);
+          float n = fbm5(p * 0.6) * 0.7 + fbm3(p * 2.4 + 9.0) * 0.3;
+          vec3 deck = mix(uCloudShade, uCloudLit, smoothstep(0.25, 0.75, n) * 0.85 + 0.1);
+          deck = mix(deck, uCloudShade * 0.82, smoothstep(0.55, 0.8, fbm3(p * 1.3 + 3.0)) * 0.45);
+          float low = 1.0 - smoothstep(-0.02, 0.22 + 0.15 * uRain, e);
+          deck = mix(deck, uHazeColor, low * (0.75 + 0.25 * uRain));
+          col = mix(col, deck, uOvercast * mix(1.0, 0.92, step(e, -0.01)));
+        }
+
+        // a rainbow after the rain: 42 degrees round the point opposite the sun (red outside,
+        // violet in), a faint second bow outside it, the sky a touch brighter inside the arc
+        if (uRainbow > 0.001 && e > -0.01) {
+          float th = degrees(acos(clamp(dot(d, -uSunDir), -1.0, 1.0)));
+          float b = (th - 40.6) / 1.8;
+          vec3 bow = vec3(0.0);
+          if (b > -0.2 && b < 1.2) {
+            float hue = 0.78 * (1.0 - clamp(b, 0.0, 1.0));
+            vec3 spec = clamp(abs(mod(hue * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            bow += spec * smoothstep(-0.2, 0.15, b) * smoothstep(1.2, 0.85, b);
+          }
+          float b2 = (th - 50.3) / 3.0;
+          if (b2 > -0.2 && b2 < 1.2) {
+            float hue = 0.78 * clamp(b2, 0.0, 1.0);
+            vec3 spec = clamp(abs(mod(hue * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            bow += spec * 0.3 * smoothstep(-0.2, 0.2, b2) * smoothstep(1.2, 0.8, b2);
+          }
+          float inside = smoothstep(40.5, 30.0, th) * 0.06;
+          float patchy = 0.55 + 0.45 * smoothstep(0.3, 0.7, fbm3(vec2(atan(d.x, d.z) * 3.0, e * 4.0) + 2.0));
+          float k = uRainbow * smoothstep(-0.01, 0.06, e) * patchy;
+          col = col + (bow * 0.32 + inside) * k * (0.6 + 0.4 * luma(col));
         }
         gl_FragColor = vec4(col, 0.0);
       }

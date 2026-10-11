@@ -6,7 +6,18 @@ import { RNG } from '../core/rng.js';
 import { ROADS, inRiver, groundH } from './layout.js';
 import { Character, loadAsset, loadMotions } from '../systems/character.js';
 import { makePhone, holdPhone } from './residents.js';
+import { Umbrella, UmbrellaCarrier } from '../systems/umbrella.js';
 
+// In the rain: those out walking, waiting or chatting put up their umbrellas (clear vinyl
+// mostly, as everyone has in Japan, or one in a quiet colour; closed under a roof), and
+// nobody looks at a phone; the joggers, the cyclists and those on the benches go home.
+const WEATHER = { rain: false, covered: null };
+const RAIN_HOME = new Set(['jog', 'cycle', 'sit']);
+const UMB = {
+  woman: ['clear', 'clear', 'clear', 0x2f3f5e, 0xd8c8a8, 0xe6a8b8, 0x9cc4e4, 0x7a3040, 0x3a5a48, 0xf2efe6],
+  man: ['clear', 'clear', 0x2a2a30, 0x2f3f5e, 0x3a5a48, 0x4a4a52],
+  student: ['clear', 'clear', 'clear', 0x2f3f5e, 0x2a2a30],
+};
 // Passers-by: people out and about in town for company. Nine base models (high school girls
 // and boys in the two uniforms, women and a man in everyday clothes), each one dressed
 // differently: hair repainted in blacks and browns, the everyday clothes in other colours
@@ -514,6 +525,7 @@ class Person {
     this.away = false;
     this.x = this.z = this.heading = 0;
     this.speed = 0;
+    this.umb = null; // (an umbrella, the first time it rains)
   }
 
   setAway(away) {
@@ -521,6 +533,25 @@ class Person {
     this.ch.root.visible = !away;
     this.solid.off = away;
     if (this.phone) this.phone.visible = false;
+    if (this.umb) this.umb.u.group.visible = false;
+  }
+
+  // up in the rain, closed under a roof, put away when it stops
+  umbrella(shown) {
+    if (WEATHER.rain && !this.umb) {
+      const kind = this.spec.model.startsWith('girl') || this.spec.model.startsWith('boy') ? 'student' : this.male ? 'man' : 'woman';
+      const c = pick(UMB[kind]);
+      const u = new Umbrella(c === 'clear' ? { canopy: 'clear', size: this.male ? 1.05 : 1 } : { canopy: c, handle: Math.random() < 0.5 ? 0x6b4a32 : 0x2a2a2c, frame: 0x8a8e94, size: this.male ? 1.08 : 1 });
+      this.umb = new UmbrellaCarrier(u);
+      this.ch.hold = (ch, dt) => this.umb.pose(ch, dt);
+    }
+    if (!this.umb) return;
+    if (!shown) {
+      this.umb.u.group.visible = false;
+      return;
+    }
+    const r = this.ch.root.position;
+    this.umb.want = !WEATHER.rain ? 'away' : WEATHER.covered?.(r.x, r.y + 1.8, r.z) ? 'hang' : 'open';
   }
 
   // out and about? They come and go out of sight (respawn: back somewhere on their way).
@@ -529,7 +560,7 @@ class Person {
   // first arrive (the town loading at night), they are not about at all.
   presence(cam, hour) {
     // (each keeps their own time, give or take 25 minutes: they do not all leave at once)
-    const out = inHours(hour + this.jit, this.spec.hours ?? DAY);
+    const out = inHours(hour + this.jit, this.spec.hours ?? DAY) && !(WEATHER.rain && RAIN_HOME.has(this.spec.act));
     this.dc = Math.hypot(cam.x - this.x, cam.z - this.z);
     if (this.arrived === undefined) {
       this.arrived = true;
@@ -559,6 +590,7 @@ class Person {
     const ch = this.ch, dc = this.dc;
     const shown = dc < (this.far ?? 75);
     ch.root.visible = shown;
+    this.umbrella(shown);
     if (!shown) {
       if (this.phone) this.phone.visible = false;
       return;
@@ -623,7 +655,7 @@ class Walker extends Person {
 
   walk() {
     this.state = 'walk';
-    this.clip = this.jog ? 'jog' : this.phone && !this.male && Math.random() < 0.4 ? 'walkText' : this.set.walk;
+    this.clip = this.jog ? 'jog' : this.phone && !this.male && !WEATHER.rain && Math.random() < 0.4 ? 'walkText' : this.set.walk;
     this.pace = this.rate * (0.94 + Math.random() * 0.12);
     this.speed = this.ch.info[this.clip].speed * this.pace;
     this.ch.play(this.clip, 0.4, this.pace);
@@ -633,7 +665,7 @@ class Walker extends Person {
     this.state = 'pause';
     this.timer = secs;
     this.speed = 0;
-    this.ch.play(this.phone && !this.jog && Math.random() < 0.4 ? 'phone' : clip, 0.5);
+    this.ch.play(this.phone && !this.jog && !WEATHER.rain && Math.random() < 0.4 ? 'phone' : clip, 0.5);
   }
 
   // at a junction node: where next (n: the node arrived at)
@@ -930,7 +962,7 @@ class Stander extends Person {
       this.timer -= dt;
       if (this.timer <= 0) {
         this.timer = 5 + Math.random() * 6;
-        this.play(this.phone && Math.random() < 0.45 ? 'phone' : pick(this.set.idles));
+        this.play(this.phone && !WEATHER.rain && Math.random() < 0.45 ? 'phone' : pick(this.set.idles));
       }
     }
     this.place();
@@ -1070,6 +1102,11 @@ export async function createPedestrians(world, scene, near = null) {
   const api = {
     list,
     graph: G,
+    // rain falling (umbrellas up); covered(x, y, z): a roof over that point
+    setRain(on, covered) {
+      WEATHER.rain = on;
+      WEATHER.covered = covered;
+    },
     // others: { x, z } of anyone else about (you, Mei) for them to keep clear of; cam: the
     // camera (or just where it is)
     update(dt, player, cam, hour, others = []) {

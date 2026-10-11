@@ -5,7 +5,7 @@
 //  X  jump                   Y  map
 //  LB / RB  time of day      RT (hold) or L-stick click  run
 //  Menu  pause menu          View  map
-//  D-pad up  get on / off the bicycle
+//  D-pad up  get on / off the bicycle      D-pad down  rain on / off
 //  on the bicycle: L stick pedal / brake / steer, RT stand on the pedals, LT brake,
 //  LB / RB gear, X bell, B get off
 //  D-pad / left stick  move focus inside menus
@@ -137,6 +137,7 @@ export class GamepadInput {
         else if (i === BTN.LB) this.emit('time', -1);
         else if (i === BTN.RB) this.emit('time', 1);
         else if (i === BTN.UP) this.emit('bike');
+        else if (i === BTN.DOWN) this.emit('rain');
       } else if (menuish) {
         if (i === BTN.A) this.emit('confirm');
         else if (i === BTN.B || i === BTN.MENU || (mode === 'map' && (i === BTN.Y || i === BTN.VIEW))) this.emit('close');

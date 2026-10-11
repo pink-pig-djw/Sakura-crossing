@@ -175,7 +175,10 @@ export function createClouds() {
     add(wide ? 3 + (i % 4) : 7 + (i % 3), az, el, wide ? rng.range(600, 1000) : rng.range(300, 520), wide ? 192 / 512 : 0.5);
   }
   group.userData.update = (camera, t) => {
+    // (under an overcast the rain cloud's deck, drawn in the sky, takes their place)
+    const fade = 1 - 0.8 * G.uOvercast.value;
     for (const m of sprites) {
+      m.material.uniforms.uFade.value = fade;
       const u = m.userData;
       const az = u.az + t * u.speed;
       const d = new THREE.Vector3(Math.sin(az) * Math.cos(u.el), Math.sin(u.el), Math.cos(az) * Math.cos(u.el));
