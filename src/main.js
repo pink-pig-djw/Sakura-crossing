@@ -15,6 +15,8 @@ import { updateCrossings } from './world/railway.js';
 import { createPetals, createCats, createBirds, createShells, createSmallAnimations, createTraffic } from './world/life.js';
 import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY } from './world/layout.js';
 import { walkState } from './world/commercial.js';
+import { ambienceAt, PADS, BORE } from './world/routeplan.js';
+import { LapTimer, lapTime } from './systems/laptimer.js';
 import { UI } from './ui/ui.js';
 import { fullscreenSupported, isFullscreen, isIPhone, setFullscreen, onFullscreenChange } from './ui/fullscreen.js';
 import { tr, tf, setLang } from './ui/i18n.js';
@@ -178,6 +180,16 @@ Character.indoorAt = isIndoors;
 for (const it of world.interactables) if (it.sit && /カウンター/.test(it.label || '')) it.sit.counter = true;
 // her bicycle (B to get on and off), in the colour picked last time
 const bike = new Bicycle(world, scene, { audio });
+// さくら一周ライン: timed from the START / GOAL arch (across the promenade and the coast road)
+// round by the harbour, the windmill hill, the torii, the tunnel and the cape
+const padAt = (id) => PADS.find((p) => p.id === id).at;
+const lap = new LapTimer({ x: world.cycleGate?.x ?? 214, z0: 60, z1: 74 }, [
+  { x: 520, z: 82, r: 14 },
+  { x: padAt('kaze')[0], z: padAt('kaze')[1], r: 16 },
+  { x: 36, z: -180, r: 12 },
+  { x: BORE.x, z: (BORE.z0 + BORE.z1) / 2, r: 10 },
+  { x: padAt('misaki')[0], z: padAt('misaki')[1], r: 16 },
+]);
 try {
   bike.setColor(+(localStorage.getItem('sakura-bike-color') || 0) | 0);
   bike.gear = Math.max(0, Math.min(2, +(localStorage.getItem('sakura-bike-gear') ?? 1) | 0));
@@ -437,7 +449,7 @@ function interact() {
       openMap();
       break;
     case 'sign':
-      ui.toast(it.text);
+      ui.toast(it.text, it.secs);
       break;
     case 'hospital':
     case 'post':
@@ -633,6 +645,7 @@ function menuState() {
     drinks: state.drinks,
     luck: state.luck,
     trains: state.trains,
+    lapBest: lap.best ? lapTime(lap.best) : null,
   };
 }
 
@@ -1015,6 +1028,18 @@ function simulate(dt) {
     focus = bike.on ? null : findInteractable();
     ui.setPrompt(player.sitting ? '立ち上がる' : focus ? focus.label : null);
     ui.setBike(bike.on ? { gear: bike.gear, kmh: Math.abs(bike.v) * 3.6, standing: bike.stand > 0.5 } : null);
+    const lev = lap.update(dt, player.pos.x, player.pos.z, bike.on);
+    if (lev?.kind === 'start') {
+      ui.toast(tf('lapStart'));
+      audio.sfx('lapStart');
+    } else if (lev?.kind === 'cp') {
+      ui.toast(tf('lapCp', { n: lev.n, of: lev.of }), 2);
+      audio.sfx('lapCp');
+    } else if (lev?.kind === 'lap') {
+      ui.toast(tf(lev.isBest ? 'lapBest' : 'lapDone', { t: lapTime(lev.time), b: lapTime(lev.best) }), 6);
+      audio.sfx('lapDone');
+    }
+    ui.setLap(lap.running ? { t: lapTime(lap.t), n: lap.next, of: lap.cps.length } : null);
     areaCheck -= dt;
     if (areaCheck <= 0) {
       areaCheck = 0.4;
@@ -1031,6 +1056,7 @@ function simulate(dt) {
   } else {
     ui.setPrompt(null);
     ui.setBike(null);
+    ui.setLap(null);
   }
   ui.setClock(tod.label, tod.period.label, tod.hour);
   const lastHour = prevHour;
@@ -1088,9 +1114,17 @@ function simulate(dt) {
       train,
       chime,
       station: { x: (STATION.platX0 + STATION.platX1) / 2, z: STATION.platZ0 },
+      route: routeAmbience(cx, cz),
     });
   }
 }
+// the cycling loop's places as heard from (x, z) (the turbine's hub high on its tower)
+function routeAmbience(x, z) {
+  const r = ambienceAt(x, z);
+  if (r.mill) r.mill.y = groundH(r.mill.x, r.mill.z) + 31;
+  return r;
+}
+
 // (tests: run the town n steps of dt seconds without drawing)
 window.__tick = (dt = 1 / 30, n = 1) => {
   for (let i = 0; i < n; i++) simulate(dt);

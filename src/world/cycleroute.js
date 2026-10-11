@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PAT } from '../core/builder.js';
-import { route, roadDist, wallBy, VERGE, RS, BORE, BRIDGE, RAIL_GAPS } from './routeplan.js';
-import { PROM, groundH } from './layout.js';
+import { route, roadDist, wallBy, VERGE, RS, BORE, BRIDGE, HARBOR, RAIL_GAPS } from './routeplan.js';
+import { PROM, SEAWALL_Z, groundH } from './layout.js';
 import { FONTS, drawBoard } from '../render/atlas.js';
 
 // さくら一周ライン, the part that is built: the carriageway of every new leg (the hills were
@@ -346,10 +346,12 @@ function routeSigns(ctx, rt) {
     const o = S[Math.min(S.length - 1, leg.existing ? 2 : 5)];
     const [lx, lz] = leftOf(o);
     const off = leg.existing ? 0 : leg.w / 2 + 1.25;
-    const x = leg.existing ? o.x + 1 : o.x + lx * off, z = leg.existing ? 69.4 : o.z + lz * off;
+    // (on the promenade: a narrower board at its road-side edge, clear of the way along it)
+    const bw = leg.existing ? 1.2 : 1.5;
+    const x = leg.existing ? o.x + 1 : o.x + lx * off, z = leg.existing ? PROM.z0 + 0.7 : o.z + lz * off;
     const y = leg.existing ? PROM.y : groundH(x, z);
     const uv = ctx.atlas2.draw('leg:' + leg.id, 256, 72, (c, w, h) => drawBoard(c, w, h, { text: leg.name, bg: '#f2ead8', fg: '#3a2a1c', border: '#6e5238', font: FONTS.mincho ?? FONTS.gothic }));
-    signBoard(ctx, x, y, z, Math.atan2(-o.tx, -o.tz), uv, 1.5, 0.42, 1.25, { page: 2 });
+    signBoard(ctx, x, y, z, Math.atan2(-o.tx, -o.tz), uv, bw, 0.42 * (bw / 1.5), 1.25, { page: 2 });
   }
   // a post every 500 m round the loop (from the station, counterclockwise)
   const order = ['coastE', 'harbor', 'mikan', 'kaze', 'sawa', 'cha', 'torii', 'tanada', 'take', 'zuido', 'misaki', 'coastW'];
@@ -392,6 +394,15 @@ function routeSigns(ctx, rt) {
   // the loop's map at the station
   const uv = ctx.atlas2.draw('route-map', 768, 448, (c, w, h) => drawRouteMap(c, w, h, legs));
   signBoard(ctx, 208.5, PROM.y, 69.0, Math.PI, uv, 2.7, 1.575, 0.7, { page: 2, post: 0x3f7fbf, frame: 0x2f5f9f });
+  ctx.interactables.push({
+    kind: 'sign',
+    x: 208.5,
+    z: 70.2,
+    r: 1.8,
+    label: '案内板を見る',
+    secs: 8,
+    text: 'さくら一周ライン。漁港からみかん畑、風車の丘、沢の橋、茶畑、千本鳥居、棚田、竹林、素掘りトンネル、岬の灯台をめぐって、海沿いに戻ってくる約2.6kmの道。真ん中の源流の森を抜ける近道もある。',
+  });
 }
 
 export function buildCycleRoute(ctx) {
@@ -425,6 +436,22 @@ export function buildCycleRoute(ctx) {
       if (leg.id === 'sawa') legRailings(ctx, leg, side, half + 0.75, 'red', (o) => !onBridge(o));
     }
   }
+  // the ramp down through the gap in the sea wall to the harbour: ridden on the road itself
+  // (the promenade's paving stops at the wall)
+  const hl = rt.legs.find((l) => l.id === 'harbor');
+  const rs = hl.samples.filter((o) => o.s < 26);
+  ctx.colliders.addSurface(HARBOR.ramp[0], PROM.z0, HARBOR.ramp[1], SEAWALL_Z + 2.5, (x, z) => {
+    if (z < SEAWALL_Z - 0.3) return PROM.y;
+    let b = rs[0], bd = Infinity;
+    for (const o of rs) {
+      const d = (o.x - x) ** 2 + (o.z - z) ** 2;
+      if (d < bd) {
+        bd = d;
+        b = o;
+      }
+    }
+    return bd < (hl.w / 2 + 0.8) ** 2 ? b.y + 0.004 : groundH(x, z);
+  }, 2);
   // the deck over the gorge: walked and ridden at the road's height
   const sawa = rt.legs.find((l) => l.id === 'sawa');
   const deckY = (x) => {

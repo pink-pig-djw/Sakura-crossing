@@ -692,8 +692,9 @@ export class Bicycle {
     return null;
   }
 
+  // (a road tunnel counts as indoors for its light, not for riding)
   _indoors(x, z, y) {
-    return (this.world.indoorRects || []).some((r) => x > r.x0 - 0.3 && x < r.x1 + 0.3 && z > r.z0 - 0.3 && z < r.z1 + 0.3 && y > r.y0 - 0.2 && y < r.y1);
+    return (this.world.indoorRects || []).some((r) => !r.tunnel && x > r.x0 - 0.3 && x < r.x1 + 0.3 && z > r.z0 - 0.3 && z < r.z1 + 0.3 && y > r.y0 - 0.2 && y < r.y1);
   }
 
   // get on: the parked bike if it is close by, else brought to where she stands (facing h)

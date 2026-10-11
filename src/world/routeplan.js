@@ -28,7 +28,7 @@ export const LEGS = [
   {
     // down a ramp through the sea wall (the gap in coast.js: HARBOR.ramp) onto the quay
     id: 'harbor', name: '漁港', style: RS.CONCRETE, w: 4.2, rail: null,
-    pts: [[489, 70.75, 3.32], [493, 74.2, null], [499, 78.5, 2.3], [514, 81, null], [538, 83, null], [552, 86, 2.4]],
+    pts: [[489, 70.75, 3.32], [491.6, 72.9, 3.3], [495, 76, null], [499, 78.5, null], [506, 80.5, 2.3], [514, 81, null], [538, 83, null], [552, 86, 2.4]],
   },
   {
     id: 'mikan', name: 'みかんの段々畑', style: RS.RINGS, w: 3.2, rail: 'pipe',
@@ -61,11 +61,11 @@ export const LEGS = [
     id: 'take', name: '竹林', style: RS.MOUNTAIN, rail: 'bamboo',
     pts: [[-178, -165, 30.4], [-204, -156, null], [-228, -142, null], [-246, -120, null], [-257, -92, null], [-262, -62, null], [-268, -38, null], [-281, -16, null], [-294, -3, 16.7]],
   },
-  { id: 'zuido', name: '素掘りトンネル', style: RS.TUNNEL, w: 3.0, lin: [1, 3], rail: 'bamboo', pts: [[-294, -3, 16.7], [-300, 7, null], [-300, 25, null], [-300, 43, null], [-305, 53, 16]] },
+  { id: 'zuido', name: '素掘りトンネル', style: RS.TUNNEL, w: 3.0, lin: [2, 4], rail: 'bamboo', pts: [[-294, -3, 16.7], [-306, 1, null], [-316, 8, null], [-316, 25, null], [-316, 43, null], [-318, 52, 16]] },
   {
     id: 'misaki', name: '岬の灯台', style: RS.MOUNTAIN, rail: 'white',
     pts: [
-      [-305, 53, 16], [-317, 62, null], [-329, 76, null], [-342, 91, null], [-350, 106, null], [-347, 120, null],
+      [-318, 52, 16], [-319, 62, null], [-329, 76, null], [-342, 91, null], [-350, 106, null], [-347, 120, null],
       [-334, 128, null], [-318, 125, null], [-307, 114, null], [-301, 100, null], [-297, 87, null], [-293, 75, null], [-291, 70.75, 3.32],
     ],
   },
@@ -209,8 +209,8 @@ export const PAMPAS = { x0: 262, x1: 548, z0: -262, z1: -160, mills: [[352, -238
 // the lighthouse on the cape's tip, beside the road where it rounds the point
 export const CAPE = { x: -342.5, z: 140.8 };
 // the rock spur the hand-dug tunnel goes through (a straight bore along z)
-export const SPUR = { x0: -330, x1: -276, z0: 0, z1: 52 };
-export const BORE = { x: -300, z0: 9, z1: 41, w: 3.4, h: 4.3 };
+export const SPUR = { x0: -346, x1: -300, z0: 0, z1: 52 };
+export const BORE = { x: -316, z0: 9, z1: 41, w: 3.4, h: 4.3 };
 // the red arch bridge over the gorge (the road leg 'sawa' between x0 and x1 is a deck)
 export const BRIDGE = { x0: 161, x1: 203, z: -170 };
 // rest stops beside the road: a level pad (r m round, at the road's height) reached through
@@ -330,7 +330,8 @@ export function sculptReady() {
 }
 
 // nat(x, z): the natural ground; outside(x, z): distance outside the town's valley;
-// rules.keep(x, z): ground left exactly as it is, rules.floor(x, z): the least it may be
+// rules.keep(x, z): ground left exactly as it is, rules.shape(x, z): shaped though in town,
+// rules.floor(x, z): the least it may be
 export function initSculpt(nat, outside, rules = {}) {
   if (SC) return SC;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -346,7 +347,7 @@ export function initSculpt(nat, outside, rules = {}) {
       const x = x0 + i;
       const k = j * W + i;
       if (rules.keep?.(x, z)) continue;
-      if (outside(x, z) > -4 || inBox(x, z, HARBOR, 6)) {
+      if (outside(x, z) > -4 || inBox(x, z, HARBOR, 6) || rules.shape?.(x, z)) {
         active[k] = 1;
         base[k] = nat(x, z);
       }
@@ -435,9 +436,10 @@ export function initSculpt(nat, outside, rules = {}) {
   }
   // --- the tunnel's rock spur: high enough over the bore, rocky
   each({ x0: SPUR.x0 - 12, x1: SPUR.x1 + 6, z0: SPUR.z0 - 8, z1: SPUR.z1 + 4 }, (x, z, k) => {
-    const cx = -301, top = 33 - Math.max(0, x - cx) * 0.32 + (fbm2(x * 0.06, z * 0.06, 2) - 0.5) * 4;
+    const cx = BORE.x - 1, top = 33 - Math.max(0, x - cx) * 0.32 + (fbm2(x * 0.06, z * 0.06, 2) - 0.5) * 4;
+    // (gone before the town's edge above the coast portal, x = -298)
     const along = smoothstep(SPUR.z0 - 8, SPUR.z0 + 6, z) * (1 - smoothstep(SPUR.z1 - 6, SPUR.z1 + 4, z));
-    const across = smoothstep(SPUR.x0 - 12, SPUR.x0, x) * (1 - smoothstep(SPUR.x1 - 8, SPUR.x1 + 6, x));
+    const across = smoothstep(SPUR.x0 - 12, SPUR.x0, x) * (1 - smoothstep(SPUR.x1 - 10, SPUR.x1 + 4, x));
     F[k] = Math.max(F[k], lerp(F[k], top, along * across));
   });
   // --- mikan terraces: a sunny stepped face from the harbour up to the headland's top,
@@ -612,7 +614,7 @@ export function initSculpt(nat, outside, rules = {}) {
   for (let k = 0; k < N; k++) if (active[k]) delta[k] = F[k] - base[k];
   const wallBy = new Int16Array(N).fill(-1);
   for (let k = 0; k < N; k++) if (conflict[k]) wallBy[k] = loSrc[k];
-  SC = { W, H, delta, dist, walls, conflict, wallBy, ms: (typeof performance !== 'undefined' ? performance.now() : 0) - t0 };
+  SC = { W, H, delta, F, active, dist, walls, conflict, wallBy, ms: (typeof performance !== 'undefined' ? performance.now() : 0) - t0 };
   return SC;
 }
 
@@ -631,12 +633,67 @@ export function sculptDelta(x, z) {
   return SC ? bilinear(SC.delta, x, z, 0) : 0;
 }
 
+// the shaped ground itself at (x, z) where all four raster points round it were shaped
+// (null elsewhere): the natural ground has hard edges here and there (the portals' hills
+// begin at a line) that a change added to it would carry onto the shaped slopes and roads
+export function sculptHeight(x, z) {
+  if (!SC) return null;
+  const fx = x - SCULPT.x0, fz = z - SCULPT.z0;
+  if (fx < 0 || fz < 0 || fx >= SC.W - 1 || fz >= SC.H - 1) return null;
+  const k = Math.floor(fz) * SC.W + Math.floor(fx);
+  const A = SC.active;
+  if (!A[k] || !A[k + 1] || !A[k + SC.W] || !A[k + SC.W + 1]) return null;
+  return bilinear(SC.F, x, z, 0);
+}
+
+// height of a road's cut slope `lat` metres from the centre of a road `w` wide at height y
+export function cutSlopeAt(y, lat, w) {
+  const e = lat - (w / 2 + VERGE);
+  return e <= 0 ? y : y + (e < 3 ? (e * e) / 6 : e - 1.5) * 1.1;
+}
+
 // index (in route().legs) of the road a retaining wall must hold up at (x, z), or -1
 export function wallBy(x, z) {
   if (!SC) return -1;
   const i = Math.round(x - SCULPT.x0), j = Math.round(z - SCULPT.z0);
   if (i < 0 || j < 0 || i >= SC.W || j >= SC.H) return -1;
   return SC.wallBy[j * SC.W + i];
+}
+
+// what the loop's places sound like from (x, z): the nearest point of the gorge's stream and
+// the waterfall, how deep in the bamboo grove, how far from the paddies, the open fields, the
+// plateau and its nearest turbine, the harbour; whether in the tunnel
+export function ambienceAt(x, z) {
+  let sx = 0, sz = 0, sd = Infinity;
+  const P = STREAM.pts;
+  for (let i = 0; i < P.length - 1; i++) {
+    const [ax, az] = P[i], [bx, bz] = P[i + 1];
+    const dx = bx - ax, dz = bz - az;
+    const u = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1);
+    const d = Math.hypot(x - ax - dx * u, z - az - dz * u);
+    if (d < sd) {
+      sd = d;
+      sx = ax + dx * u;
+      sz = az + dz * u;
+    }
+  }
+  const box = (b) => Math.hypot(Math.max(b.x0 - x, 0, x - b.x1), Math.max(b.z0 - z, 0, z - b.z1));
+  const paddy = box({ x0: RICE.x - RICE.half, x1: RICE.x + RICE.half, z0: RICE.z1, z1: RICE.z0 });
+  let mill = null;
+  for (const [mx, mz] of PAMPAS.mills) {
+    const d = Math.hypot(x - mx, z - mz);
+    if (!mill || d < mill.d) mill = { x: mx, z: mz, d };
+  }
+  return {
+    stream: { x: sx, z: sz, y: streamBed(sz) + 0.4, d: sd, fall: Math.hypot(x - 184, z - STREAM.fall) },
+    bamboo: x < -176 && z > -176 && z < 8 ? clamp(1.4 - roadDist(x, z) / 22, 0, 1) : 0,
+    paddy,
+    fields: Math.min(paddy, box(TEA), box(PAMPAS), box(MIKAN)),
+    plateau: box(PAMPAS),
+    mill,
+    harbor: box({ x0: HARBOR.x0, x1: HARBOR.x1, z0: HARBOR.z0, z1: HARBOR.quay + 4 }),
+    tunnel: Math.abs(x - BORE.x) < BORE.w / 2 + 0.5 && z > BORE.z0 && z < BORE.z1,
+  };
 }
 
 // distance (m) from (x, z) to the nearest new road's centre line (99: far)

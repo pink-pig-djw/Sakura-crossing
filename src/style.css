@@ -308,6 +308,29 @@ kbd {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.lap-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem 0.3rem 0.65rem;
+  box-shadow: var(--shadow);
+  font: 700 0.95rem var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.lap-chip small {
+  color: var(--ink-soft, #6b6f7a);
+  font-weight: 600;
+}
+/* a small chequered flag */
+.lap-flag {
+  width: 14px;
+  height: 11px;
+  border-radius: 2px;
+  background: conic-gradient(#273049 25%, #fff 0 50%, #273049 0 75%, #fff 0) 0 0 / 7px 5.5px;
+  box-shadow: 0 0 0 1px #273049;
+}
 .bike-chip.standing .bike-ico {
   stroke: var(--sakura-deep);
 }

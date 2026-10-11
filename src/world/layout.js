@@ -14,7 +14,7 @@
 //                    office, police box and houses toward the railway
 
 import { RNG, fbm2, noise2, smoothstep, clamp, softPlus, lerp } from '../core/rng.js';
-import { initSculpt, sculptDelta, sculptReady } from './routeplan.js';
+import { initSculpt, sculptDelta, sculptHeight, sculptReady, HARBOR, MIKAN, PAMPAS, BRIDGE, TEA, RICE, BORE, CAPE } from './routeplan.js';
 
 export const RAIL_Z = 56;
 export const RAIL_Y = 3.0;
@@ -146,14 +146,16 @@ function hillHeight(x, z, d) {
 // The hills round the town are then shaped for the cycling loop (routeplan.js).
 export function groundH(x, z) {
   if (!sculptReady()) initSculpt(baseGroundH, outsideDist, SCULPT_RULES);
-  return baseGroundH(x, z) + sculptDelta(x, z);
+  return sculptHeight(x, z) ?? baseGroundH(x, z) + sculptDelta(x, z);
 }
 
 // what the shaping of the hills must respect: the railway, the coast road and the promenade
 // between the two portals stay as built, and the hill behind each portal stays up to its face
 // wall's coping and over the tubes the trains and cars run into (railway.js portal)
 const SCULPT_RULES = {
-  keep: (x, z) => z > 44 && z < 73.2 && x >= TUNNEL.w && x <= TUNNEL.e,
+  // (west of the promenade's end the loop comes up from the shore onto it: shaped to the road)
+  keep: (x, z) => z > 44 && z < 73.2 && x >= TUNNEL.w && x <= TUNNEL.e && !(x < SHORE.x0 + 7 && z > 68.4),
+  shape: (x, z) => x > SHORE.x0 - 8 && x < SHORE.x0 + 7 && z > 68.4 && z < 84,
   floor: (x, z) => {
     const c = Math.max(TUNNEL.w - x, x - TUNNEL.e);
     if (c <= 0 || c > 66 || z < 45 || z > 72.5) return -Infinity;
@@ -560,6 +562,19 @@ export function eastBlocks() {
 // ---------------------------------------------------------------------------
 export const AREAS = [
   { name: '地下鉄 桜ヶ浜中央駅', sub: 'Sakuragahama-Chuo Station', x0: 232, x1: 272, z0: -50, z1: 24, under: true },
+  // さくら一周ライン (the cycling loop round the hills, routeplan.js)
+  { name: 'サイクルステーション', sub: 'Cycle Station · Sakura Loop', x0: 200, x1: 228, z0: 66, z1: 74 },
+  { name: '漁港', sub: 'Fishing Harbour', x0: HARBOR.x0, x1: HARBOR.x1, z0: SEAWALL_Z + 0.5, z1: HARBOR.z1 },
+  { name: 'みかんの段々畑', sub: 'Mikan Terraces', x0: MIKAN.x0 + 8, x1: MIKAN.x1, z0: MIKAN.z0, z1: 96 },
+  { name: '沢の橋', sub: 'Gorge Bridge', x0: BRIDGE.x0, x1: BRIDGE.x1, z0: BRIDGE.z - 8, z1: BRIDGE.z + 8 },
+  { name: '風車の丘', sub: 'Windmill Hill', x0: 300, x1: PAMPAS.x1, z0: PAMPAS.z0, z1: -172 },
+  { name: '源流の森', sub: 'Headwater Forest', x0: 196, x1: 372, z0: -168, z1: -124 },
+  { name: '尾根の茶畑', sub: 'Ridge Tea Fields', x0: TEA.x0 - 4, x1: TEA.x1 - 6, z0: TEA.z0, z1: TEA.z1 + 4 },
+  { name: '千本鳥居', sub: 'Thousand Torii', x0: 2, x1: 70, z0: -188, z1: -172 },
+  { name: '棚田', sub: 'Rice Terraces', x0: RICE.x - RICE.half, x1: RICE.x + RICE.half, z0: RICE.z1, z1: RICE.z0 - 6 },
+  { name: '素掘りトンネル', sub: 'Hand-dug Tunnel', x0: BORE.x - 8, x1: BORE.x + 8, z0: BORE.z0 - 6, z1: BORE.z1 + 6 },
+  { name: '竹林', sub: 'Bamboo Grove', x0: -306, x1: -176, z0: -172, z1: 2 },
+  { name: '岬の灯台', sub: 'Cape Lighthouse', x0: CAPE.x - 30, x1: CAPE.x + 40, z0: 92, z1: CAPE.z + 30 },
   { name: '汐見神社', sub: 'Shiomi Shrine', x0: 0, x1: 60, z0: -178, z1: -127 },
   { name: '桜ヶ浜駅', sub: 'Sakuragahama Station', x0: -66, x1: -4, z0: 38, z1: 56 },
   { name: '駅前広場', sub: 'Station Plaza', x0: -62, x1: -8, z0: 27.5, z1: 41 },

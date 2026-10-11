@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PAT, MeshBuilder } from '../core/builder.js';
 import { RNG, fbm2, noise2, smoothstep, clamp } from '../core/rng.js';
 import { groundH, terrainH, HOLES, PROM, SEAWALL_Z } from './layout.js';
-import { route, roadDist, BORE, CAPE, MIKAN, HARBOR, PADS, mikanTerrace, mikanMask } from './routeplan.js';
+import { route, roadDist, cutSlopeAt, BORE, CAPE, MIKAN, HARBOR, PADS, mikanTerrace, mikanMask } from './routeplan.js';
 import { activeFoliage } from './greenery.js';
 import { boat, tetrapod, benchAt } from './coast.js';
 import { FONTS } from '../render/atlas.js';
@@ -193,6 +193,8 @@ function tunnel(ctx) {
       for (let lx = 2.1; lx <= 27; lx += 0.75) {
         const x = BORE.x + side * lx;
         const lo = outY(x), hi = Math.max(inY(x), lo + 0.05);
+        // (only across the cutting: beyond its top edge the ground in front is the hillside's own)
+        if (lo + 0.35 < cutSlopeAt(y, lx, leg.w) - 0.6) break;
         const cur = { x, lo, hi };
         if (prev) {
           // front (facing out of the hill) and the top lip back into it
@@ -554,8 +556,9 @@ function station(ctx) {
   const x0 = 205, x1 = 223;
   const y = PROM.y;
   const b = ctx.builders.get('toon', 214, 70);
-  // a light canopy over bike racks along the road-side edge of the promenade
-  const z0 = PROM.z0 + 0.2, z1 = PROM.z0 + 2.2;
+  // a light canopy over bike racks along the road-side edge of the promenade (the loop runs
+  // along the middle of it, so everything keeps to the edges)
+  const z0 = PROM.z0 + 0.15, z1 = PROM.z0 + 1.55;
   for (const x of [x0 + 1, (x0 + x1) / 2, x1 - 1]) {
     b.cyl(x, y, z1, 0.06, 0.06, 2.7, 8, 0xe8e8e2, PAT.METAL);
     ctx.colliders.addCircle(x, z1, 0.1);
@@ -565,15 +568,17 @@ function station(ctx) {
   b.boxMM(x0 + 0.4, y + 2.62, z1 + 0.5, x1 - 0.4, y + 2.72, z1 + 0.65, { color: 0xe8e8e2 });
   for (let x = x0 + 2; x < x1 - 1.5; x += 1.1) {
     const d = b.detail;
-    d.rod(V(x, y, z0 + 0.4), V(x, y + 0.75, z0 + 0.4), 0.025, 0.025, 5, 0xbfc4c8);
-    d.rod(V(x, y + 0.75, z0 + 0.4), V(x, y + 0.75, z0 + 1.4), 0.025, 0.025, 5, 0xbfc4c8);
-    d.rod(V(x, y + 0.75, z0 + 1.4), V(x, y, z0 + 1.4), 0.025, 0.025, 5, 0xbfc4c8);
+    d.rod(V(x, y, z0 + 0.25), V(x, y + 0.75, z0 + 0.25), 0.025, 0.025, 5, 0xbfc4c8);
+    d.rod(V(x, y + 0.75, z0 + 0.25), V(x, y + 0.75, z0 + 1.15), 0.025, 0.025, 5, 0xbfc4c8);
+    d.rod(V(x, y + 0.75, z0 + 1.15), V(x, y, z0 + 1.15), 0.025, 0.025, 5, 0xbfc4c8);
   }
-  ctx.colliders.addBox((x0 + x1) / 2, z0 + 0.9, (x1 - x0) / 2 - 1.5, 0.55, 0, y + 0.8);
-  // an air pump on a post, a drinking fountain
-  b.cyl(x0 + 0.8, y, z1 + 1.0, 0.07, 0.07, 1.0, 8, 0x3f7fbf);
-  b.box(x0 + 0.8, y + 1.05, z1 + 1.0, 0.25, 0.25, 0.18, { color: 0xe8e8e2 });
-  ctx.vending.push({ x: x1 - 0.2, z: z1 + 0.3, ry: -Math.PI / 2, seed: 4242, n: 1 });
+  ctx.colliders.addBox((x0 + x1) / 2, z0 + 0.7, (x1 - x0) / 2 - 1.5, 0.5, 0, y + 0.8);
+  // an air pump on a post and a vending machine by the sea wall
+  const zs = SEAWALL_Z - 0.75;
+  b.cyl(x0 + 0.8, y, zs + 0.2, 0.07, 0.07, 1.0, 8, 0x3f7fbf);
+  b.box(x0 + 0.8, y + 1.05, zs + 0.2, 0.25, 0.25, 0.18, { color: 0xe8e8e2 });
+  ctx.colliders.addCircle(x0 + 0.8, zs + 0.2, 0.15);
+  ctx.vending.push({ x: x1 - 1.0, z: SEAWALL_Z - 0.95, ry: Math.PI, seed: 4242, n: 1 });
   // the START / GOAL arch over the promenade
   const gx = 214;
   for (const z of [PROM.z0 + 0.25, SEAWALL_Z - 0.55]) {

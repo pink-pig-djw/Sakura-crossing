@@ -10,7 +10,7 @@ export class AudioEngine {
     this.started = false;
     this.ambVol = 0.7;
     this.musicVol = 0.45;
-    this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, frog: 2 };
+    this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, frog: 2, knock: 2, pfrog: 1, lark: 6, gull: 4, drip: 1, lap: 1 };
   }
 
   start() {
@@ -64,6 +64,7 @@ export class AudioEngine {
     this.setupTrain();
     this.setupNight();
     this.setupPlaces();
+    this.setupRoute();
     this.crossingVoices = new Map();
     this.music = new PianoMusic(this);
     this.music.start();
@@ -525,6 +526,18 @@ export class AudioEngine {
         this.noiseHit(out, t + 0.9, 180, 1, 0.25, 0.4, 'lowpass');
         this.noiseHit(out, t + 0.92, 900, 2, 0.1, 0.1);
         break;
+      // the lap timer: a bright double ping to start, a single one at each place, a little
+      // rising arpeggio at the line
+      case 'lapStart':
+        this.ping(out, t, 1320, 0.25, 0.05);
+        this.ping(out, t + 0.14, 1760, 0.35, 0.05);
+        break;
+      case 'lapCp':
+        this.ping(out, t, 1568, 0.3, 0.04);
+        break;
+      case 'lapDone':
+        [1047, 1319, 1568, 2093].forEach((f, i) => this.ping(out, t + i * 0.11, f, 0.5, 0.05));
+        break;
       case 'clap':
         this.noiseHit(out, t, 1400, 0.9, 0.09, 0.4);
         this.noiseHit(out, t + 0.38, 1300, 0.9, 0.09, 0.4);
@@ -736,6 +749,151 @@ export class AudioEngine {
     this.walkT = 0;
   }
 
+  // ------------------------------------------------------------------ the cycling loop's places
+  setupRoute() {
+    const ctx = this.ctx;
+    const bed = (buf, type, f, q, pan) => {
+      const n = this.loopNoise(buf);
+      const fl = ctx.createBiquadFilter();
+      fl.type = type;
+      fl.frequency.value = f;
+      fl.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      n.connect(fl).connect(g).connect(pan);
+      return g;
+    };
+    // the gorge's stream over its stones (kept at its nearest point) and the waterfall
+    this.streamPan = this.panner(182, 12, -160, 6, 1.1);
+    this.streamPan.connect(this.amb);
+    this.streamG = bed(this.pink, 'bandpass', 1150, 0.45, this.streamPan);
+    this.fallPan = this.panner(184, 20, -196, 10, 1.0);
+    this.fallPan.connect(this.amb);
+    this.fallPan.connect(this.revSend);
+    this.fallG = bed(this.white, 'lowpass', 2100, 0.7, this.fallPan);
+    // bamboo leaves hissing overhead
+    this.bambooG = bed(this.pink, 'bandpass', 2700, 0.7, this.amb);
+    // a wind turbine's slow swish, once a blade
+    this.millPan = this.panner(428, 40, -246, 14, 1.0);
+    this.millPan.connect(this.amb);
+    this.millG = bed(this.pink, 'bandpass', 360, 0.8, this.millPan);
+  }
+
+  // カーン: two culms knocking together in the wind
+  knock(x, y, z) {
+    const p = this.panner(x, y, z, 6, 1.3);
+    p.connect(this.amb);
+    p.connect(this.revSend);
+    const t = this.ctx.currentTime;
+    const f = rand(480, 720);
+    this.tone(p, t, f, f * 0.96, 0.09, 0.05, 'triangle');
+    if (Math.random() < 0.6) this.tone(p, t + rand(0.12, 0.22), f * 0.92, f * 0.88, 0.08, 0.035, 'triangle');
+  }
+
+  // a frog in the paddies (ケロケロ), placed
+  frogAt(x, y, z, vol) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const p = this.panner(x, y, z, 5, 1.2);
+    p.connect(this.amb);
+    const n = Math.floor(rand(2, 6));
+    const f0 = rand(420, 680);
+    for (let i = 0; i < n; i++) {
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = f0 * rand(0.97, 1.03);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f0 * 2;
+      bp.Q.value = 6;
+      const g = ctx.createGain();
+      const st = t + i * rand(0.13, 0.19);
+      g.gain.setValueAtTime(0, st);
+      g.gain.linearRampToValueAtTime(vol, st + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, st + 0.08);
+      o.connect(bp).connect(g).connect(p);
+      o.start(st);
+      o.stop(st + 0.11);
+    }
+  }
+
+  // 雲雀: a skylark's long tumbling song from high over the fields
+  hibari(x, y, z) {
+    const p = this.panner(x, y, z, 30, 0.8);
+    p.connect(this.amb);
+    const t = this.ctx.currentTime;
+    let at = t;
+    const n = Math.floor(rand(18, 34));
+    for (let i = 0; i < n; i++) {
+      const f = rand(3200, 6400);
+      const d = rand(0.03, 0.09);
+      this.tone(p, at, f, f * rand(0.85, 1.2), d, 0.022);
+      at += d + (Math.random() < 0.15 ? rand(0.08, 0.2) : rand(0.005, 0.03));
+    }
+  }
+
+  // ウミネコ: a gull's mewing call, twice or three times
+  gull(x, y, z) {
+    const ctx = this.ctx;
+    const p = this.panner(x, y, z, 14, 1.0);
+    p.connect(this.amb);
+    p.connect(this.revSend);
+    const t = ctx.currentTime;
+    const n = Math.floor(rand(2, 4));
+    for (let i = 0; i < n; i++) {
+      const st = t + i * rand(0.45, 0.7);
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      const f = rand(780, 980);
+      o.frequency.setValueAtTime(f, st);
+      o.frequency.linearRampToValueAtTime(f * 1.45, st + 0.12);
+      o.frequency.exponentialRampToValueAtTime(f * 0.85, st + 0.42);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1700;
+      bp.Q.value = 1.6;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(0.03, st + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.45);
+      o.connect(bp).connect(g).connect(p);
+      o.start(st);
+      o.stop(st + 0.5);
+    }
+  }
+
+  // the sea slapping against the quay
+  lap(x, y, z) {
+    const ctx = this.ctx;
+    const p = this.panner(x, y, z, 4, 1.4);
+    p.connect(this.amb);
+    const s = ctx.createBufferSource();
+    s.buffer = this.pink;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = rand(380, 620);
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(rand(0.12, 0.2), t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + rand(0.35, 0.6));
+    s.connect(f).connect(g).connect(p);
+    s.start(t, rand(0, 4));
+    s.stop(t + 0.7);
+  }
+
+  // ぴちょん: water dripping from the tunnel's roof, ringing in the bore
+  drip(x, y, z) {
+    const p = this.panner(x, y, z, 3, 1.2);
+    p.connect(this.amb);
+    const send = this.ctx.createGain();
+    send.gain.value = 2.2;
+    p.connect(send).connect(this.revSend);
+    const t = this.ctx.currentTime;
+    const f = rand(1500, 2800);
+    this.tone(p, t, f, f * 0.55, 0.07, 0.04);
+  }
+
   // ------------------------------------------------------------------ per frame
   update(dt, s) {
     if (!this.ctx || this.ctx.state !== 'running') return;
@@ -770,7 +928,7 @@ export class AudioEngine {
     }
     // wind: stronger on the hill and the beach
     this.windT += dt;
-    const wv = 0.035 + 0.03 * Math.sin(this.windT * 0.21) + 0.02 * Math.sin(this.windT * 0.57) + (s.y > 18 ? 0.04 : 0) + (dShore < 30 ? 0.02 : 0);
+    const wv = 0.035 + 0.03 * Math.sin(this.windT * 0.21) + 0.02 * Math.sin(this.windT * 0.57) + (s.y > 18 ? 0.04 : 0) + (dShore < 30 ? 0.02 : 0) + (s.route && s.route.plateau < 10 ? 0.035 : 0);
     this.ease(this.windG.gain, Math.max(0.005, wv * outside), 0.8);
     this.ease(this.windF.frequency, 420 + 260 * Math.sin(this.windT * 0.13), 1);
 
@@ -877,6 +1035,45 @@ export class AudioEngine {
             this.crosswalkTone(c.axis === 1 ? 'piyo' : 'kakko', c.x, 4, c.z);
           }
         }
+      }
+    }
+    // the cycling loop's places
+    const r = s.route;
+    if (r && this.streamG) {
+      this.setPos(this.streamPan, r.stream.x, r.stream.y, r.stream.z);
+      this.ease(this.streamG.gain, r.stream.d < 50 ? 0.2 * Math.min(1, 9 / (r.stream.d + 3)) * outside : 0, 0.6);
+      this.ease(this.fallG.gain, r.stream.fall < 110 ? 0.15 * Math.min(1, 18 / (r.stream.fall + 8)) * outside : 0, 0.6);
+      this.ease(this.bambooG.gain, 0.06 * r.bamboo * (0.65 + 0.35 * Math.sin(this.windT * 0.73)) * outside, 0.5);
+      if (r.bamboo > 0.4 && T.knock <= 0) {
+        this.knock(s.x + rand(-12, 12), s.y + rand(2, 6), s.z + rand(-12, 12));
+        T.knock = rand(2.5, 8);
+      }
+      if (r.mill) {
+        this.setPos(this.millPan, r.mill.x, r.mill.y, r.mill.z);
+        const ph = Math.sin(t * Math.PI * 0.95);
+        this.ease(this.millG.gain, r.mill.d < 130 ? (0.03 + 0.09 * ph * ph) * outside : 0, 0.15);
+      }
+      // the paddies: a frog now and then by day, a chorus by night
+      if (r.paddy < 45 && T.pfrog <= 0 && outside > 0.5) {
+        const a = rand(0, Math.PI * 2), d = rand(6, 26);
+        this.frogAt(s.x + Math.cos(a) * d, s.y - 1, s.z + Math.sin(a) * d, s.night > 0.6 ? 0.07 : 0.05);
+        T.pfrog = s.night > 0.6 ? rand(0.12, 0.45) : rand(1.8, 6);
+      }
+      if (day && r.fields < 40 && T.lark <= 0) {
+        this.hibari(s.x + rand(-50, 50), s.y + rand(25, 45), s.z + rand(-50, 50));
+        T.lark = rand(8, 20);
+      }
+      if (day && r.harbor < 80 && T.gull <= 0) {
+        this.gull(s.x + rand(-30, 30), s.y + rand(8, 20), s.z + rand(5, 40));
+        T.gull = rand(4, 12);
+      }
+      if (r.harbor < 16 && T.lap <= 0) {
+        this.lap(s.x + rand(-6, 6), 1.5, 103.5);
+        T.lap = rand(0.7, 2.0);
+      }
+      if (r.tunnel && T.drip <= 0) {
+        this.drip(s.x + rand(-1.5, 1.5), s.y + rand(1.5, 2.5), s.z + rand(-6, 6));
+        T.drip = rand(0.6, 2.4);
       }
     }
     if (this.music) this.music.update(t);

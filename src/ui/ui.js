@@ -432,6 +432,25 @@ export class UI {
 
   // on the bicycle: { gear (0..2), kmh, standing } shows the gear and speed chip (and the
   // touch buttons turn into the bell, standing up, the gears and getting off); null hides it
+  // the lap timer chip while a lap of the cycling loop is on: time and places passed
+  setLap(l) {
+    const chip = $('lap-chip');
+    if (!l) {
+      if (!chip.hidden) chip.hidden = true;
+      return;
+    }
+    if (chip.hidden) chip.hidden = false;
+    if (l.t !== this.lapT) {
+      this.lapT = l.t;
+      $('lap-time').textContent = l.t;
+    }
+    const cp = `${l.n}/${l.of}`;
+    if (cp !== this.lapCp) {
+      this.lapCp = cp;
+      $('lap-cp').textContent = cp;
+    }
+  }
+
   setBike(b) {
     const chip = $('bike-chip');
     const on = !!b;
@@ -507,6 +526,7 @@ export class UI {
     add(tr('買った飲み物'), tf('drinksN', { n: state.drinks }));
     add(tr('おみくじ'), tr(state.luck || 'まだ'));
     add(tr('電車を見送った'), tf('timesN', { n: state.trains }));
+    add(tr('さくら一周ライン ベスト'), state.lapBest ?? tr('まだ'));
   }
 
   openOmikuji(luck, text, show = true) {
@@ -750,7 +770,7 @@ function mapLabels(landmarks) {
     ['千本鳥居', 30, -188, '#c0392b', true],
     ['棚田', -104, -205, '#4a7a3a', true],
     ['竹林', -238, -100, '#3f6b48', true],
-    ['素掘りトンネル', -318, 24, '#5a4a3a', false],
+    ['素掘りトンネル', -334, 24, '#5a4a3a', false],
     ['岬の灯台', -362, 120, '#2f6fb8', true],
   ];
   for (const l of landmarks || []) {

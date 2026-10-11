@@ -25,6 +25,7 @@ import { buildCycleRoute } from './cycleroute.js';
 import { buildHills, openGround } from './hills.js';
 import { buildHills2 } from './hills2.js';
 import { buildShores } from './shores.js';
+import { buildFireflies } from './fireflies.js';
 import { roadDist } from './routeplan.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -201,6 +202,7 @@ export async function buildWorld(scene, opts = {}) {
   ctx.hills2 = buildHills2(ctx, scene);
   AUDIT.tag = 'shores';
   ctx.shores = buildShores(ctx, scene);
+  ctx.fireflies = buildFireflies(scene);
 
   progress(0.68, '街をつくっています');
   await tick();
