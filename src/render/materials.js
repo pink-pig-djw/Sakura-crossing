@@ -366,13 +366,17 @@ export function createGroundMaterial(groundMap, mapRect) {
     uniforms,
     vertexShader: /* glsl */ `
       ${VERT_COMMON}
+      attribute vec4 patw;
+      varying vec4 vPatW;
       void main() {
         ${VERT_MAIN}
+        vPatW = patw;
       }
     `,
     fragmentShader: /* glsl */ `
       ${FRAG_HEAD}
       ${PATTERNS}
+      varying vec4 vPatW;
       uniform sampler2D groundMap;
       uniform vec4 uMapRect;
       uniform vec2 uMapSize;
@@ -380,7 +384,12 @@ export function createGroundMaterial(groundMap, mapRect) {
       void main() {
         vec2 muv = (vWorldPos.xz - uMapRect.xy) / uMapRect.zw;
         vec3 albedo = vColor;
-        float pat = vPattern;
+        // the ground's kind (grass, rock, sand, gravel) comes as weights, one per kind: a
+        // pattern number can't be blended (between grass, 9, and rock, 24, every pattern in
+        // between would show), so each point takes one kind, picked by a ragged threshold
+        float tot = vPatW.x + vPatW.y + vPatW.z + vPatW.w;
+        float r = (vnoise(vWorldPos.xz * 1.3) * 0.6 + vnoise(vWorldPos.xz * 4.7 + 7.0) * 0.4) * tot;
+        float pat = r < vPatW.x ? 9.0 : r < vPatW.x + vPatW.y ? 24.0 : r < vPatW.x + vPatW.y + vPatW.z ? 8.0 : 14.0;
         if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0) {
           float typ = texelFetch(groundMap, ivec2(muv * uMapSize), 0).a * 255.0;
           if (typ > 0.5) {

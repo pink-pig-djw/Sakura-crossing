@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { VRMLoaderPlugin, VRMUtils, VRMSpringBoneCollider, VRMSpringBoneColliderShapePlane } from '@pixiv/three-vrm';
 import { createCharacterMaterial } from '../render/materials.js';
 
 // A VRM character in the town's style, driven by retargeted motion capture
@@ -234,7 +234,7 @@ export class Character {
     // instead of being shoved aside by the thighs
     this.skirt = [...(vrm.springBoneManager?.joints ?? [])]
       .filter((j) => /_Skirt(Front|Side)/.test(j.bone?.name || '') && !/Coat/.test(j.bone.name))
-      .map((j) => ({ j, front: /Front/.test(j.bone.name), power: j.settings.gravityPower, stiff: j.settings.stiffness, dir: j.settings.gravityDir.clone() }));
+      .map((j) => ({ j, front: /Front/.test(j.bone.name), depth: +(/Skirt(?:Front|Side)(\d)/.exec(j.bone.name)?.[1] ?? 0), power: j.settings.gravityPower, stiff: j.settings.stiffness, dir: j.settings.gravityDir.clone() }));
     this.seatedness = 0;
     // every skirt chain, overskirts too, keeps out of the legs, forearms and hands: some
     // models leave a flared overskirt without colliders, and the hands hung through it
@@ -246,6 +246,12 @@ export class Character {
         j.colliderGroups = [...new Set([...(j.colliderGroups ?? []), ...limbs])];
       }
       sbm._isSortedJointsDirty = true;
+      // seated, a plane at the seat's height for the back chains to rest on (they hung on down
+      // through the seat); the front and sides fall past the knees and beside the legs
+      this.seatPlane = new VRMSpringBoneCollider(new VRMSpringBoneColliderShapePlane({ normal: new THREE.Vector3(0, 1, 0) }));
+      this.seatGroup = { colliders: [this.seatPlane], name: 'seat' };
+      this.seatJoints = [...sbm.joints].filter((j) => /Skirt.*Back|SkirtBack/.test(j.bone?.name || ''));
+      this.onSeat = false;
     }
     // hair spring chains: `wind` (a world vector, set by the owner) blows them along it, as
     // when riding a bicycle
@@ -550,13 +556,33 @@ export class Character {
     const k = THREE.MathUtils.clamp(((this.hipsHeight - this._hipsY) / (this.hipsHeight - this.sitHips) - 0.25) / 0.6, 0, 1);
     if (k < 0.01 && this.seatedness < 0.01) return;
     this.seatedness = k;
+    // the thighs, level now, come up through the cloth between the chains: their colliders a
+    // little wider (as on the bicycle, less), and the seat under the skirt
+    this.widenSkirt(k < 0.01 ? 1 : Math.round((1 + 0.45 * k) * 40) / 40);
+    this._seat(k > 0.6);
     const fwd = _v.set(0, 0, 1).applyQuaternion(this.root.quaternion);
     for (const s of this.skirt) {
       const st = s.j.settings;
-      st.gravityDir.copy(s.dir).lerp(_v2.copy(fwd).multiplyScalar(s.front ? 1 : 0.6).add(_v3.set(0, -0.35, 0)).normalize(), k).normalize();
+      // (the front: level out over the thighs, which stand higher than a straight line from
+      // the waist to the knees, and only the last link falls over the knees)
+      const down = s.front ? (s.depth < 2 ? 0.02 : -0.9) : -0.35;
+      st.gravityDir.copy(s.dir).lerp(_v2.copy(fwd).multiplyScalar(s.front ? 1 : 0.6).add(_v3.set(0, down, 0)).normalize(), k).normalize();
       st.gravityPower = s.power + (s.front ? 2.4 : 0.9) * k;
       st.stiffness = s.stiff * (1 - 0.8 * k);
     }
+  }
+
+  _seat(on) {
+    if (!this.seatPlane) return;
+    if (on) {
+      // (the seat's top: the hips sit about 10 cm over it)
+      this.node('hips').getWorldPosition(_v);
+      this.seatPlane.position.set(_v.x, _v.y - 0.11, _v.z);
+      this.seatPlane.updateWorldMatrix(false, false);
+    }
+    if (on === this.onSeat) return;
+    this.onSeat = on;
+    for (const j of this.seatJoints) j.colliderGroups = on ? [...(j.colliderGroups ?? []), this.seatGroup] : (j.colliderGroups ?? []).filter((g) => g !== this.seatGroup);
   }
 
   // Riding (skirtFollow): the front and side chains of the skirt are drawn toward the knee on

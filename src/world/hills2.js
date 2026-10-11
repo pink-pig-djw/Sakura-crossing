@@ -21,6 +21,15 @@ const leftOf = (o) => [o.tz, -o.tx];
 // ---------------------------------------------------------------------------
 const TEA_DARK = new THREE.Color('#3f6a35'), TEA_TOP = new THREE.Color('#9cc454');
 
+// the height of a point of a row's profile: the top follows the row's line, the two lower
+// edges go down into the slope on either side (across a slope one side stands lower)
+function rowY(p, nx, nz, u, h) {
+  const y = p.y + h - 0.05;
+  if (h > 0.35) return y;
+  const g = groundH(p.x + nx * u, p.z + nz * u) - 0.12;
+  return Math.min(y, g + h);
+}
+
 function teaRow(ctx, pts, rng) {
   // a rounded hedge swept along the row: half-ellipse 1.3 m wide, 0.9 m tall
   const prof = [];
@@ -41,7 +50,7 @@ function teaRow(ctx, pts, rng) {
       for (const [u, h, cn, cy] of prof) {
         const top = h / 0.92;
         c.copy(TEA_DARK).lerp(TEA_TOP, top * top * (0.75 + 0.25 * noise2(p.x * 0.3, p.z * 0.3)));
-        b.vtx(p.x + nx * u, p.y + h - 0.05, p.z + nz * u, nx * cn, cy + 0.3, nz * cn, c, p.x + p.z, h, PAT.LEAVES);
+        b.vtx(p.x + nx * u, rowY(p, nx, nz, u, h), p.z + nz * u, nx * cn, cy + 0.3, nz * cn, c, p.x + p.z, h, PAT.LEAVES);
       }
     }
     const P = prof.length;
@@ -51,6 +60,20 @@ function teaRow(ctx, pts, rng) {
         b.idx.push(a, d, a + 1, a + 1, d, d + 1);
       }
     }
+  }
+  // both ends of the row closed (the hedge is solid, not a hollow arch)
+  for (const [i, j, s] of [[0, 1, -1], [pts.length - 1, pts.length - 2, 1]]) {
+    const p = pts[i], q = pts[j];
+    const tl = Math.hypot(p.x - q.x, p.z - q.z) || 1;
+    const tx = (p.x - q.x) / tl, tz = (p.z - q.z) / tl; // (outward)
+    const nx = -(s > 0 ? p.z - q.z : q.z - p.z) / tl, nz = (s > 0 ? p.x - q.x : q.x - p.x) / tl;
+    const b = ctx.builders.get('toon', p.x, p.z);
+    const base = b.count;
+    c.copy(TEA_DARK).lerp(TEA_TOP, 0.25);
+    b.vtx(p.x, Math.min(p.y - 0.1, groundH(p.x, p.z) - 0.1), p.z, tx, 0.3, tz, c, p.x + p.z, 0, PAT.LEAVES);
+    for (const [u, h] of prof) b.vtx(p.x + nx * u, rowY(p, nx, nz, u, h), p.z + nz * u, tx, 0.3, tz, c, p.x + p.z + u, h, PAT.LEAVES);
+    // (both windings: the profile runs the other way round at the two ends)
+    for (let k = 0; k < prof.length - 1; k++) b.idx.push(base, base + 1 + k, base + 2 + k, base, base + 2 + k, base + 1 + k);
   }
   // a few leafy cards along the top so the rows do not read as tubes
   const fb = activeFoliage();

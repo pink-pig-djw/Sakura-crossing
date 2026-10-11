@@ -271,7 +271,8 @@ function lighthouse(ctx, scene) {
   b.cyl(lx, y - 0.4, lz, 2.6, 2.6, 0.9, 8, 0xd8d4ca, PAT.CONCRETE);
   b.cyl(lx, y + 0.5, lz, 2.1, 1.55, 11.5, 8, white, PAT.NONE, { ao: 0.08 });
   const gy = y + 12;
-  b.cyl(lx, gy, lz, 2.3, 2.3, 0.22, 16, 0xe8e6e0);
+  // (the gallery and the lantern's roof overhang: closed underneath, seen from below)
+  b.cyl(lx, gy, lz, 2.3, 2.3, 0.22, 16, 0xe8e6e0, 0, { bottomCap: true });
   for (let i = 0; i < 20; i++) {
     const a = (i / 20) * Math.PI * 2;
     b.detail.box(lx + Math.cos(a) * 2.2, gy + 0.55, lz + Math.sin(a) * 2.2, 0.05, 0.9, 0.05, { color: 0x3a4248 });
@@ -279,7 +280,7 @@ function lighthouse(ctx, scene) {
   b.detail.cyl(lx, gy + 1.0, lz, 2.22, 2.22, 0.06, 20, 0x3a4248, 0, { caps: false });
   b.cyl(lx, gy + 0.22, lz, 1.3, 1.3, 0.5, 12, 0x3a4248);
   ctx.builders.get('window', lx, lz).cyl(lx, gy + 0.7, lz, 1.15, 1.15, 1.6, 12, 0xffffff, 200, { caps: false });
-  b.cyl(lx, gy + 2.3, lz, 1.35, 0.25, 1.1, 12, 0x2f3a42);
+  b.cyl(lx, gy + 2.3, lz, 1.35, 0.25, 1.1, 12, 0x2f3a42, 0, { bottomCap: true });
   b.cyl(lx, gy + 3.35, lz, 0.08, 0.02, 0.7, 5, 0x2f3a42);
   // the lamp itself, warm white, glowing at night
   ctx.builders.get('emissive', lx, lz).cyl(lx, gy + 1.1, lz, 0.45, 0.45, 0.8, 10, 0xfff4d8);
@@ -389,8 +390,14 @@ function mikanTerraces(ctx) {
         const g = groundH(x, z);
         return g < lo || g > hi;
       })) continue;
+      // (as high as the ground it holds: where the terraces give way to the natural slope the
+      // bench above is lower, and a full-height wall stood up out of it like a pillar)
+      const sl = Math.hypot(bx - ax, bz - az), qx = -(bz - az) / sl, qz = (bx - ax) / sl;
+      const held = Math.max(...[0, 0.5, 1].flatMap((t) => [1, -1].map((e) => groundH(ax + (bx - ax) * t + qx * e * 0.8, az + (bz - az) * t + qz * e * 0.8))));
+      const wTop = Math.min(step * (k + 1) + 0.12, held + 0.12);
+      if (wTop - step * k < 0.35) continue;
       const bb = ctx.builders.get('toon', ax, az);
-      bb.wall(ax, az, bx, bz, step * k - 0.5, step * (k + 1) + 0.12, 0.55, { color: noise2(ax * 0.3, az * 0.3) > 0.5 ? 0x9a9284 : 0x8c8478, pattern: PAT.STONE });
+      bb.wall(ax, az, bx, bz, step * k - 0.5, wTop, 0.55, { color: noise2(ax * 0.3, az * 0.3) > 0.5 ? 0x9a9284 : 0x8c8478, pattern: PAT.STONE });
       walls++;
     }
   };

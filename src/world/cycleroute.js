@@ -79,8 +79,9 @@ function railRun(ctx, pts, kind) {
     if (R.square) {
       const t = kind === 'stone' ? 0.16 : kind === 'red' ? 0.14 : 0.12;
       b.box(p.x, p.y + R.h / 2 - 0.15, p.z, t, R.h + 0.3, t, { color: R.post, pattern: kind === 'stone' ? PAT.STONE : kind === 'wood' ? PAT.BOARDS : 0, ao: 0.15 });
-      if (R.giboshi) b.cyl(p.x, p.y + R.h + 0.15, p.z, 0.075, 0.0, 0.16, 6, 0xc9a646, PAT.METAL);
-      if (R.stoneTop) b.box(p.x, p.y + R.h + 0.17, p.z, t + 0.04, 0.05, t + 0.04, { color: 0x9c978d, pattern: PAT.STONE });
+      // (the post's top is at p.y + R.h: the caps sit on it)
+      if (R.giboshi) b.cyl(p.x, p.y + R.h - 0.01, p.z, 0.075, 0.0, 0.16, 6, 0xc9a646, PAT.METAL, { bottomCap: true });
+      if (R.stoneTop) b.box(p.x, p.y + R.h + 0.025, p.z, t + 0.04, 0.05, t + 0.04, { color: 0x9c978d, pattern: PAT.STONE });
     } else {
       const pr = R.stake ? 0.045 : kind === 'bamboo' ? 0.04 : 0.042;
       b.cyl(p.x, p.y - 0.25, p.z, pr, pr * (R.stake ? 0.7 : 1), R.h + 0.27, 6, R.post, R.stake ? PAT.BARK : 0, { ao: 0.2 });

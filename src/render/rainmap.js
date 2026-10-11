@@ -110,11 +110,18 @@ export class RainMap {
     const h = new Float32Array(W * H);
     for (let i = 0; i < W * H; i++) h[i] = Y0 + ((px[i * 4] + px[i * 4 + 1] / 255) / 255) * SPAN;
     this.heights = h;
-    this.texture = rt.texture;
-    G.uRainMap.value = rt.texture;
+    // (kept as a texture of its own pixels, not the render target: three.js uploads a data
+    // texture again after the WebGL context is lost and restored, while what was drawn into a
+    // render target is gone, and the rain would fall indoors)
+    const tex = new THREE.DataTexture(px, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.minFilter = tex.magFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    rt.dispose();
+    this.texture = tex;
+    G.uRainMap.value = tex;
     G.uRainRect.value.set(x0, z1, 1 / (x1 - x0), -1 / (z1 - z0));
     G.uRainRange.value.set(Y0, SPAN);
-    this.rt = rt;
     return this;
   }
 

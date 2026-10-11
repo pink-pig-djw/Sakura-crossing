@@ -56,6 +56,8 @@ function plantWoods(ctx) {
     if (outsideDist(x, z) < 4) continue;
     const s = nearStream(x, z);
     if (s.d < 5.5) continue;
+    // (the view up the gorge from the red bridge to the waterfall left open)
+    if (z < -168 && z > -198 && s.d < 8) continue;
     // the wood thins out away from the roads and the gorge (the plateau takes over to the east)
     const p = Math.max(1 - smoothstep(8, 46, d), 1 - smoothstep(10, 60, s.d)) * (1 - smoothstep(330, 380, x)) * (x > 262 && z < -175 ? 0.15 : 1);
     if (rng.next() > p) continue;

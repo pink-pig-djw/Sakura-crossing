@@ -70,6 +70,8 @@ function forest(ctx) {
     const y = terrainH(x, z);
     if (y < 2.0 || y > 90) continue;
     if (x > SHRINE.terraceX0 - 6 && x < SHRINE.terraceX1 + 6 && z > SHRINE.terraceZ1 - 6 && z < SHRINE.z0 + 2) continue;
+    // (the view up the gorge from the red bridge to the waterfall left open)
+    if (z < -168 && z > -198 && Math.abs(x - 183) < 9) continue;
     const dens = fbm2(x * 0.012, z * 0.012, 3);
     if (rng.next() > dens * 1.4) continue;
     ctx.trees.push({ kind: 'forest', x, z, seed: rng.int(1, 1e9), scale: rng.range(0.8, 1.3) });
@@ -79,6 +81,9 @@ function forest(ctx) {
   for (let i = 0; i < 56; i++) {
     const x = rng.range(-380, 460), z = rng.range(-300, -140);
     if (outsideDist(x, z) < 8 || roadDist(x, z) < 9 || openGround(x, z)) continue;
+    // (the bridge's view of the waterfall, and the shrine's terrace)
+    if (z < -168 && z > -198 && Math.abs(x - 183) < 9) continue;
+    if (x > SHRINE.terraceX0 - 3 && x < SHRINE.terraceX1 + 3 && z > SHRINE.terraceZ1 - 3 && z < SHRINE.z0 + 2) continue;
     ctx.trees.push({ kind: 'sakura', x, z, seed: rng.int(1, 1e9), scale: rng.range(1.0, 1.3) });
   }
 }

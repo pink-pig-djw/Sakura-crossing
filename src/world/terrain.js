@@ -180,7 +180,7 @@ export function buildTerrain(groundMap) {
     [150, 260, 5],
     [260, 700, 25],
   ]);
-  const pos = [], nor = [], col = [], uv = [], pat = [], idx = [];
+  const pos = [], nor = [], col = [], uv = [], pat = [], patw = [], idx = [];
   const tmp = new THREE.Color();
   const vertex = (x, z, yAt = null) => {
       const y = yAt ?? terrainH(x, z);
@@ -231,6 +231,8 @@ export function buildTerrain(groundMap) {
       col.push(tmp.r, tmp.g, tmp.b);
       uv.push(x, z);
       pat.push(p);
+      // (as weights for the ground shader, which must not blend pattern numbers)
+      patw.push(p === PAT.GRASS ? 1 : 0, p === PAT.ROCK ? 1 : 0, p === PAT.SAND ? 1 : 0, p === PAT.GRAVEL ? 1 : 0);
   };
   const nx = xs.length, nz = zs.length;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) vertex(xs[i], zs[j]);
@@ -327,6 +329,7 @@ export function buildTerrain(groundMap) {
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('pattern', new THREE.Float32BufferAttribute(pat, 1));
+  g.setAttribute('patw', new THREE.Float32BufferAttribute(patw, 4));
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
   g.computeBoundingSphere();
 
