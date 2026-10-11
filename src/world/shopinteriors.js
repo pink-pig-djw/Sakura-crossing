@@ -37,7 +37,8 @@ export function shopFrame(ctx, axis, c, a0, a1, dir, y, seed, fn) {
     // a collider over a local rect, h high
     solid(lx0, lz0, lx1, lz1, h) {
       const [ax, az] = toW(lx0, lz0), [bx, bz] = toW(lx1, lz1);
-      ctx.colliders.addBox((ax + bx) / 2, (az + bz) / 2, Math.abs(bx - ax) / 2, Math.abs(bz - az) / 2, 0, y + h, y - 0.5);
+      // (furniture is solid however low: a low ottoman is not a step to walk into)
+      ctx.colliders.addBox((ax + bx) / 2, (az + bz) / 2, Math.abs(bx - ax) / 2, Math.abs(bz - az) / 2, 0, y + Math.max(h, 0.5), y - 0.5);
     },
     // a seat at (lx, lz), sy high, facing local direction (fx, fz)
     seat(lx, lz, sy, fx, fz, label) {

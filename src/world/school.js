@@ -69,6 +69,10 @@ function partition(ctx, axis, c, a0, a1, y, h, doors = [], o = {}) {
     if (yb <= y + 0.01) {
       if (axis === 'x') solid(ctx, ra0, c - t / 2, ra1, c + t / 2, y - 0.5, yt);
       else solid(ctx, c - t / 2, ra0, c + t / 2, ra1, y - 0.5, yt);
+    } else {
+      // the wall over a door: a ceiling to jump against (walking under it is not stopped)
+      const it = axis === 'x' ? solid(ctx, ra0, c - t / 2, ra1, c + t / 2, yb, yt) : solid(ctx, c - t / 2, ra0, c + t / 2, ra1, yb, yt);
+      it.ceil = true;
     }
   }
   // door frames (dark wood) and a skirting strip
@@ -949,6 +953,8 @@ function buildGrounds(ctx) {
   }
   ctx.colliders.addSurface(SX[0], w1, SX[1], sz0, (x, z) => yL + Math.min(nSt, Math.max(1, Math.ceil((sz0 - z) / run))) * rise, 3);
   ctx.colliders.addSurface(SX[0], w0 - 0.2, SX[1], w1, () => yH, 3);
+  // the landing at the top of the steps (level with the upper terrace)
+  t.boxMM(SX[0], yL - 0.6, w0 - 0.2, SX[1], yH, w1, { color: 0xc9c5bb, pattern: PAT.CONCRETE, ao: 0.15 });
   for (const x of [SX[0] - 0.15, SX[1] + 0.15]) {
     t.boxMM(x - 0.15, yL - 0.3, w1, x + 0.15, yH + 0.9, sz0, { color: 0xb9b5ab, pattern: PAT.CONCRETE });
     t.rod(V(x, yL + 0.95, sz0), V(x, yH + 0.95, w1), 0.03, 0.03, 6, 0x9aa2a8);

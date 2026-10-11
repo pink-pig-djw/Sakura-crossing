@@ -388,7 +388,7 @@ function findInteractable() {
   const py = player.pos.y;
   const below = py < groundH(player.pos.x, player.pos.z) - 2.5; // underground / in the river bed
   for (const it of world.interactables) {
-    if (it.off || (it.kind === 'shell' && it.shell.taken)) continue;
+    if (it.off || it.r <= 0 || (it.kind === 'shell' && it.shell.taken)) continue;
     // things on other floors (subway concourse, platform, street above) are out of reach
     const iy = it.y ?? (it.sit ? it.sit.y - 0.45 : null);
     if (iy !== null ? Math.abs(iy - py) > 2.2 : below) continue;
@@ -457,13 +457,19 @@ function interact() {
       ui.toast('ひと休み。移動するか E で立ち上がる。', 2.6);
       break;
     case 'shrine': {
+      if (fortuneT) break; // (the bell already rung: the fortune is on its way)
       audio.sfx('suzu');
       setTimeout(() => audio.sfx('clap'), 700);
       const f = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
       state.luck = f[0];
       // in third person she faces the hall, puts her hands together and prays before the fortune comes
       const pray = player.view === 'third' && avatar ? avatar.perform('pray', Math.atan2(it.hall.x - player.pos.x, it.hall.z - player.pos.z)) : 0;
-      setTimeout(() => openOmikuji(f), pray ? pray * 1000 - 300 : 1300);
+      // the slip comes after the prayer; if a menu or the map was opened meanwhile, once back
+      fortuneT = setTimeout(() => {
+        fortuneT = null;
+        if (state.mode === 'play') openOmikuji(f);
+        else state.fortune = f;
+      }, pray ? pray * 1000 - 300 : 1300);
       break;
     }
     case 'map':
@@ -732,7 +738,10 @@ function openMap() {
   ui.closeMenu();
   ui.openMap({ x: player.pos.x, z: player.pos.z, yaw: player.yaw }, world.landmarks);
 }
+let fortuneT = null;
 function openOmikuji(f) {
+  ui.closeMenu();
+  ui.closeMap();
   state.mode = 'omikuji';
   player.enabled = false;
   releasePointer();
@@ -821,17 +830,28 @@ ui.on('subtitles', (v) => {
 ui.on('minimap', (v) => toggleMinimap(v));
 ui.on('view', (third) => toggleView(third ? 'third' : 'first'));
 ui.on('outfit', (i) => {
+  const was = outfit;
   outfit = i;
   ui.setOutfit(i);
   avatar
     ?.setOutfit(i)
-    .then(() => bike.setRider(avatar.ch))
-    .catch((e) => console.warn('outfit not loaded:', e));
-  try {
-    localStorage.setItem('sakura-outfit', String(i));
-  } catch {
-    /* storage unavailable */
-  }
+    .then(() => {
+      bike.setRider(avatar.ch);
+      try {
+        localStorage.setItem('sakura-outfit', String(i));
+      } catch {
+        /* storage unavailable */
+      }
+    })
+    .catch((e) => {
+      // (not loaded: still in what she had on; picking it again tries again)
+      console.warn('outfit not loaded:', e);
+      if (outfit === i) {
+        outfit = was;
+        ui.setOutfit(was);
+      }
+      ui.toast(tr('服を読み込めなかった。もう一度選ぶと読み込み直します'), 3);
+    });
 });
 ui.on('sens', (v) => (player.sensitivity = v));
 ui.on('outlines', (v) => (pipe.outlines = v));
@@ -865,6 +885,11 @@ canvas.addEventListener('click', () => {
 
 addEventListener('keydown', (e) => {
   ui.setInputMode('kb');
+  // a key held down repeats: each of these is one press (walking is read from the keys held)
+  if (e.repeat) {
+    if (state.mode === 'play' && e.code === 'Space') e.preventDefault();
+    return;
+  }
   if (state.mode === 'title' && (e.code === 'Enter' || e.code === 'Space')) {
     e.preventDefault();
     startPlay();
@@ -1045,9 +1070,11 @@ function simulate(dt) {
   for (const u of world.updaters) u(t, dt);
   world.grass?.update(camera);
   world.cullInteriors?.(camera.position);
-  world.autoDoors?.update(dt, state.mode === 'play' ? player.pos : null, audio);
+  // (she is still there behind a menu or the map: doors stay open for her, cars wait)
+  const here = walking ? player.pos : null;
+  world.autoDoors?.update(dt, here, audio);
   catSys.update(t, dt, player.pos);
-  traffic.update(dt, state.mode === 'play' ? player.pos : null);
+  traffic.update(dt, here);
   // the protagonist: shown in third person unless the camera is pulled in against her
   // (she stays on screen behind menus, the map and the fortune slip)
   const tpOn = !!avatar && state.mode !== 'title' && state.mode !== 'loading' && player.view === 'third';
@@ -1084,6 +1111,10 @@ function simulate(dt) {
   const gu = petals.material.uniforms.uGust;
   gu.value += (gust - gu.value) * Math.min(1, dt * 0.8);
 
+  if (state.mode === 'play' && state.fortune) {
+    openOmikuji(state.fortune);
+    state.fortune = null;
+  }
   if (state.mode === 'play') {
     focus = bike.on ? null : findInteractable();
     ui.setPrompt(player.sitting ? '立ち上がる' : focus ? focus.label : null);

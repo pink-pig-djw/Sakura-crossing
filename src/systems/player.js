@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel, SEAWALL_Z } from '../world/layout.js';
-import { onRoute } from '../world/routeplan.js';
+import { onRoute, HARBOR } from '../world/routeplan.js';
 
 // The walker: keyboard + mouse (pointer lock or drag), touch joystick, gamepad.
 // Feet position is kept on the walkable height field; colliders push back.
@@ -9,6 +9,7 @@ import { onRoute } from '../world/routeplan.js';
 
 const EYE = 1.58;
 const RADIUS = 0.32;
+const HEAD = 1.78; // the top of her hair over her feet (a jump stops under a lintel)
 const STEP = 0.55;
 // third person: walking and running pace (the protagonist's own stride), boom pivot height
 const TP_WALK = 1.45, TP_RUN = 5.0;
@@ -163,6 +164,8 @@ export class Player {
   sit(spot) {
     this.sitting = spot;
     this.vy = 0;
+    // where she sat down from: always a place she can stand (see stand)
+    this.sitFrom = { x: this.pos.x, y: this.pos.y, z: this.pos.z };
     // first person: looking out the way the seat faces; third person: the camera swings round
     // in front of her (benches often stand against a wall)
     this.yaw = this.view === 'third' ? spot.yaw + Math.PI - 0.6 : spot.yaw;
@@ -173,25 +176,42 @@ export class Player {
     if (!this.sitting) return;
     const s = this.sitting;
     this.sitting = null;
-    // step off the front of the seat (the way it faces, whatever the camera looks at: a bench
-    // stands against a wall), as far out as is free; to one side if the front is blocked
+    // step off the seat (whatever the camera looks at): off the front of a bench, back from a
+    // counter or a table, to a side in a booth; only onto clear floor at the seat's own level,
+    // with nothing (a wall, a railing) between the seat and there. Failing all of those, back
+    // to where she sat down from.
     const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
     const floor = s.y - 0.45;
+    const C = this.col;
     const free = (x, z) => {
       const p = { x, z };
-      this.col.resolve(p, RADIUS, floor);
-      return Math.hypot(p.x - x, p.z - z) < 0.03 && Math.abs(this.col.groundAt(x, z, floor + 0.3) - floor) < 0.5;
+      C.resolve(p, RADIUS, floor);
+      return Math.hypot(p.x - x, p.z - z) < 0.03 && Math.abs(C.groundAt(x, z, floor + 0.3) - floor) < 0.35;
+    };
+    // the way there: no wall or railing across it (the seat itself left out)
+    const clear = (x, z) => {
+      const d = Math.hypot(x - s.x, z - s.z);
+      for (let t = 0.45; t < d; t += 0.05) {
+        const k = t / d;
+        if (C.solidAt(s.x + (x - s.x) * k, s.z + (z - s.z) * k, floor)) return false;
+      }
+      return true;
     };
     let at = null;
-    for (const [d, side] of [[0.8, 0], [0.65, 0], [0.55, 0], [0.7, 0.5], [0.7, -0.5], [0.45, 0]]) {
+    const tries = [[0.8, 0], [0.65, 0], [0.55, 0], [0.7, 0.5], [0.7, -0.5], [0.45, 0], [0, 0.7], [0, -0.7], [-0.7, 0], [-0.6, 0.45], [-0.6, -0.45], [-0.85, 0], [0, 0.95], [0, -0.95]];
+    for (const [d, side] of tries) {
       const x = s.x + fx * d + fz * side, z = s.z + fz * d - fx * side;
-      if (free(x, z)) {
+      if (free(x, z) && clear(x, z)) {
         at = [x, z];
         break;
       }
     }
+    if (!at && this.sitFrom) {
+      this.pos.set(this.sitFrom.x, this.sitFrom.y, this.sitFrom.z);
+      return;
+    }
     if (!at) at = [s.x + fx * 0.8, s.z + fz * 0.8];
-    this.pos.set(at[0], this.col.groundAt(at[0], at[1], floor + 0.3), at[1]);
+    this.pos.set(at[0], C.groundAt(at[0], at[1], floor + 0.3), at[1]);
   }
 
   update(dt) {
@@ -283,14 +303,38 @@ export class Player {
       return true;
     };
     const mx = this.vel.x * dt, mz = this.vel.z * dt;
+    const x0 = this.pos.x, z0 = this.pos.z;
     if (!tryMove(mx, mz)) {
       if (!tryMove(mx, 0)) this.vel.x = 0;
       if (!tryMove(0, mz)) this.vel.z = 0;
+    }
+    // the way she really went (against a wall: nowhere, or sliding along it), so she does not
+    // walk on the spot into it and her steps are not heard
+    if (dt > 0) {
+      const ax = (this.pos.x - x0) / dt, az = (this.pos.z - z0) / dt;
+      const want = Math.hypot(this.vel.x, this.vel.z), got = Math.hypot(ax, az);
+      if (got < want * 0.9) {
+        const k = want > 1e-4 ? got / want : 0;
+        this.vel.x = this.vel.x * k;
+        this.vel.z = this.vel.z * k;
+        if (got > 0.05) {
+          this.vel.x = ax;
+          this.vel.z = az;
+        }
+      }
     }
     // vertical
     const g = this.col.groundAt(this.pos.x, this.pos.z, this.pos.y);
     this.vy -= 13 * dt;
     this.pos.y += this.vy * dt;
+    // rising into a lintel or a beam: the head stops there
+    if (this.vy > 0) {
+      const top = this.col.ceilingAt(this.pos.x, this.pos.z, this.pos.y + 1.0, RADIUS * 0.7);
+      if (this.pos.y + HEAD > top) {
+        this.pos.y = Math.max(g, top - HEAD);
+        this.vy = 0;
+      }
+    }
     if (this.pos.y <= g) {
       if (!this.onGround && this.vy < -6 && this.onLand) this.onLand(-this.vy);
       this.pos.y = g;
@@ -384,6 +428,10 @@ export class Player {
   surface() {
     const { x, z } = this.pos;
     if (inRiver(x, z) && this.pos.y < riverLevel(z) + 0.02) return 'water';
+    // the fishing harbour's concrete quays and slipway, and anything built over the beach
+    // (decks, steps) are hard going, not sand
+    if (x > HARBOR.x0 && x < HARBOR.x1 && z < HARBOR.z1 && this.pos.y > HARBOR.y - 0.6) return 'hard';
+    if (z > 73.5 && this.pos.y < 2.2 && this.pos.y - terrainH(x, z) > 0.15) return 'hard';
     if (z > 73.5 && this.pos.y < 2.2) {
       if (z > shoreZ(x) - 0.5) return 'water';
       return 'sand';
@@ -433,7 +481,7 @@ export class Player {
       const x = px + bx * d, y = py + by * d, z = pz + bz * d;
       const g = this.col.groundAt(x, z, y);
       // (things lower than the camera, a bench under her, a low wall, are passed over)
-      let hit = this.col.solidAt(x, z, y - 0.2) || y < g + 0.3;
+      let hit = this.col.solidAt(x, z, y - 0.2) || y < g + 0.3 || this.col.movingAt(x, z, y);
       // another level's floor between the pivot and the camera
       if (!hit && g > floorHere + 0.9 && g < y + 0.2) hit = true;
       if (!hit && room) hit = y > room.y1 - 0.3 || x < room.x0 + 0.2 || x > room.x1 - 0.2 || z < room.z0 + 0.2 || z > room.z1 - 0.2;

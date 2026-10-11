@@ -705,7 +705,8 @@ export class Bicycle {
     if (this.state !== 'off') return null;
     const p = player.pos;
     let x = p.x, z = p.z, hh = h, y = p.y;
-    const near = this.parked && Math.hypot(this.parked.x - p.x, this.parked.z - p.z) < 2.6 && Math.abs(this.parked.y - p.y) < 0.8;
+    // the parked bike, if it is close and nothing (a wall, a window) stands between her and it
+    const near = this.parked && Math.hypot(this.parked.x - p.x, this.parked.z - p.z) < 2.6 && Math.abs(this.parked.y - p.y) < 0.8 && this._reach(p, this.parked);
     if (near) {
       x = this.parked.x;
       z = this.parked.z;
@@ -750,6 +751,16 @@ export class Bicycle {
     player.boom = Math.max(player.boom, 3.3);
     this.audio?.sfx('bikeStand');
     return 'ok';
+  }
+
+  // a clear way on foot from a to b (no wall across it)
+  _reach(a, b) {
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    for (let t = 0.1; t < d - 0.3; t += 0.08) {
+      const k = t / d;
+      if (this.C.solidAt(a.x + (b.x - a.x) * k, a.z + (b.z - a.z) * k, a.y)) return false;
+    }
+    return true;
   }
 
   // get off (when stopped; moving, she brakes first)
@@ -813,12 +824,14 @@ export class Bicycle {
     let a = 0;
     if (throttle > 0.05) {
       // up on the pedals (a burst, or on her own on a climb or pushing off) she pushes harder
-      const vt = gear.v * (boost ? 1.22 : 1) * (0.4 + 0.6 * throttle);
+      // on sand: heavy going, slow (but it goes: the push in any gear beats the sand's drag)
+      const sand = this.surface === 'sand';
+      const vt = gear.v * (boost ? 1.22 : 1) * (0.4 + 0.6 * throttle) * (sand ? 0.55 : 1);
       const force = boost ? 1.55 : 1 + 0.4 * this.stand;
-      a += gear.acc * force * clamp((vt - this.v) / 0.9, 0, 1) * (this.surface === 'sand' ? 0.4 : 1);
+      a += gear.acc * force * clamp((vt - this.v) / 0.9, 0, 1) * (sand ? 0.75 : 1);
     }
     a -= 9.8 * (slope / Math.sqrt(1 + slope * slope));
-    if (Math.abs(this.v) > 0.02) a -= Math.sign(this.v) * ((this.surface === 'sand' ? 1.3 : 0.11) + 0.013 * this.v * this.v);
+    if (Math.abs(this.v) > 0.02) a -= Math.sign(this.v) * ((this.surface === 'sand' ? 0.42 : 0.11) + 0.013 * this.v * this.v);
     let v = this.v;
     if (brake > 0.02 && v > 0) a -= brake * 4.8;
     v += a * dt;

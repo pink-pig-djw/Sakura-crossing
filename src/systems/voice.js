@@ -12,6 +12,8 @@ import { VOICE_LINES } from './voiceLines.js';
 // interface language.
 
 const FX = { station: 'pa', clerk: 'room', cafe: 'room', narrator: 'narrator', townpa: 'townpa', machine: 'machine', friend: 'person' };
+// (the residents talk from where they stand)
+const presetOf = (id) => PRESET[id] ?? (/^(mei|kokoa)_/.test(id) ? 'friend' : 'narrator');
 const PRESET = {
   st_approach_w: 'station', st_approach_e: 'station', st_arrive: 'station', st_close: 'station',
   sw_approach_1: 'station', sw_approach_2: 'station', sw_arrive: 'station', sw_close: 'station', sw_info: 'station',
@@ -67,7 +69,11 @@ export class VoiceSystem {
         : fetch(`${this.base}${id}.mp3`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))));
       p = bytes
         .then((b) => new Promise((res, rej) => this.audio.ctx.decodeAudioData(b, res, rej)))
-        .catch(() => null);
+        .catch(() => {
+          // (a failed download is tried again next time, not remembered)
+          this.cache.delete(id);
+          return null;
+        });
       this.cache.set(id, p);
     }
     return p;
@@ -96,10 +102,24 @@ export class VoiceSystem {
 
   // play(id, { at: {x,y,z}, channel, delay, interrupt, subtitle, gain })
   async play(id, o = {}) {
-    if (!this.audio.ctx || !VOICE_LINES[id] || this.volume <= 0.001) return false;
+    if (!this.audio.ctx || !VOICE_LINES[id]) return false;
     this._init();
     const channel = o.channel ?? 'local';
     if (this.busy(channel) && !o.interrupt) return false;
+    // voices turned right down: the words still come up as subtitles, for as long as they
+    // would have taken to say
+    if (this.volume <= 0.001) {
+      const line = VOICE_LINES[id];
+      const dur = line.dur ?? 3;
+      const t = this.audio.ctx.currentTime + (o.delay ?? 0);
+      this.channels[channel] = { src: { stop() {} }, until: t + dur };
+      if (this.subtitles && o.subtitle !== false) {
+        const show = () => this.ui.subtitle(line, dur + 0.5);
+        if (o.delay) setTimeout(show, o.delay * 1000);
+        else show();
+      }
+      return true;
+    }
     const requested = this.audio.ctx.currentTime;
     const buf = await this.load(id);
     if (!buf) return false;
@@ -113,7 +133,7 @@ export class VoiceSystem {
     const t = ctx.currentTime + (o.delay ?? 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    const out = this._chain(FX[PRESET[id]] ?? 'narrator', o);
+    const out = this._chain(FX[presetOf(id)] ?? 'narrator', o);
     src.connect(out);
     // level meter for lip sync (o.meter.node is read by the speaker)
     if (o.meter) {

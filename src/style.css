@@ -835,6 +835,11 @@ kbd {
 #hud.photo {
   opacity: 0;
 }
+/* (hidden for a photo: nothing in it catches a click either) */
+#hud.photo,
+#hud.photo * {
+  pointer-events: none !important;
+}
 
 /* ---------- language switch ---------- */
 .title-panel .lang-switch {

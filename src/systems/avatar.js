@@ -70,7 +70,15 @@ export class Avatar {
   async setOutfit(i) {
     i = Math.max(0, Math.min(OUTFITS.length - 1, i | 0));
     this.want = i;
-    if (!this.loaded.has(i)) this.loaded.set(i, loadCharacter(OUTFITS[i].file, 'chars/motions.json', { name: 'nanami' + i }));
+    // (a download that fails is not remembered: picking the outfit again tries again)
+    if (!this.loaded.has(i))
+      this.loaded.set(
+        i,
+        loadCharacter(OUTFITS[i].file, 'chars/motions.json', { name: 'nanami' + i }).catch((e) => {
+          this.loaded.delete(i);
+          throw e;
+        }),
+      );
     const ch = await this.loaded.get(i);
     if (this.want !== i) return; // another outfit was picked meanwhile
     ch.armOut = OUTFITS[i].armOut || 0;

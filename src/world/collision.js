@@ -113,6 +113,30 @@ export class Colliders {
   }
 
   // Is (x,z) inside something solid standing at height y? (used to place decoration)
+  // the lowest underside above y of anything over a circle at (x, z) (a lintel, a beam), or
+  // Infinity: what a jump would knock its head on
+  ceilingAt(x, z, y, r = 0.2) {
+    let best = Infinity;
+    const c = this.cell;
+    for (let i = Math.floor((x - r) / c); i <= Math.floor((x + r) / c); i++) {
+      for (let j = Math.floor((z - r) / c); j <= Math.floor((z + r) / c); j++) {
+        const arr = this.grid.get(i * 100003 + j);
+        if (!arr) continue;
+        for (const it of arr) {
+          if (it.off || it.yBottom <= y || it.yBottom >= best) continue;
+          let inside;
+          if (it.t === 1) inside = (x - it.cx) ** 2 + (z - it.cz) ** 2 < (it.r + r) ** 2;
+          else {
+            const wx = x - it.cx, wz = z - it.cz;
+            inside = Math.abs(it.c * wx - it.s * wz) < it.hx + r && Math.abs(it.s * wx + it.c * wz) < it.hz + r;
+          }
+          if (inside) best = it.yBottom;
+        }
+      }
+    }
+    return best;
+  }
+
   solidAt(x, z, y = 0) {
     const arr = this.grid.get(Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell));
     if (!arr) return false;
@@ -149,9 +173,21 @@ export class Colliders {
     return item;
   }
 
+  // inside something big that moves (a train car, a car) at (x, y, z), give or take m (the
+  // camera keeps out of them; people and bicycles are passed through)
+  movingAt(x, z, y, m = 0.25) {
+    if (!this.dynamic) return false;
+    for (const it of this.dynamic) {
+      if (it.off || Math.max(it.hx, it.hz) < 0.6 || y < it.yBottom - m || y > it.yTop + m) continue;
+      const wx = x - it.cx, wz = z - it.cz;
+      if (Math.abs(it.c * wx - it.s * wz) < it.hx + m && Math.abs(it.s * wx + it.c * wz) < it.hz + m) return true;
+    }
+    return false;
+  }
+
   // push the circle p out of one item; true when it moved
   _push(it, p, r, feetY) {
-    if (it.off || it.yTop < feetY + 0.45 || it.yBottom > feetY + 1.7) return false;
+    if (it.off || it.ceil || it.yTop < feetY + 0.45 || it.yBottom > feetY + 1.7) return false;
     if (it.t === 1) {
       const dx = p.x - it.cx, dz = p.z - it.cz;
       const d = Math.hypot(dx, dz);

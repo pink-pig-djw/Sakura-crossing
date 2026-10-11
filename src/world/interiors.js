@@ -479,7 +479,8 @@ function buildCafe(ctx, block, doors) {
   }
   // steps down to the path at the deck opening
   ctx.builders.get('toon', dx0, 35.5).boxMM(dx0 - 0.4, groundH(dx0, 35.5) - 0.2, 34.3, dx0, y - 0.2, 36.7, { color: 0x9a7454, pattern: PAT.PLANKS });
-  ctx.colliders.addSurface(dx0 - 0.6, 34.3, dx0 + 0.1, 36.7, (x) => groundH(dx0, 35.5) + Math.min(1, Math.max(0, (x - (dx0 - 0.6)) / 0.7)) * (y - groundH(dx0, 35.5)), 2);
+  // (walked as the step it is: its tread, then the deck; the feet on the wood)
+  ctx.colliders.addSurface(dx0 - 0.4, 34.3, dx0 + 0.1, 36.7, (x) => (x < dx0 ? y - 0.2 : y), 2);
   // parasol tables on the deck
   for (const tz of [30.6, 40.6]) {
     const tx = (dx0 + dx1) / 2;

@@ -62,6 +62,9 @@ function buildWalls(ctx) {
       b.quadOut(V(xc, ca, za), V(xc, cb, zb), V(xc, tb + 0.04, zb), V(xc, ta + 0.04, za), C, 0xc9c5bb, PAT.CONCRETE);
       b.quadOut(V(xf, ca, za), V(xf, cb, zb), V(xc, cb, zb), V(xc, ca, za), V(xc, ca + 1, (za + zb) / 2), 0xb9b5ab, 0);
       b.quadOut(V(xf, ta + 0.04, za), V(xf, tb + 0.04, zb), V(xc, tb + 0.04, zb), V(xc, ta + 0.04, za), V(xc, ta - 1, (za + zb) / 2), 0xd3cfc5, PAT.CONCRETE);
+      // by the railway the riverside path stops short of the wall: its whole top is concrete
+      // there (it is walkable, see the surface below)
+      if (zb > RAIL_Z - 6 && za < RAIL_Z + 4.5) b.quadOut(V(xc, ta + 0.04, za), V(xc, tb + 0.04, zb), V(xo, tb + 0.04, zb), V(xo, ta + 0.04, za), V((xc + xo) / 2, ta - 1, (za + zb) / 2), 0xd3cfc5, PAT.CONCRETE);
       // drain pipe outlets and moss streaks every so often
       if (Math.round(z) % 14 === 0) {
         const py = (ca + bot) / 2 + 0.6;
@@ -405,14 +408,16 @@ function railBridge(ctx, br) {
   // walkways + handrails on both sides
   for (const s of [-1, 1]) {
     const zw = RAIL_Z + s * 1.9;
-    b.boxMM(WW, yTop - 0.06, Math.min(zw, zw - s * 0.8), WE, yTop + 0.06, Math.max(zw, zw - s * 0.8) + 0.001, { color: 0x6f6a64, pattern: PAT.LATTICE });
+    // (out to the handrail: nothing to stand on but the deck)
+    const zo = RAIL_Z + s * 2.68;
+    b.boxMM(WW, yTop - 0.06, Math.min(zo, zw - s * 0.8), WE, yTop + 0.06, Math.max(zo, zw - s * 0.8) + 0.001, { color: 0x6f6a64, pattern: PAT.LATTICE });
     const zr = RAIL_Z + s * 2.6;
     for (let x = XW; x <= XE + 0.01; x += 2) d.box(x, yTop + 0.6, zr, 0.06, 1.1, 0.06, { color: 0xcfd2d4 });
     d.box(RX, yTop + 1.15, zr, XE - XW, 0.05, 0.05, { color: 0xcfd2d4 });
     d.box(RX, yTop + 0.65, zr, XE - XW, 0.04, 0.04, { color: 0xcfd2d4 });
     ctx.colliders.addSegment(XW, zr, XE, zr, 0.25, yTop + 1.2).yBottom = yTop - 0.7;
   }
-  ctx.colliders.addSurface(XW, RAIL_Z - 2.6, XE, RAIL_Z + 2.6, () => yTop + 0.12, 2, { min: yTop - 1.4 });
+  ctx.colliders.addSurface(XW, RAIL_Z - 2.6, XE, RAIL_Z + 2.6, () => yTop + 0.06, 2, { min: yTop - 1.4 });
   void br;
 }
 

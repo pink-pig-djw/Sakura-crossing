@@ -43,10 +43,19 @@ export class GamepadInput {
       if (e.gamepad.index === this.index) {
         this.index = null;
         this.connected = false;
-        this.move.x = this.move.y = this.look.x = this.look.y = 0;
+        this.release();
         this.emit('disconnect');
       }
     });
+  }
+
+  // nothing held any more (unplugged, lost): no running on, no brake left pressed
+  release() {
+    this.move.x = this.move.y = this.look.x = this.look.y = 0;
+    this.run = false;
+    this.runToggle = false;
+    this.brake = 0;
+    this.prev.fill(false);
   }
 
   on(name, fn) {
@@ -90,7 +99,7 @@ export class GamepadInput {
   poll(dt, mode) {
     const p = this.pad();
     if (!p) {
-      this.move.x = this.move.y = this.look.x = this.look.y = 0;
+      this.release();
       return;
     }
     const b = (i) => {
