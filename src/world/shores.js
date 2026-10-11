@@ -382,6 +382,13 @@ function mikanTerraces(ctx) {
       if (pts.length !== 2) continue;
       const [[ax, az], [bx, bz]] = pts;
       if (Math.hypot(bx - ax, bz - az) < 0.05) continue;
+      // only where the ground stands against it (by the road its cutting or embankment has
+      // reshaped the slope: a wall there would hang in the air or be buried)
+      const lo = step * k - 0.45, hi = step * (k + 1) + 0.05;
+      if ([[ax, az], [bx, bz], [(ax + bx) / 2, (az + bz) / 2]].some(([x, z]) => {
+        const g = groundH(x, z);
+        return g < lo || g > hi;
+      })) continue;
       const bb = ctx.builders.get('toon', ax, az);
       bb.wall(ax, az, bx, bz, step * k - 0.5, step * (k + 1) + 0.12, 0.55, { color: noise2(ax * 0.3, az * 0.3) > 0.5 ? 0x9a9284 : 0x8c8478, pattern: PAT.STONE });
       walls++;

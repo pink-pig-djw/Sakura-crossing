@@ -180,29 +180,24 @@ export function buildTerrain(groundMap) {
     [150, 260, 5],
     [260, 700, 25],
   ]);
-  const nx = xs.length, nz = zs.length;
-  const pos = new Float32Array(nx * nz * 3);
-  const nor = new Float32Array(nx * nz * 3);
-  const col = new Float32Array(nx * nz * 3);
-  const uv = new Float32Array(nx * nz * 2);
-  const pat = new Float32Array(nx * nz);
+  // finer patches where the ground has sharp small steps (the rice terraces: 1.6 m steps
+  // with risers a metre or so across, which a 2 m grid smooths into slopes, leaving the
+  // paddies and their bunds hanging over it); cut out of the 2 m grid, their edges kept on
+  // its straight lines so the two meet without a crack
+  const PATCHES = [
+    { x0: -158, x1: -50, z0: -240, z1: -130, step: 0.5 }, // rice terraces
+    { x0: 536, x1: 650, z0: -30, z1: 104, step: 1 }, // mikan terraces
+  ];
+  const pos = [], nor = [], col = [], uv = [], pat = [], idx = [];
   const tmp = new THREE.Color();
-  let k = 0;
-  for (let j = 0; j < nz; j++) {
-    const z = zs[j];
-    for (let i = 0; i < nx; i++) {
-      const x = xs[i];
-      const y = terrainH(x, z);
-      pos[k * 3] = x;
-      pos[k * 3 + 1] = y;
-      pos[k * 3 + 2] = z;
+  const vertex = (x, z, yAt = null) => {
+      const y = yAt ?? terrainH(x, z);
+      pos.push(x, y, z);
       const e = 0.6;
       const dx = terrainH(x + e, z) - terrainH(x - e, z);
       const dz = terrainH(x, z + e) - terrainH(x, z - e);
       const n = new THREE.Vector3(-dx, 2 * e, -dz).normalize();
-      nor[k * 3] = n.x;
-      nor[k * 3 + 1] = n.y;
-      nor[k * 3 + 2] = n.z;
+      nor.push(n.x, n.y, n.z);
       // base color / pattern
       const out = outsideDist(x, z);
       let p = PAT.GRASS;
@@ -241,19 +236,14 @@ export function buildTerrain(groundMap) {
         const f = noise2(x * 0.05, z * 0.05);
         tmp.copy(C_GRASS).lerp(C_GRASS_DRY, f * 0.6);
       }
-      col[k * 3] = tmp.r;
-      col[k * 3 + 1] = tmp.g;
-      col[k * 3 + 2] = tmp.b;
-      uv[k * 2] = x;
-      uv[k * 2 + 1] = z;
-      pat[k] = p;
-      k++;
-    }
-  }
-  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
-  let t = 0;
-  // stairwell openings (subway exits) are cut out of the mesh
-  const inHole = (x, z) => HOLES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1);
+      col.push(tmp.r, tmp.g, tmp.b);
+      uv.push(x, z);
+      pat.push(p);
+  };
+  const nx = xs.length, nz = zs.length;
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) vertex(xs[i], zs[j]);
+  // stairwell openings (subway exits) and the fine patches are cut out of the mesh
+  const inHole = (x, z) => HOLES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1) || PATCHES.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1);
   for (let j = 0; j < nz - 1; j++) {
     for (let i = 0; i < nx - 1; i++) {
       if (inHole((xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2)) continue;
@@ -261,21 +251,42 @@ export function buildTerrain(groundMap) {
       const b = a + 1;
       const c = a + nx;
       const d = c + 1;
-      idx[t++] = a;
-      idx[t++] = c;
-      idx[t++] = b;
-      idx[t++] = b;
-      idx[t++] = c;
-      idx[t++] = d;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  for (const P of PATCHES) {
+    const s = P.step, mx = Math.round((P.x1 - P.x0) / s), mz = Math.round((P.z1 - P.z0) / s);
+    const base = pos.length / 3;
+    // (on the edge, between the 2 m grid's points: on the straight line between them)
+    const edge = (x, z, alongX) => {
+      const c = alongX ? x : z;
+      const a = Math.floor(c / 2) * 2, b = a + 2, t = (c - a) / 2;
+      const ya = alongX ? terrainH(a, z) : terrainH(x, a), yb = alongX ? terrainH(b, z) : terrainH(x, b);
+      return ya + (yb - ya) * t;
+    };
+    for (let j = 0; j <= mz; j++) {
+      for (let i = 0; i <= mx; i++) {
+        const x = P.x0 + i * s, z = P.z0 + j * s;
+        let y = null;
+        if (j === 0 || j === mz) y = edge(x, z, true);
+        else if (i === 0 || i === mx) y = edge(x, z, false);
+        vertex(x, z, y);
+      }
+    }
+    for (let j = 0; j < mz; j++) {
+      for (let i = 0; i < mx; i++) {
+        const a = base + j * (mx + 1) + i, b = a + 1, c = a + mx + 1, d = c + 1;
+        idx.push(a, c, b, b, c, d);
+      }
     }
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setAttribute('pattern', new THREE.BufferAttribute(pat, 1));
-  g.setIndex(new THREE.BufferAttribute(idx.subarray(0, t), 1));
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('pattern', new THREE.Float32BufferAttribute(pat, 1));
+  g.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
   g.computeBoundingSphere();
 
   const tex = groundMap.toTexture();

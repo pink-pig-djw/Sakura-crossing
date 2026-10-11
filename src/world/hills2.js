@@ -205,9 +205,13 @@ function riceTerraces(ctx, scene) {
   const Y = new Float32Array((nx + 1) * (nz + 1)), M = new Float32Array((nx + 1) * (nz + 1));
   for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
     const x = x0 + i * h, z = z0 + j * h;
-    Y[j * (nx + 1) + i] = riceTerrace(x, z).cont;
-    // (continuous, so the edge of the water follows a smooth line: the cut is at 0.5)
-    M[j * (nx + 1) + i] = Math.min(0.5 + (riceMask(x, z) - 0.97) / 0.06, 0.5 + (roadDist(x, z) - 5.6) / 4);
+    const t = riceTerrace(x, z);
+    Y[j * (nx + 1) + i] = t.cont;
+    // (continuous, so the edge of the water follows a smooth line: the cut is at 0.5); and
+    // only where the ground really is the terrace (the road's cuttings and embankments
+    // reach further out than the road itself: no paddy hangs in the air over them)
+    const fit = Math.abs(terrainH(x, z) - t.y);
+    M[j * (nx + 1) + i] = Math.min(0.5 + (riceMask(x, z) - 0.97) / 0.06, 0.5 + (roadDist(x, z) - 5.6) / 4, 0.5 + (0.3 - fit) / 0.3);
   }
   const planted = new Map();
   const isPlanted = (k) => {
@@ -265,6 +269,20 @@ function riceTerraces(ctx, scene) {
       }
       if (pts.length === 2) bundSegs.push([pts[0], pts[1], k * step]);
     }
+    // where the paddies stop (by the road, at the edge of the fields): a bund along that
+    // edge too, so no sheet of water ends in the air
+    const ms = [];
+    for (const [a, b] of [[A, B], [B, C], [C, A]]) {
+      const da = a.m - 0.5, db = b.m - 0.5;
+      if (da >= 0 !== db >= 0) {
+        const t = da / (da - db);
+        ms.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, y: a.y + (b.y - a.y) * t });
+      }
+    }
+    if (ms.length === 2) {
+      const ym = (ms[0].y + ms[1].y) / 2, k = Math.floor(ym), f = ym - k;
+      if (f > 0.04 && f < top) bundSegs.push([[ms[0].x, ms[0].z], [ms[1].x, ms[1].z], k * step]);
+    }
   };
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const node = (ii, jj) => {
@@ -281,9 +299,14 @@ function riceTerraces(ctx, scene) {
     if (l < 1e-3) continue;
     const px = (-dz / l) * 0.2, pz = (dx / l) * 0.2;
     const top = V((ax + bx) / 2, y + 0.24, (az + bz) / 2);
-    // (from below the paddy floor, which lies 0.3 under the water line, to just over the water)
-    const A = V(ax - dx * 0.08 + px * 1.3, y - 0.42, az - dz * 0.08 + pz * 1.3), B = V(bx + dx * 0.08 + px * 1.3, y - 0.42, bz + dz * 0.08 + pz * 1.3);
-    const C = V(bx + dx * 0.08 - px * 1.3, y - 0.42, bz + dz * 0.08 - pz * 1.3), D = V(ax - dx * 0.08 - px * 1.3, y - 0.42, az - dz * 0.08 - pz * 1.3);
+    // (from below the paddy floor, which lies 0.3 under the water line, to just over the water;
+    // on the outer side, where the ground drops away down the riser, a whole step on down into
+    // the ground, so it never stands in the air)
+    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    const out = terrainH(mx + px * 2.5, mz + pz * 2.5) < terrainH(mx - px * 2.5, mz - pz * 2.5) ? 1 : -1;
+    const yp = out > 0 ? y - step - 0.25 : y - 0.42, ym = out < 0 ? y - step - 0.25 : y - 0.42;
+    const A = V(ax - dx * 0.08 + px * 1.3, yp, az - dz * 0.08 + pz * 1.3), B = V(bx + dx * 0.08 + px * 1.3, yp, bz + dz * 0.08 + pz * 1.3);
+    const C = V(bx + dx * 0.08 - px * 1.3, ym, bz + dz * 0.08 - pz * 1.3), D = V(ax - dx * 0.08 - px * 1.3, ym, az - dz * 0.08 - pz * 1.3);
     const T1 = V(ax - dx * 0.08, y + 0.2, az - dz * 0.08), T2 = V(bx + dx * 0.08, y + 0.2, bz + dz * 0.08);
     bund.quadOut(A, B, T2, T1, V(top.x, y - 1, top.z), grass, PAT.GRASS);
     bund.quadOut(C, D, T1, T2, V(top.x, y - 1, top.z), grass, PAT.GRASS);
@@ -308,6 +331,8 @@ function riceTerraces(ctx, scene) {
   ctx.ground.paint(x0, z0, x1, z1, (x, z) => {
     if (riceMask(x, z) < 0.6 || roadDist(x, z) < 5) return null;
     const t = riceTerrace(x, z);
+    // (mud only under the water: where no paddy is, grass)
+    if (riceMask(x, z) < 0.97 || roadDist(x, z) < 5.6 || Math.abs(terrainH(x, z) - t.y) > 0.3) return [noise2(x * 0.6, z * 0.6) > 0.5 ? 0x6e9a48 : 0x5f8c40, PAT.GRASS, 0.12];
     return t.flat ? [0x6b5a44, PAT.DIRT, 0.1] : [noise2(x * 0.6, z * 0.6) > 0.5 ? 0x6e9a48 : 0x5f8c40, PAT.GRASS, 0.12];
   });
   // scarecrows and a farm hut with a thatched roof

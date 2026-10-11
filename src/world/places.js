@@ -660,7 +660,8 @@ export function buildShop(ctx, lot, index) {
     // board perpendicular to the facade: place quads both sides
     const nrm = F2.front.r.clone();
     const tangent = F2.front.n.clone();
-    const mk = (sgn) => ({ o: V(p.x + nrm.x * 0.04 * sgn - tangent.x * 0.25 * sgn, 0, p.z + nrm.z * 0.04 * sgn - tangent.z * 0.25 * sgn), r: tangent.clone().multiplyScalar(sgn), n: nrm.clone().multiplyScalar(sgn), len: 0.5 });
+    // (at the shop's own ground: on a raised lot, up with it, not sunk into it)
+    const mk = (sgn) => ({ o: V(p.x + nrm.x * 0.04 * sgn - tangent.x * 0.25 * sgn, y0, p.z + nrm.z * 0.04 * sgn - tangent.z * 0.25 * sgn), r: tangent.clone().multiplyScalar(sgn), n: nrm.clone().multiplyScalar(sgn), len: 0.5 });
     void side;
     signOnFace(kit, mk(1), 0.25, f1 + 0.4, 0.42, 1.75, 0.0, vs, 0.7);
     signOnFace(kit, mk(-1), 0.25, f1 + 0.4, 0.42, 1.75, 0.0, vs, 0.7);
