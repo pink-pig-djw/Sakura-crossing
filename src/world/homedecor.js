@@ -5,6 +5,8 @@ import { RNG } from '../core/rng.js';
 import { FONTS, fitText } from '../render/atlas.js';
 import { books, shelving } from './furnish.js';
 import { shrub, GARDEN_FLOWERS } from './greenery.js';
+import { createInteriorMaterial } from '../render/materials.js';
+import { WallCalendar } from './wallcalendar.js';
 
 // The inside of 桜井家 (world/home.js): every room furnished, piece by piece. Furniture is
 // built on the 'propsHome' batches (the house's own light, see systems/home.js), pictures and
@@ -192,21 +194,7 @@ function art(ctx) {
     fitText(c, 'ほしぞら', w * 0.8, 14, FONTS.maru, '700');
     c.fillText('ほしぞら', w / 2, h * 0.88);
   });
-  // a calendar (this month) and a clock face
-  P.calendar = A.draw('home:calendar', 96, 128, (c, w, h) => {
-    c.fillStyle = '#fbfaf6';
-    c.fillRect(0, 0, w, h);
-    c.fillStyle = '#f2b6c2';
-    c.fillRect(0, 0, w, h * 0.42);
-    c.fillStyle = '#fff';
-    c.beginPath();
-    c.arc(w * 0.5, h * 0.2, 12, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = '#6a6a72';
-    for (let r = 0; r < 5; r++) for (let k = 0; k < 7; k++) c.fillRect(8 + k * 12, h * 0.5 + r * 12, 7, 6);
-    c.fillStyle = '#e05a6a';
-    c.fillRect(8 + 3 * 12, h * 0.5 + 2 * 12, 7, 6);
-  });
+  // a clock face (the calendar has a page of its own: world/wallcalendar.js)
   P.clock = A.draw('home:clock', 64, 64, (c, w, h) => {
     c.fillStyle = '#fbfaf6';
     c.beginPath();
@@ -955,9 +943,19 @@ function bedroom(ctx, H, P, rng) {
     pic(sb, -0.27, -0.11, 1.32, 1.5, 0.023, sub(P.photos, 1));
     pic(sb, 0.08, 0.24, 1.15, 1.31, 0.023, sub(P.photos, 3));
   });
-  put(ctx, x1 - 0.002, F2, -21.6, 'W', (b, sb) => {
+  // the calendar: its page drawn on a canvas of its own and turned to the town's date as the
+  // days go by (main.js), lit like the rest of the room
+  const cal = new WallCalendar();
+  H.calendar = cal;
+  const M = ctx.materials;
+  M.homeCalendar = { material: createInteriorMaterial({ name: 'homeCalendar', map: cal.texture }), castShadow: false, receiveShadow: false };
+  M.homeCalendar.material.uniforms.uLight = M.home.material.uniforms.uLight;
+  put(ctx, x1 - 0.002, F2, -21.6, 'W', (b) => {
     box(b, -0.16, 1.18, 0, 0.16, 1.6, 0.008, 0xf8f6f0);
-    pic(sb, -0.15, 0.15, 1.19, 1.59, 0.009, P.calendar);
+    const cb = ctx.builders.get('homeCalendar', x1, -21.6);
+    cb.push(b.matrix);
+    pic(cb, -0.15, 0.15, 1.19, 1.59, 0.009, { u0: 0, v0: 0, u1: 1, v1: 1 });
+    cb.pop();
   });
   // (her chair stands pulled out a little; it moves with her: systems/home.js)
   const chair = { x: desk.x1 + 0.62, z: (desk.z0 + desk.z1) / 2, near: desk.x1 + 0.34 };

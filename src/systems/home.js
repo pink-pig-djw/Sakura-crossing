@@ -3,6 +3,7 @@ import { MeshBuilder, PAT } from '../core/builder.js';
 import { HOME } from '../world/home.js';
 import { chairPiece, kyusu, yunomi, shoePair, SHOE_KIND } from '../world/homedecor.js';
 import { MIN_AWAKE, hoursMinutes } from './body.js';
+import { dateOf, dateLabel } from './calendar.js';
 
 // Life at home (桜井家, world/home.js): what she does at each spot, played out move by move.
 //
@@ -262,6 +263,9 @@ function drawForecast(c, W, H, t, w) {
   c.fillText('桜ヶ浜のお天気', 10, 14);
   c.textAlign = 'right';
   c.fillText(w.clock, W - 10, 14);
+  const cw = c.measureText(w.clock).width;
+  c.font = '700 12px "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif';
+  c.fillText(w.date, W - 18 - cw, 14);
   c.textAlign = 'left';
   // three slots: now, later, tonight/tomorrow
   const icon = (x, y, kind, s = 1) => {
@@ -1646,7 +1650,7 @@ export class HomeLife {
     this.chairCol.off = !!this.routine && this.routine.it.what === 'desk' && this.routine.step !== 'walk';
     this.diaryShut.visible = !this.diary.open;
     this.diaryOpen.visible = this.diary.open;
-    this.tv.update(dt, this.forecast());
+    if (this.tv.on) this.tv.update(dt, this.forecast());
     this.steam.strength = 1;
     this.steam.update(dt);
     // tea running from the spout into the cup
@@ -1696,6 +1700,7 @@ export class HomeLife {
     return {
       slots,
       clock: this.tod.label,
+      date: dateLabel(dateOf(this.tod.abs)),
       ticker: W.raining ? '雨の日は足もとに気をつけて。傘をお忘れなく。' : '桜ヶ浜の桜は今が見ごろ。週末は海辺のプロムナードがにぎわいそうです。',
     };
   }

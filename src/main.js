@@ -36,6 +36,7 @@ import { Character } from './systems/character.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
 import { Body, hoursMinutes } from './systems/body.js';
+import { dateOf, dayIndex, weekdayName } from './systems/calendar.js';
 import { HomeLife } from './systems/home.js';
 import { HOME } from './world/home.js';
 
@@ -347,6 +348,66 @@ if (restore && typeof restore.x === 'number') {
   player.place(restore.x, restore.z, restore.yaw, restore.pitch);
   if (typeof restore.hour === 'number') tod.setHour(restore.hour);
 }
+
+// the days go on from one visit to the next: the date and the time (the clock that only runs
+// forward), when she got up, her nights in bed and what she has done today (her diary) are
+// kept in the browser. Not with ?t= (a link that sets the hour: shots, tests), and nothing is
+// kept until she is out walking. (The title screen's clock runs on from the day kept.)
+const DAYS_KEY = 'sakura-days';
+const keepDays = !params.has('t');
+const kept = keepDays ? loadDays() : null;
+if (kept) {
+  tod.abs = kept.abs;
+  tod.hour = kept.abs % 24;
+  tod.apply();
+  body.woke = kept.woke;
+  body.nights = kept.nights;
+}
+function loadDays() {
+  try {
+    const s = JSON.parse(localStorage.getItem(DAYS_KEY) || 'null');
+    if (s?.v === 1 && Number.isFinite(s.abs) && s.abs >= 24 && Number.isFinite(s.woke) && s.woke <= s.abs && Number.isInteger(s.nights) && s.nights >= 0) return s;
+  } catch {
+    /* storage unavailable, or not ours */
+  }
+  return null;
+}
+function saveDays() {
+  if (!keepDays || state.mode === 'loading' || state.mode === 'title') return;
+  const T = state.today;
+  try {
+    localStorage.setItem(DAYS_KEY, JSON.stringify({ v: 1, abs: tod.abs, woke: body.woke, nights: body.nights, today: { ...T, cats: [...T.cats] } }));
+  } catch {
+    /* storage unavailable or full */
+  }
+}
+// her diary's day as it was kept (only if it is still the same day for her)
+function keptToday(t) {
+  const T = newDay();
+  if (!t || t.nights !== body.nights) return T;
+  for (const k of Object.keys(T)) {
+    if (k === 'places' || k === 'cats') continue;
+    if (t[k] !== undefined && (typeof t[k] === typeof T[k] || (T[k] === null && typeof t[k] === 'string'))) T[k] = t[k];
+  }
+  if (Array.isArray(t.places)) T.places = t.places.filter((p) => typeof p === 'string');
+  if (Array.isArray(t.cats)) T.cats = new Set(t.cats.filter((c) => typeof c === 'string'));
+  return T;
+}
+let keepT = 0;
+addEventListener('pagehide', saveDays);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveDays();
+});
+// today's date (systems/calendar.js), and the calendar on her wall turned to it
+let shownDate = null;
+function theDate() {
+  if (shownDate?.n !== dayIndex(tod.abs)) {
+    shownDate = dateOf(tod.abs);
+    HOME.calendar?.show(shownDate);
+  }
+  return shownDate;
+}
+theDate();
 
 ui.ready();
 state.mode = 'title';
@@ -791,6 +852,7 @@ function toggleMinimap(v = !minimapOn) {
 
 function menuState() {
   return {
+    date: theDate(),
     hour: tod.hour,
     flowing: tod.flowing,
     quality,
@@ -820,8 +882,12 @@ function releasePointer() {
 
 function startPlay() {
   if (state.mode !== 'title') return;
-  body.reset();
-  state.today = newDay();
+  if (kept) {
+    state.today = keptToday(kept.today);
+  } else {
+    body.reset();
+    state.today = newDay();
+  }
   audio.start();
   audio.setVolumes(volumes.amb, volumes.music);
   voice.setVolume(volumes.voice);
@@ -931,15 +997,11 @@ function homeUI() {
   };
 }
 
-// her diary: the date (the town's calendar starts on Friday 10 April) and her day so far
-const WEEK = { ja: ['日', '月', '火', '水', '木', '金', '土'], zh: ['日', '一', '二', '三', '四', '五', '六'] };
+// her diary: the date (systems/calendar.js) and her day so far
 function diaryPage() {
   const T = state.today, zh = getLang() === 'zh';
-  // (the clock counts hours from the midnight before the first day; past midnight it is
-  // still the same day for her until four)
-  const n = Math.floor((tod.abs - 4) / 24) - 1;
-  const date = new Date(2026, 3, 10 + n);
-  const m = date.getMonth() + 1, d = date.getDate(), w = date.getDay();
+  // (past midnight it is still the same day for her until four)
+  const { m, d, w } = dateOf(tod.abs, 4);
   const h = tod.hour;
   const lines = [tf(weather.raining ? 'diaryRain' : h >= 4 && h < 10 ? 'diaryMorning' : h >= 10 && h < 16.5 ? 'diaryDay' : h >= 16.5 && h < 19 ? 'diaryEvening' : 'diaryNight')];
   const said = [];
@@ -961,7 +1023,7 @@ function diaryPage() {
   if (body.tired) lines.push(tf('diaryTired'));
   else if (body.awake > 14) lines.push(tf('diarySleepy'));
   lines.push(tf('diaryEnd'));
-  return { date: zh ? `${m}月${d}日　星期${WEEK.zh[w]}` : `${m}月${d}日（${WEEK.ja[w]}）`, lines };
+  return { date: zh ? `${m}月${d}日　星期${weekdayName(w, 'zh')}` : `${m}月${d}日（${weekdayName(w)}）`, lines };
 }
 
 // the map's 「家に帰る」: at her gate, looking at the house (on foot: not from the boat or
@@ -1044,6 +1106,17 @@ ui.on('time', (h) => {
   ui.syncMenu(menuState());
 });
 ui.on('flow', (v) => (tod.flowing = v));
+// the menu's 「4月10日からはじめる」: back to the first morning (she is up since seven)
+ui.on('newDays', () => {
+  if (ui.sleeping) return;
+  tod.setHour(10.4);
+  body.reset();
+  state.today = newDay();
+  const a = areaAt(player.pos.x, player.pos.z);
+  if (a) seeToday(a.name);
+  saveDays();
+  ui.syncMenu(menuState());
+});
 ui.on('weather', (w) => {
   weather.set(w === 'rain', 'manual');
   ui.syncMenu(menuState());
@@ -1360,6 +1433,12 @@ function simulate(dt) {
   if (home) home.update(state.mode === 'play' || state.mode === 'wardrobe' || state.mode === 'diary' || home.sleeping ? dt : 0);
   // a new day once she has slept
   if (state.today.nights !== body.nights) state.today = newDay();
+  // (the days kept every few seconds, and as the page is left)
+  keepT -= dt;
+  if (keepT <= 0) {
+    keepT = 5;
+    saveDays();
+  }
   G.uRoomLight.value.copy(home?.roomLight ?? WHITE);
   avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
@@ -1431,7 +1510,7 @@ function simulate(dt) {
     ui.setBoat(null);
     ui.setLap(null);
   }
-  ui.setClock(tod.label, tod.period.label, tod.hour);
+  ui.setClock(tod.label, tod.period.label, tod.hour, theDate());
   ui.setRain(weather.raining || weather.rain > 0.05);
   if (weather.rainbow > 0.4 && !rainbowSeen && state.mode === 'play') {
     rainbowSeen = true;

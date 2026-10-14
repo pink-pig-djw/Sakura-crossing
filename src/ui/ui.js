@@ -5,6 +5,7 @@ import { HOSP, POST, KOBAN } from '../world/eastside.js';
 import { PRESETS } from '../systems/timeofday.js';
 import { route, HARBOR } from '../world/routeplan.js';
 import { tr, tf, getLang, setLang, onLang, applyStatic } from './i18n.js';
+import { dateLabel, dateShort } from '../systems/calendar.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -124,6 +125,7 @@ export class UI {
       areaName: $('area-name'),
       areaSub: $('area-sub'),
       clock: $('clock'),
+      date: $('date'),
       period: $('period'),
       clockIcon: $('clock-icon'),
       counts: $('counts'),
@@ -191,6 +193,24 @@ export class UI {
       tb.appendChild(b);
     }
     $('flow').addEventListener('change', (ev) => this.emit('flow', ev.target.checked));
+    // 「4月10日からはじめる」: pressed a second time within a few seconds
+    const nd = $('new-days');
+    const disarm = () => {
+      clearTimeout(this.newDaysT);
+      this.newDaysT = null;
+      nd.classList.remove('armed');
+      nd.textContent = tr(nd.dataset.ja);
+    };
+    nd.addEventListener('click', () => {
+      if (this.newDaysT) {
+        disarm();
+        this.emit('newDays');
+        return;
+      }
+      nd.classList.add('armed');
+      nd.textContent = tr('もう一度押すと、4月10日の朝にもどります');
+      this.newDaysT = setTimeout(disarm, 4000);
+    });
     for (const b of document.querySelectorAll('#weather-buttons button')) b.addEventListener('click', () => this.emit('weather', b.dataset.weather));
     $('weather-auto').addEventListener('change', (ev) => this.emit('weatherAuto', ev.target.checked));
     $('vol-amb').addEventListener('input', (ev) => this.emit('volume', 'amb', ev.target.value / 100));
@@ -395,8 +415,23 @@ export class UI {
     $('rain-icon').toggleAttribute('hidden', !on);
   }
 
-  setClock(label, period, hour) {
+  // the time, and the date beside it (systems/calendar.js; on a narrow screen the short form,
+  // under the time). The date lights up a moment as it turns.
+  setClock(label, period, hour, date) {
     this.el.clock.textContent = label;
+    if (date && (date.n !== this.dateN || getLang() !== this.dateLang)) {
+      const turned = this.dateN !== undefined && date.n !== this.dateN;
+      this.dateN = date.n;
+      this.dateLang = getLang();
+      const el = this.el.date;
+      el.children[0].textContent = dateLabel(date, this.dateLang);
+      el.children[1].textContent = dateShort(date, this.dateLang);
+      if (turned) {
+        el.classList.remove('turn');
+        void el.offsetWidth;
+        el.classList.add('turn');
+      }
+    }
     if (period !== this.periodJa || getLang() !== this.periodLang) {
       this.periodJa = period;
       this.periodLang = getLang();
@@ -599,6 +634,10 @@ export class UI {
       li.innerHTML = `<span>${k}</span><span>${v}</span>`;
       nb.appendChild(li);
     };
+    if (state.date) {
+      add(tr('今日'), dateLabel(state.date, getLang(), true));
+      add(tr('桜ヶ浜で'), tf('dayN', { n: state.date.n + 1 }));
+    }
     add(tr('訪れた場所'), `${state.visited}/${state.placesMax}`);
     add(tr('なでたねこ'), `${state.cats}/${state.catsMax}`);
     add(tr('拾った貝がら'), `${state.shells}/${state.shellsMax}`);

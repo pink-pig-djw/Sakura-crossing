@@ -433,6 +433,66 @@ kbd {
   color: var(--ink-soft);
   font-size: 0.8rem;
 }
+/* the date beside the clock; it lights up a moment as it turns. On a narrow screen the short
+   form goes under the time, so the chip keeps clear of the area's name */
+#date {
+  font-size: 0.84rem;
+  white-space: nowrap;
+  padding-right: 0.55rem;
+  border-right: 1px solid var(--line);
+}
+#date .short {
+  display: none;
+}
+#date.turn {
+  animation: date-turn 1.8s ease-out;
+}
+@keyframes date-turn {
+  0% {
+    color: var(--sakura-deep);
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+  25% {
+    color: var(--sakura-deep);
+    transform: none;
+    opacity: 1;
+  }
+}
+@media (max-width: 560px) {
+  .clock-chip {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    column-gap: 0.45rem;
+    row-gap: 0.05rem;
+    border-radius: 18px;
+  }
+  #date {
+    grid-row: 2;
+    grid-column: 2 / -1;
+    font-size: 0.74rem;
+    color: var(--ink-soft);
+    padding-right: 0;
+    border-right: 0;
+  }
+  #date .long {
+    display: none;
+  }
+  #date .short {
+    display: inline;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #date.turn {
+    animation-name: date-turn-still;
+  }
+  @keyframes date-turn-still {
+    0%,
+    25% {
+      color: var(--sakura-deep);
+    }
+  }
+}
 #clock-icon {
   width: 14px;
   height: 14px;
@@ -763,6 +823,16 @@ kbd {
 }
 .notebook li span:last-child {
   color: var(--ink-soft);
+}
+/* 「4月10日からはじめる」 (asks once more before it goes back) */
+.btn.new-days {
+  justify-self: start;
+  font-size: 0.85rem;
+  padding: 0.5em 1.1em;
+}
+.btn.new-days.armed {
+  background: rgba(226, 112, 143, 0.16);
+  color: var(--sakura-deep);
 }
 /* the controls page: across the whole menu, the keys for each way of playing */
 .group.controls {
