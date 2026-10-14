@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { loadCharacter } from './character.js';
+import { loadCharacter, loadMotions } from './character.js';
 import { Umbrella, UmbrellaCarrier, Drips } from './umbrella.js';
+import { HOME } from '../world/home.js';
 
 // 桜井ななみ (Sakurai Nanami), the protagonist, seen from behind in third person.
 //
@@ -10,12 +11,13 @@ import { Umbrella, UmbrellaCarrier, Drips } from './umbrella.js';
 // each), switched from the settings; each is loaded the first time it is worn.
 
 export const OUTFITS = [
-  { file: 'chars/nanami.vrm', name: 'ワンピース' },
-  { file: 'chars/nanami2.vrm', name: 'パーカー' },
-  { file: 'chars/nanami3.vrm', name: '制服' },
-  { file: 'chars/nanami4.vrm', name: 'デニム' },
+  // (color: the swatch on its hanger in the wardrobe)
+  { file: 'chars/nanami.vrm', name: 'ワンピース', color: '#f8f4ee' },
+  { file: 'chars/nanami2.vrm', name: 'パーカー', color: '#f2b8c6' },
+  { file: 'chars/nanami3.vrm', name: '制服', color: '#2e3a5e' },
+  { file: 'chars/nanami4.vrm', name: 'デニム', color: '#6a8ab8' },
   // (a flared overskirt: her hanging arms swing out a little to keep the hands outside it)
-  { file: 'chars/nanami5.vrm', name: 'ゴシック', armOut: 0.2 },
+  { file: 'chars/nanami5.vrm', name: 'ゴシック', color: '#2a2228', armOut: 0.2 },
 ];
 
 // gestures she does with her eyes shut: from, to (s)
@@ -50,11 +52,18 @@ export class Avatar {
     this.rain = false;
     this.rainNow = 0; // how hard it falls (drips off the umbrella)
     this.shelter = null; // (x, y, z) => is there a roof over that point
+    // at home: what she is doing there (systems/home.js HomeLife), null otherwise
+    this.home = null;
+    // tired (systems/body.js): 0 fine .. 1 worn out
+    this.tired = 0;
+    this.yawnT = 8;
   }
 
   // what to do with the umbrella (her feet at x, y, z)
   _umbrellaWant(x, y, z) {
     if (!this.rain) return 'away';
+    // (at home it stays in the stand by the door)
+    if (this.home?.active || HOME.inside(x, y, z)) return 'away';
     if (this.bike?.on || this.boat?.on) return 'basket';
     if (this.act || this.shelter?.(x, y + 1.8, z)) return 'hang';
     return 'open';
@@ -72,13 +81,19 @@ export class Avatar {
     i = Math.max(0, Math.min(OUTFITS.length - 1, i | 0));
     this.want = i;
     // (a download that fails is not remembered: picking the outfit again tries again)
+    // (her own motions too: life at home, being tired: tools/anim/mixamo.mjs)
     if (!this.loaded.has(i))
       this.loaded.set(
         i,
-        loadCharacter(OUTFITS[i].file, 'chars/motions.json', { name: 'nanami' + i }).catch((e) => {
-          this.loaded.delete(i);
-          throw e;
-        }),
+        Promise.all([loadCharacter(OUTFITS[i].file, 'chars/motions.json', { name: 'nanami' + i }), loadMotions('chars/motions_own.json')])
+          .then(([ch, own]) => {
+            ch.addClips(own);
+            return ch;
+          })
+          .catch((e) => {
+            this.loaded.delete(i);
+            throw e;
+          }),
       );
     const ch = await this.loaded.get(i);
     if (this.want !== i) return; // another outfit was picked meanwhile
@@ -132,6 +147,10 @@ export class Avatar {
       this.drips.mesh.visible = false;
       return;
     }
+    // in her house past the step up from the 土間 (or out on its balcony): in her socks, her
+    // shoes left in the entrance (systems/home.js puts them there)
+    const pp = p.pos;
+    this._shoes(ch, !this.bike?.on && !this.boat?.on && ((HOME.inside(pp.x, pp.y, pp.z) && pp.y > HOME.f1 - 0.12) || HOME.onBalcony(pp.x, pp.y, pp.z)));
     // on her bicycle (getting on, riding, getting off), in her boat
     if (this.bike?.on) {
       this._ride(dt, still);
@@ -143,6 +162,19 @@ export class Avatar {
       return;
     }
     if (this.sailing) this._offBoat();
+    // at home, busy at something (systems/home.js): the routine poses her
+    if (this.home?.active) {
+      const R = this.home.rider();
+      if (R) {
+        this._home(dt, R);
+        return;
+      }
+    }
+    if (this.homing) this._offHome();
+    // (on her way to it and back, her hair is already calmer, and settles back after)
+    const calmTo = this.home?.active ? 1 : 0;
+    this.calm = calmTo > (this.calm ?? 0) ? Math.min(1, (this.calm ?? 0) + dt * 2.5) : Math.max(0, (this.calm ?? 0) - dt * 1.5);
+    ch.calmHair(this.calm);
 
     let x = p.pos.x, y = p.pos.y, z = p.pos.z;
     if (p.sitting) {
@@ -193,13 +225,29 @@ export class Avatar {
           this.gait = '';
         }
       }
-      // eyes shut for the prayer itself
+      // eyes shut for the prayer itself; heavy when she is tired
       const shut = this.act && EYES_SHUT[this.act.clip];
-      ch.eyesClosed = shut && this.act.t > shut[0] && this.act.t < shut[1] ? 1 : 0;
+      ch.eyesClosed = shut && this.act.t > shut[0] && this.act.t < shut[1] ? 1 : this.tired > 0 ? 0.22 + 0.22 * this.tired : 0;
+      // (tired: the smile goes; it comes back once she has slept)
+      if (this.tired > 0 !== !!this.wasTired) {
+        this.wasTired = this.tired > 0;
+        ch.setMood(this.wasTired ? 0.03 : 0.15, this.wasTired ? 0.15 : 0.25, this.wasTired ? 0.22 : 0);
+      }
+      // tired, standing about: a yawn now and then, a stiff neck stretched
+      if (this.tired > 0 && !this.act && sp < 0.2 && p.onGround) {
+        this.yawnT -= dt;
+        if (this.yawnT <= 0) {
+          this.yawnT = 14 + Math.random() * 16 - this.tired * 6;
+          this.perform(Math.random() < 0.65 && ch.clips.yawn ? 'yawn' : ch.clips.neck ? 'neck' : 'yawn', this.heading);
+        }
+      }
       // she faces the way she goes
       if (sp > 0.25) {
         const d = wrap(Math.atan2(p.vel.x, p.vel.z) - this.heading);
-        this.heading = wrap(this.heading + d * Math.min(1, dt * (sp > 3 ? 12 : 9)));
+        let turn = d * Math.min(1, dt * (sp > 3 ? 12 : 9));
+        // (walking herself to something at home: she turns into it, no snap round)
+        if (p.auto) turn = THREE.MathUtils.clamp(turn, -4.5 * dt, 4.5 * dt);
+        this.heading = wrap(this.heading + turn);
       }
       // a jump: the take-off to landing of a jump clip; a longer drop: falling
       if (!p.onGround && this.airT === 0 && p.vy > 0) this.jumping = true;
@@ -214,7 +262,7 @@ export class Avatar {
       else if (sp < 0.2) gait = 'idle';
       else if (st && ch.clips.stairsUp) gait = st.dir > 0 ? (p.running ? 'stairsRun' : 'stairsUp') : 'stairsDown';
       else if (this.gait === 'run' ? sp > 2.6 : sp > 3.2) gait = 'run';
-      else gait = 'walk';
+      else gait = this.tired > 0.3 && ch.clips.tiredWalk ? 'tiredWalk' : 'walk';
       // on stairs: one tread a step; the legs lift as high as these risers need
       ch.stairs = gait.startsWith('stairs') ? { k: THREE.MathUtils.clamp(st.rise / (ch.info[gait].rise || 0.25), 0.35, 1.3) } : null;
       const fade = gait === 'fall' || gait === 'jump' ? 0.12 : this.gait === 'fall' || this.gait === 'jump' ? 0.12 : 0.3;
@@ -223,6 +271,7 @@ export class Avatar {
       } else if (gait === 'jump') {
         if (this.gait !== 'jump') ch.play('jump', fade, 0.92);
       } else if (gait === 'walk') ch.play('walk', fade, THREE.MathUtils.clamp(sp / ch.info.walk.speed, 0.5, 1.6));
+      else if (gait === 'tiredWalk') ch.play('tiredWalk', fade, THREE.MathUtils.clamp(sp / ch.info.tiredWalk.speed, 0.7, 1.9));
       else if (gait === 'run') ch.play('run', fade, THREE.MathUtils.clamp(sp / ch.info.run.speed, 0.6, 1.3));
       else if (gait.startsWith('stairs')) ch.play(gait, 0.2, THREE.MathUtils.clamp(sp / st.run / (2 / ch.clips[gait].duration), 0.6, 2.6));
       else ch.play(gait, fade);
@@ -389,6 +438,91 @@ export class Avatar {
     ch.wind = still ? null : wind;
     ch.update(dt);
     this.drips.update(dt, this.umbrella, 0);
+  }
+
+  // At home: the routine (systems/home.js) gives her root, heading, the clip (from a time, at a
+  // rate: backwards too), her eyes, mood and look, and a pose over the clip
+  _home(dt, R) {
+    const ch = this.ch;
+    if (this.homing !== ch) {
+      // (a new outfit in the middle of it: the clip starts afresh on her)
+      this.homing = ch;
+      this.homeClip = null;
+      this.seat = null;
+      this.act = null;
+      ch.stairs = null;
+    }
+    // (a routine that has not said where yet: she stays where she is)
+    if (Number.isFinite(R.x) && Number.isFinite(R.y) && Number.isFinite(R.z)) ch.root.position.set(R.x, R.y, R.z);
+    if (Number.isFinite(R.h)) this.heading = R.h;
+    ch.root.rotation.set(0, this.heading, 0);
+    // (key: the same clip again from its start, as another take of it)
+    if (R.clip && (R.key ?? R.clip) !== this.homeClip) {
+      if (R.time !== undefined) ch.playFrom(R.clip, R.time, R.fade ?? 0.3, R.rate ?? 1);
+      else ch.play(R.clip, R.fade ?? 0.3, R.rate ?? 1);
+      this.homeClip = R.key ?? R.clip;
+    } else if (R.rate !== undefined && ch.current && ch.current.timeScale !== R.rate) {
+      ch.current.timeScale = R.rate;
+      if (R.rate !== 0) ch.current.paused = false;
+    }
+    ch.noFit = !!R.noFit;
+    ch.seat = R.seat || null;
+    ch.eyesClosed = R.eyes ?? (this.tired > 0 ? 0.22 + 0.22 * this.tired : 0);
+    ch.pose = R.pose || null;
+    if (R.mood) ch.setMood(...R.mood);
+    else ch.setMood(this.tired > 0.3 ? 0.05 : 0.18, 0.3, this.tired > 0.3 ? 0.2 : 0);
+    ch.lookAt(R.look || null, R.lookW ?? 0.7);
+    ch.wind = R.wind || null;
+    // (her hair calmer while she is busy: out in the wind on the balcony it moves as ever)
+    this.calm = Math.min(1, (this.calm ?? 0) + dt * 2.5);
+    ch.calmHair(R.wind ? 0 : this.calm);
+    this.carrier.want = 'away';
+    this.gait = 'home';
+    ch.update(dt);
+    this.drips.update(dt, this.umbrella, 0);
+  }
+
+  // shoes on or off (off: hidden, the socks or tights under them show, the feet a touch lower)
+  _shoes(ch, off) {
+    if (ch !== this._shoeCh) {
+      this._shoeCh = ch;
+      const shoes = [];
+      let body = null;
+      ch.root.traverse((o) => {
+        if (!o.isMesh) return;
+        const n = o.material?.name || '';
+        if (/Shoes/i.test(n)) shoes.push(o);
+        else if (/Body_00_SKIN/.test(n)) body = o;
+      });
+      const minY = (m) => {
+        m.geometry.computeBoundingBox();
+        return m.geometry.boundingBox.min.y;
+      };
+      this._shoeMeshes = shoes;
+      this._soleLift = shoes.length && body ? THREE.MathUtils.clamp(minY(body) - Math.min(...shoes.map(minY)), 0, 0.04) : 0;
+      this.shoesOff = null;
+    }
+    if (off === this.shoesOff) return;
+    this.shoesOff = off;
+    for (const m of this._shoeMeshes) m.visible = !off;
+    ch.soleLift = off ? this._soleLift : 0;
+  }
+
+  _offHome() {
+    const ch = this.homing;
+    this.homing = null;
+    this.homeClip = null;
+    if (!ch) return;
+    // (her hair settles back over the next moment: update; another outfit's at once)
+    if (ch !== this.ch) ch.calmHair(0);
+    ch.pose = null;
+    ch.noFit = false;
+    ch.seat = null;
+    ch.wind = null;
+    ch.eyesClosed = 0;
+    ch._hipsY = ch.hipsHeight;
+    ch.root.rotation.set(0, this.heading, 0);
+    this.gait = '';
   }
 
   _offBoat() {

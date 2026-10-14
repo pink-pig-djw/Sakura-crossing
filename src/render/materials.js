@@ -57,6 +57,9 @@ export const G = {
   uReflPass: { value: 0 },
   // 凪ノ島's sea floor (world/island.js): heights over its box (x0, z0, 1 / width, 1 / depth)
   uIsleMap: { value: emptyRainMap() },
+  // the light of the room the protagonist is in at home (lamps on, out, asleep): characters lit
+  // by a room take its colour (systems/home.js); white elsewhere
+  uRoomLight: { value: new THREE.Color(1, 1, 1) },
   uIsleRect: { value: new THREE.Vector4(1e6, 1e6, 1e-6, 1e-6) },
 };
 
@@ -1384,6 +1387,7 @@ export function createCharacterMaterial(opts = {}) {
       uniform float uShadeFloor;
       uniform vec3 uHeadCenter;
       uniform float uIndoor;
+      uniform vec3 uRoomLight;
       #ifdef USE_TEXMAP
         uniform sampler2D map;
       #endif
@@ -1436,8 +1440,8 @@ export function createCharacterMaterial(opts = {}) {
         vec3 Ld = normalize(vec3(0.35, 0.85, 0.4));
         float Lin = smoothstep(-0.25, 0.25, dot(N, Ld));
         L = mix(L, Lin, uIndoor);
-        litCol = mix(litCol, vec3(0.86, 0.84, 0.8), uIndoor);
-        shadeCol = mix(shadeCol, vec3(0.86, 0.84, 0.8) * mix(vec3(1.0), uShade, 0.45) * max(uShadeFloor, 0.72), uIndoor);
+        litCol = mix(litCol, vec3(0.86, 0.84, 0.8) * uRoomLight, uIndoor);
+        shadeCol = mix(shadeCol, vec3(0.86, 0.84, 0.8) * uRoomLight * mix(vec3(1.0), uShade, 0.45) * max(uShadeFloor, 0.72), uIndoor);
         // the shadow side never sinks below a share of the lit side, tinted by the shade
         // colour: skin stays light and warm in the shade of trees and buildings
         shadeCol = max(shadeCol, litCol * mix(vec3(1.0), uShade, 0.45) * uShadeFloor);

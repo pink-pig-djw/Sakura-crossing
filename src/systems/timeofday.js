@@ -75,6 +75,9 @@ export const PRESETS = [
 export class TimeOfDay {
   constructor(sunLight) {
     this.hour = 10.5;
+    // the clock that only runs forward (hours since the midnight before the first day): a jump
+    // to another time of day goes on to the next time that hour comes round
+    this.abs = 24 + this.hour;
     this.speed = 1 / 60; // game hours per real second (1 hour per minute)
     this.flowing = true;
     this.sun = sunLight;
@@ -91,13 +94,16 @@ export class TimeOfDay {
   }
 
   setHour(h) {
-    this.hour = ((h % 24) + 24) % 24;
+    const next = ((h % 24) + 24) % 24;
+    this.abs += (((next - this.hour) % 24) + 24) % 24;
+    this.hour = next;
     this.apply();
   }
 
   update(dt) {
     if (this.flowing) {
       this.hour = (this.hour + dt * this.speed) % 24;
+      this.abs += dt * this.speed;
     }
     this.apply();
   }

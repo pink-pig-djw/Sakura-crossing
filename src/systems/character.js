@@ -50,9 +50,11 @@ for (const s of ['left', 'right']) {
 }
 
 // bones the procedural layers touch (breathing, looking, ground fitting)
-// (and the right arm, hand and fingers: an umbrella held in that hand, see umbrella.js)
-const PROCEDURAL = ['hips', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
-  'rightLowerArm', 'rightHand', ...['Index', 'Middle', 'Ring', 'Little'].flatMap((f) => ['Proximal', 'Intermediate', 'Distal'].map((j) => `right${f}${j}`)), 'rightThumbMetacarpal', 'rightThumbProximal', 'rightThumbDistal'];
+// (and both arms, hands and fingers: an umbrella held in the right hand, see umbrella.js; a
+// door handle, a teapot, a cup at home, see systems/home.js)
+const FINGERS = (s) => [...['Index', 'Middle', 'Ring', 'Little'].flatMap((f) => ['Proximal', 'Intermediate', 'Distal'].map((j) => `${s}${f}${j}`)), `${s}ThumbMetacarpal`, `${s}ThumbProximal`, `${s}ThumbDistal`];
+const PROCEDURAL = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
+  'rightLowerArm', 'rightHand', 'leftLowerArm', 'leftHand', ...FINGERS('right'), ...FINGERS('left')];
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -169,6 +171,9 @@ export class Character {
     this.rest = rest;
     this.hipsHeight = rest.hips.y;
     this.ankleHeight = (rest.leftFoot.y + rest.rightFoot.y) / 2;
+    // her shoes off (systems/avatar.js): the soles under the socks stand this much above the
+    // shoes' soles, so the feet come down by it
+    this.soleLift = 0;
     this.sole = this._solePoints(vrm, rest);
     // per-bone correction: the model's own rest bone direction -> the motion file's ideal
     // T-pose bone axis (none for the trunk, neck and head)
@@ -189,20 +194,8 @@ export class Character {
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.clips = {};
     this.info = {};
-    for (const [name, c] of Object.entries(motions.clips)) {
-      this.clips[name] = this._buildClip(name, c, motions);
-      // reps: a short cycle (a wave of the hand) played a few times as a one-shot
-      this.info[name] = { speed: c.speed * (this.hipsHeight / c.hipsHeight), rise: (c.rise || 0) * (this.hipsHeight / c.hipsHeight), loop: c.loop && !c.reps, reps: c.reps || 1 };
-    }
     this.actions = {};
-    for (const [n, clip] of Object.entries(this.clips)) {
-      const a = this.mixer.clipAction(clip);
-      if (!this.info[n].loop) {
-        a.setLoop(this.info[n].reps > 1 ? THREE.LoopRepeat : THREE.LoopOnce, this.info[n].reps);
-        a.clampWhenFinished = true;
-      }
-      this.actions[n] = a;
-    }
+    this.addClips(motions);
     this.current = null;
     this.play('idle', 0);
 
@@ -313,9 +306,31 @@ export class Character {
     let need = -Infinity;
     for (const s of this.sole[side] || []) {
       _v3.copy(s.p).applyMatrix4(this.node(s.bone).matrixWorld);
-      need = Math.max(need, this.ground(_v3.x, _v3.z) - _v3.y);
+      need = Math.max(need, this.ground(_v3.x, _v3.z) - this.soleLift - _v3.y);
     }
     return need;
+  }
+
+  // the clips of a motions file (more can be added later: the protagonist's own, see
+  // systems/avatar.js)
+  addClips(motions) {
+    for (const [name, c] of Object.entries(motions.clips)) {
+      if (this.clips[name]) continue;
+      const clip = (this.clips[name] = this._buildClip(name, c, motions));
+      // reps: a short cycle (a wave of the hand) played a few times as a one-shot
+      const info = (this.info[name] = { speed: c.speed * (this.hipsHeight / c.hipsHeight), rise: (c.rise || 0) * (this.hipsHeight / c.hipsHeight), loop: c.loop && !c.reps, reps: c.reps || 1 });
+      // (a turn on the spot: how far the take turns her, frame by frame)
+      if (c.yaw) {
+        info.yaw = Float32Array.from(c.yaw);
+        info.fps = motions.fps;
+      }
+      const a = this.mixer.clipAction(clip);
+      if (!info.loop) {
+        a.setLoop(info.reps > 1 ? THREE.LoopRepeat : THREE.LoopOnce, info.reps);
+        a.clampWhenFinished = true;
+      }
+      this.actions[name] = a;
+    }
   }
 
   // world rotations of the clip -> local rotations of this model's normalized bones
@@ -358,6 +373,20 @@ export class Character {
     return new THREE.AnimationClip(name, times[n - 1], tracks);
   }
 
+  // a second action of a clip, `as`: to cross-fade a clip into itself (two turns in a row)
+  alias(name, as) {
+    if (this.actions[as] || !this.clips[name]) return;
+    const clip = (this.clips[as] = this.clips[name].clone());
+    clip.name = as;
+    this.info[as] = this.info[name];
+    const a = this.mixer.clipAction(clip);
+    if (!this.info[name].loop) {
+      a.setLoop(THREE.LoopOnce, 1);
+      a.clampWhenFinished = true;
+    }
+    this.actions[as] = a;
+  }
+
   play(name, fade = 0.35, timeScale = 1) {
     const next = this.actions[name];
     if (!next) return;
@@ -375,6 +404,40 @@ export class Character {
     else if (this.current) this.current.stop();
     this.current = next;
     this.currentName = name;
+  }
+
+  // play a clip from a given time, at a given rate (negative: backwards) — cross-fading
+  // from whatever plays now (the same clip restarts in place)
+  playFrom(name, time, fade = 0.35, timeScale = 1) {
+    const next = this.actions[name];
+    if (!next) return;
+    if (this.current === next) {
+      next.reset();
+      next.time = time;
+      next.timeScale = timeScale;
+      next.play();
+      return;
+    }
+    next.reset();
+    next.time = time;
+    next.timeScale = timeScale;
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    if (this.current && fade > 0) this.current.crossFadeTo(next, fade, false);
+    else if (this.current) this.current.stop();
+    this.current = next;
+    this.currentName = name;
+  }
+
+  // where a clip puts the hips at time t (in the model's own frame, before ground fitting)
+  hipsAt(name, t, out = new THREE.Vector3()) {
+    const clip = this.clips[name];
+    if (!clip) return out.set(0, this.hipsHeight, 0);
+    const track = (clip._hipsTrack ||= clip.tracks.find((k) => k.name === 'N_hips.position'));
+    const ip = (clip._hipsIp ||= track.createInterpolant());
+    const v = ip.evaluate(THREE.MathUtils.clamp(t, 0, clip.duration));
+    return out.set(v[0], v[1], v[2]);
   }
 
   // seconds left in a one-shot clip (0 when looping)
@@ -512,7 +575,13 @@ export class Character {
       // far off (a passer-by down the street): the pose and the face, no hair or skirt physics
       this.vrm.humanoid.update();
       this.vrm.expressionManager?.update();
-    } else this.vrm.update(dt);
+    } else {
+      this.vrm.update(dt);
+      // (a bad frame upstream — a pose with no number in it — would leave the hair and skirt
+      // physics stuck with none ever after, the cloth gone: start them again from rest)
+      const probe = (this._probe ||= [...(this.vrm.springBoneManager?.joints ?? [])][0]?.bone || null);
+      if (probe && !Number.isFinite(probe.matrixWorld.elements[13]) && Number.isFinite(this.root.matrixWorld.elements[13])) this.resetPhysics();
+    }
     if (this.faceMats.length) {
       // the middle of the head: a little above and behind the head bone
       const head = n('head');
@@ -623,6 +692,25 @@ export class Character {
     this._skirtJoints.forEach((j, i) => (j.settings.hitRadius = this._skirtHit[i] * (1 + (k - 1) * 2)));
   }
 
+  // hair that swings less (busy indoors, no wind): more drag, a little stiffer, and some weight
+  // of its own (eased in and out, k 0..1). As made, her hair carries none: bending to sit or
+  // kneel, the tails would stand up off her head instead of falling.
+  calmHair(k) {
+    if (Math.abs(k - (this._calm ?? 0)) < 1e-3) return;
+    this._calm = k;
+    for (const h of this.hair) {
+      const st = h.j.settings;
+      h.drag0 ??= st.dragForce;
+      h.stiff0 ??= st.stiffness;
+      st.dragForce = h.drag0 + (Math.max(h.drag0, 0.72) - h.drag0) * k;
+      st.stiffness = h.stiff0 * (1 + 1.2 * k);
+      if (!this._blown) {
+        st.gravityDir.copy(h.dir);
+        st.gravityPower = h.power + 0.45 * k;
+      }
+    }
+  }
+
   _blowHair() {
     const w = this.wind;
     const on = !!w && w.lengthSq() > 1e-5;
@@ -656,7 +744,7 @@ export class Character {
     const k = this.stairs?.k;
     const legs = ['left', 'right'].map((s) => {
       n(s + 'Foot').getWorldPosition(_v);
-      const d = this.ground(_v.x, _v.z) - g0;
+      const d = this.ground(_v.x, _v.z) - this.soleLift - g0;
       const a = _v.y - g0;
       if (k !== undefined) {
         const want = this.ankleHeight + k * (a - this.ankleHeight);

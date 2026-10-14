@@ -60,6 +60,11 @@ export class Player {
     this.padBrake = 0;
     this.lookIdle = 0; // seconds since the view was last turned by hand
     this._dt = 0;
+    // at home (systems/home.js): walking to a spot by herself, then held where she is busy
+    this.auto = null; // { x, z, done, stuck }
+    this.held = null; // { x, y, z, pivot }
+    this.holdInput = 0; // how hard the stick / keys are pushed meanwhile
+    this.tired = 0; // 0..1 (systems/body.js): slower, no sprint
     this._bindEvents();
   }
 
@@ -162,6 +167,11 @@ export class Player {
     this.lookDelta.x += dx;
     this.lookDelta.y += dy;
   }
+  // swing the view round to (yaw, pitch) over a moment (a routine at home showing what she
+  // does); looking round yourself takes over at once
+  viewTo(yaw, pitch, secs = 1.6) {
+    this.camGoal = { yaw, pitch, t: secs };
+  }
 
   sit(spot) {
     this.sitting = spot;
@@ -172,6 +182,27 @@ export class Player {
     // in front of her (benches often stand against a wall)
     this.yaw = this.view === 'third' ? spot.yaw + Math.PI - 0.6 : spot.yaw;
     this.pitch = this.view === 'third' ? -0.18 : -0.05;
+  }
+
+  // walk to (x, z) by herself at a walking pace (null: stop)
+  // o.near / o.r: within `near` of the spot her margin from furniture shrinks to r (she walks
+  // right up to the bed's edge, the chair)
+  walkTo(x, z, o = {}) {
+    this.auto = x === null || x === undefined ? null : { x, z, done: false, stuck: 0, best: Infinity, near: o.near ?? 0, r: o.r ?? RADIUS };
+  }
+
+  // keep her where a routine has her ({ x, y, z, pivot }; the camera follows, looking round
+  // still works), or let go (at pos)
+  holdAt(h, pos = null) {
+    this.held = h;
+    if (!h && pos) {
+      this.pos.set(pos.x, pos.y, pos.z);
+      this.vel.set(0, 0, 0);
+      this.vy = 0;
+      this.onGround = true;
+      // (let go right by the furniture: she eases out of its margin instead of popping out)
+      this.ease = 0.8;
+    }
   }
 
   stand() {
@@ -230,6 +261,17 @@ export class Player {
     this.pitch = this.view === 'third' ? THREE.MathUtils.clamp(this.pitch, -1.1, 0.6) : THREE.MathUtils.clamp(this.pitch, -1.45, 1.45);
     const looked = this.lookDelta.x || this.lookDelta.y || Math.abs(this.padLook.x) > 0.05 || Math.abs(this.padLook.y) > 0.05;
     this.lookIdle = looked ? 0 : this.lookIdle + dt;
+    if (this.camGoal) {
+      const g = this.camGoal;
+      if (looked) this.camGoal = null;
+      else {
+        const k = Math.min(1, dt * 2.6);
+        this.yaw += Math.atan2(Math.sin(g.yaw - this.yaw), Math.cos(g.yaw - this.yaw)) * k;
+        if (g.pitch !== undefined) this.pitch += (g.pitch - this.pitch) * k;
+        g.t -= dt;
+        if (g.t <= 0) this.camGoal = null;
+      }
+    }
     this.lookDelta.set(0, 0);
     if (!this.enabled) {
       this.applyCamera();
@@ -261,6 +303,20 @@ export class Player {
       this.applyCamera();
       return;
     }
+    if (this.held) {
+      const h = this.held;
+      this.holdInput = len;
+      this.pos.set(h.x, h.y, h.z);
+      this.vel.set(0, 0, 0);
+      this.vy = 0;
+      this.onGround = true;
+      this.stairs = null;
+      this.speed = 0;
+      this._jumpReq = false;
+      this.eyeY = h.y + EYE;
+      this.applyCamera();
+      return;
+    }
     if (this.sitting) {
       if (len > 0.3) this.stand();
       else {
@@ -272,31 +328,63 @@ export class Player {
         return;
       }
     }
-    const running = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
+    const running = !this.auto && (this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92);
     this.running = running;
     let maxSpeed = this.view === 'third' ? (running ? TP_RUN : TP_WALK) : running ? 6.2 : 3.1;
+    // tired: a heavier step, and no more than a jog
+    if (this.tired > 0) maxSpeed = running ? THREE.MathUtils.lerp(maxSpeed, maxSpeed * 0.5, this.tired) : maxSpeed * (1 - 0.3 * this.tired);
     // on stairs she takes one tread a step, briskly (about three steps a second, five running)
     if (this.stairs && this.view === 'third') maxSpeed = THREE.MathUtils.clamp(this.stairs.run * (running ? 5.0 : 3.2), running ? 1.3 : 0.75, running ? 2.6 : 1.3);
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
-    const wantX = (fx * iz + rx * ix) * maxSpeed;
-    const wantZ = (fz * iz + rz * ix) * maxSpeed;
+    let wantX = (fx * iz + rx * ix) * maxSpeed;
+    let wantZ = (fz * iz + rz * ix) * maxSpeed;
+    // walking to a spot by herself: straight there, easing in at the end
+    const A = this.auto;
+    if (A && !A.done) {
+      const dx = A.x - this.pos.x, dz = A.z - this.pos.z, d = Math.hypot(dx, dz);
+      if (d < 0.03) {
+        A.done = true;
+        wantX = wantZ = 0;
+        this.vel.set(0, 0, 0);
+      } else {
+        const sp = Math.min(TP_WALK * 0.9, 0.35 + d * 2.2);
+        wantX = (dx / d) * sp;
+        wantZ = (dz / d) * sp;
+        // (blocked: it gives up after a while rather than walking into a wall for ever)
+        if (d < A.best - 0.01) {
+          A.best = d;
+          A.stuck = 0;
+        } else A.stuck += dt;
+      }
+    } else if (A && A.done) {
+      wantX = wantZ = 0;
+    }
     const acc = this.onGround ? 10 : 2;
     this.vel.x += (wantX - this.vel.x) * Math.min(1, dt * acc);
     this.vel.z += (wantZ - this.vel.z) * Math.min(1, dt * acc);
 
     // jump / gravity
-    if (this.onGround && (K.has('Space') || this._jumpReq)) {
+    if (this.onGround && !this.auto && (K.has('Space') || this._jumpReq)) {
       this.vy = 4.6;
       this.onGround = false;
     }
     this._jumpReq = false;
 
     // horizontal move with step-height check (axis separated for sliding)
+    // (and still once there, until the routine takes her over: no shove out of the margin)
+    const near = A && A.near > 0 && (A.done || Math.hypot(A.x - this.pos.x, A.z - this.pos.z) < A.near);
+    const rad = near ? A.r : RADIUS;
+    if (this.ease > 0) this.ease -= dt;
     const tryMove = (dx, dz) => {
       const nx = this.pos.x + dx, nz = this.pos.z + dz;
       const p = { x: nx, z: nz };
-      this.col.resolve(p, RADIUS, this.pos.y);
+      this.col.resolve(p, rad, this.pos.y);
+      if (this.ease > 0) {
+        const k = Math.min(1, dt * 6);
+        p.x = nx + (p.x - nx) * k;
+        p.z = nz + (p.z - nz) * k;
+      }
       const g = this.col.groundAt(p.x, p.z, this.pos.y);
       if (g - this.pos.y > STEP && !(this.vy > 0 && g - this.pos.y < 1.1)) return false;
       if (!this.allowed(p.x, p.z, g)) return false;
@@ -472,17 +560,28 @@ export class Player {
     const c = this.camera;
     const px = this.pos.x, pz = this.pos.z;
     // the pivot follows the feet smoothly (steps and stairs do not jolt the view)
-    const want = this.pos.y + (this.ride?.pivot ?? (this.sitting ? PIVOT_SIT : PIVOT));
+    const want = this.pos.y + (this.held?.pivot ?? this.ride?.pivot ?? (this.sitting ? PIVOT_SIT : PIVOT));
     if (this.pivotY === undefined || !this.onGround || Math.abs(want - this.pivotY) > 2) this.pivotY = want;
     else this.pivotY += (want - this.pivotY) * Math.min(1, (this._dt || 0.016) * 10);
     const py = this.pivotY;
+    const free = this.freeBoom(px, py, pz, this.yaw, this.pitch);
     const cp = Math.cos(this.pitch);
     const bx = Math.sin(this.yaw) * cp, by = -Math.sin(this.pitch), bz = Math.cos(this.yaw) * cp;
+    if (free < this.boomNow) this.boomNow = free;
+    else this.boomNow += (free - this.boomNow) * Math.min(1, (this._dt || 0.016) * 3);
+    const d = this.boomNow;
+    c.position.set(px + bx * d, py + by * d, pz + bz * d);
+    c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
+
+  // how far the camera can stand back from the pivot (px, py, pz) looking along yaw / pitch
+  freeBoom(px, py, pz, yaw, pitch, max = this.boom) {
+    const cp = Math.cos(pitch);
+    const bx = Math.sin(yaw) * cp, by = -Math.sin(pitch), bz = Math.cos(yaw) * cp;
     const feet = this.pos.y;
     const room = this.indoors.find((r) => px > r.x0 && px < r.x1 && pz > r.z0 && pz < r.z1 && feet > r.y0 && feet < r.y1);
     const floorHere = this.col.groundAt(px, pz, feet + 0.3);
-    let free = this.boom;
-    for (let d = 0.25; d <= this.boom; d += 0.08) {
+    for (let d = 0.25; d <= max; d += 0.08) {
       const x = px + bx * d, y = py + by * d, z = pz + bz * d;
       const g = this.col.groundAt(x, z, y);
       // (things lower than the camera, a bench under her, a low wall, are passed over)
@@ -492,16 +591,9 @@ export class Player {
       // another level's floor between the pivot and the camera
       if (!hit && g > floorHere + 0.9 && g < y + 0.2) hit = true;
       if (!hit && room) hit = y > room.y1 - 0.3 || x < room.x0 + 0.2 || x > room.x1 - 0.2 || z < room.z0 + 0.2 || z > room.z1 - 0.2;
-      if (hit) {
-        free = Math.max(0.3, d - 0.3);
-        break;
-      }
+      if (hit) return Math.max(0.3, d - 0.3);
     }
-    if (free < this.boomNow) this.boomNow = free;
-    else this.boomNow += (free - this.boomNow) * Math.min(1, (this._dt || 0.016) * 3);
-    const d = this.boomNow;
-    c.position.set(px + bx * d, py + by * d, pz + bz * d);
-    c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    return max;
   }
 
   forward(out = new THREE.Vector3()) {

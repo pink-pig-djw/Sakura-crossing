@@ -23,7 +23,7 @@ import { ambienceAt, PADS, BORE } from './world/routeplan.js';
 import { LapTimer, lapTime } from './systems/laptimer.js';
 import { UI } from './ui/ui.js';
 import { fullscreenSupported, isFullscreen, isIPhone, setFullscreen, onFullscreenChange } from './ui/fullscreen.js';
-import { tr, tf, setLang } from './ui/i18n.js';
+import { tr, tf, setLang, getLang } from './ui/i18n.js';
 import { VoiceSystem } from './systems/voice.js';
 import { TownVoices } from './systems/townVoices.js';
 import { createResidents } from './world/residents.js';
@@ -34,6 +34,9 @@ import { Boat } from './systems/boat.js';
 import { Character } from './systems/character.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
+import { Body, hoursMinutes } from './systems/body.js';
+import { HomeLife } from './systems/home.js';
+import { HOME } from './world/home.js';
 
 const params = new URLSearchParams(location.search);
 const debug = params.has('cam') || params.has('still');
@@ -92,6 +95,9 @@ if (params.has('rain')) {
   weather.wet = 1;
 }
 tod.setHour(params.has('t') ? parseFloat(params.get('t')) : 10.4);
+// how long she has been up (sleep, tiredness: systems/body.js)
+const body = new Body(tod);
+window.__body = body;
 scene.add(createSky());
 const clouds = createClouds();
 scene.add(clouds);
@@ -141,7 +147,7 @@ document.getElementById('voice-credits').textContent = VOICE_CREDITS.join(' / ')
 const pad = new GamepadInput();
 const usingPad = () => pad.connected && performance.now() - pad.lastUsed < 6000;
 const state = {
-  mode: 'loading', // loading | title | play | menu | map | omikuji
+  mode: 'loading', // loading | title | play | menu | map | omikuji | wardrobe | diary
   visited: new Set(),
   cats: new Set(),
   shells: 0,
@@ -149,7 +155,15 @@ const state = {
   luck: null,
   trains: 0,
   lastArea: null,
+  today: newDay(),
 };
+// what she has done today (since she last got up), for her diary
+function newDay() {
+  return { places: [], cats: new Set(), shells: 0, drinks: 0, drink: null, trains: 0, luck: null, sailed: false, rode: false, lap: null, rained: false, nights: body.nights };
+}
+function seeToday(name) {
+  if (!state.today.places.includes(name)) state.today.places.push(name);
+}
 
 // fullscreen: the F key, the buttons on the title screen and the HUD, or the menu checkbox
 // (wired before the town is built, so it works while the title screen is loading too)
@@ -267,6 +281,7 @@ try {
   /* storage unavailable */
 }
 ui.setOutfit(outfit);
+let home = null;
 const avatarReady = createAvatar(world, scene, player, outfit)
   .then((a) => {
     avatar = a;
@@ -274,6 +289,14 @@ const avatarReady = createAvatar(world, scene, player, outfit)
     a.boat = boat;
     bike.setRider(a.ch);
     window.__avatar = a;
+    // her house: the door, the bed, the wardrobe, the desk ... (systems/home.js)
+    home = new HomeLife(world, scene, {
+      player, avatar: a, body, tod, weather, audio, ui: homeUI(),
+      toast: (text, secs) => ui.toast(tr(text), secs),
+      onOutfit: (i) => wearOutfit(i),
+      diaryPage: () => diaryPage(),
+    });
+    window.__home = home;
   })
   .catch((e) => console.warn('protagonist not loaded:', e));
 // passers-by come once she and Mei are there
@@ -431,6 +454,10 @@ function updateCounts() {
 
 function interact() {
   if (state.mode !== 'play' || bike.on) return;
+  if (home?.busy) {
+    home.interact();
+    return;
+  }
   if (boat.on) {
     leaveBoat();
     return;
@@ -445,6 +472,8 @@ function interact() {
     case 'vending': {
       const d = pick(DRINKS);
       state.drinks++;
+      state.today.drinks++;
+      state.today.drink = d;
       audio.sfx('vending');
       setTimeout(() => pad.rumble(0.35, 0.3, 140), 900);
       // the roulette on the machine sometimes hits: one more drink
@@ -452,6 +481,7 @@ function interact() {
       ui.toast(tf('bought', { d }));
       if (lucky) {
         state.drinks++;
+        state.today.drinks++;
         setTimeout(() => ui.toast(tf('lucky', { d: pick(DRINKS) })), 2600);
       }
       town.onInteract(it, { lucky });
@@ -464,6 +494,7 @@ function interact() {
       setTimeout(() => audio.sfx('purr'), 500);
       const first = !state.cats.has(c.name);
       state.cats.add(c.name);
+      state.today.cats.add(c.name);
       ui.toast(first ? tf('catFirst', { c: c.name, n: state.cats.size, m: catSys.cats.length }) : tf('catAgain', { c: c.name }));
       break;
     }
@@ -471,6 +502,7 @@ function interact() {
       it.shell.taken = true;
       it.shell.mesh.visible = false;
       state.shells++;
+      state.today.shells++;
       audio.sfx('pickup');
       ui.toast(tf('shell', { n: state.shells, m: shells.length }));
       break;
@@ -485,6 +517,7 @@ function interact() {
       setTimeout(() => audio.sfx('clap'), 700);
       const f = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
       state.luck = f[0];
+      state.today.luck = f[0];
       // in third person she faces the hall, puts her hands together and prays before the fortune comes
       const pray = player.view === 'third' && avatar ? avatar.perform('pray', Math.atan2(it.hall.x - player.pos.x, it.hall.z - player.pos.z)) : 0;
       // the slip comes after the prayer; if a menu or the map was opened meanwhile, once back
@@ -536,7 +569,10 @@ function interact() {
       ui.toast(lines[line]);
       town.onInteract(it, { line });
       audio.sfx(it.what === 'register' || it.what === 'drink' || it.what === 'onigiri' || it.what === 'sweets' ? 'register' : it.what === 'magazine' ? 'page' : 'ui');
-      if (it.what === 'drink') state.drinks++;
+      if (it.what === 'drink') {
+        state.drinks++;
+        state.today.drinks++;
+      }
       break;
     }
     case 'cafe':
@@ -583,6 +619,10 @@ function interact() {
     case 'boat':
       boardBoat();
       break;
+    case 'home':
+      if (player.view !== 'third') toggleView('third');
+      home?.use(it);
+      break;
     default:
       break;
   }
@@ -594,7 +634,7 @@ function interact() {
 // ---------------------------------------------------------------------------
 let bikeTips = 0;
 function toggleBike() {
-  if (state.mode !== 'play' || boat.on) return;
+  if (state.mode !== 'play' || boat.on || home?.busy) return;
   if (bike.on) {
     bike.dismount();
     return;
@@ -607,6 +647,7 @@ function toggleBike() {
     ui.toast(r === 'here' ? 'ここでは自転車に乗れない。' : '自転車に乗れない。', 2.4);
     return;
   }
+  state.today.rode = true;
   if (bikeTips < 2) {
     bikeTips++;
     const tip = usingPad()
@@ -645,6 +686,7 @@ function boardBoat() {
   const r = boat.board(player);
   if (r === 'far') ui.toast('ボートに近づいて。', 2);
   if (r !== 'ok') return;
+  state.today.sailed = true;
   if (boatTips < 2) {
     boatTips++;
     const tip = usingPad()
@@ -704,6 +746,8 @@ try {
 player.setView(viewMode);
 ui.setView(viewMode);
 function toggleView(v = player.view === 'third' ? 'first' : 'third') {
+  // (busy at home she is seen doing it)
+  if (home?.busy && v === 'first') return;
   player.setView(v);
   ui.setView(v);
   try {
@@ -737,6 +781,8 @@ function menuState() {
     luck: state.luck,
     trains: state.trains,
     lapBest: lap.best ? lapTime(lap.best) : null,
+    awake: body.awake,
+    nights: body.nights,
     raining: weather.raining,
     weatherAuto: weather.auto,
   };
@@ -751,6 +797,8 @@ function releasePointer() {
 
 function startPlay() {
   if (state.mode !== 'title') return;
+  body.reset();
+  state.today = newDay();
   audio.start();
   audio.setVolumes(volumes.amb, volumes.music);
   voice.setVolume(volumes.voice);
@@ -763,6 +811,7 @@ function startPlay() {
   if (a) {
     state.lastArea = a.name;
     state.visited.add(a.name);
+    seeToday(a.name);
     ui.showArea(a);
   }
   const hint = usingPad()
@@ -777,7 +826,7 @@ function startPlay() {
 
 let menuAt = -1e9;
 function openMenu() {
-  if (state.mode !== 'play') return;
+  if (state.mode !== 'play' || ui.sleeping) return;
   state.mode = 'menu';
   menuAt = performance.now();
   player.enabled = false;
@@ -789,6 +838,9 @@ function backToPlay() {
   ui.closeMenu();
   ui.closeMap();
   ui.closeOmikuji();
+  // (the wardrobe and the diary tell her routine they were shut)
+  ui.closeWardrobe();
+  ui.closeDiary();
   state.mode = 'play';
   player.enabled = true;
   lockPointer();
@@ -801,7 +853,7 @@ function mapView() {
   return { x, z, yaw: player.yaw, sea: boat.on || away, boat: boat.on ? null : { x: boat.x, z: boat.z } };
 }
 function openMap() {
-  if (state.mode !== 'play' && state.mode !== 'menu') return;
+  if ((state.mode !== 'play' && state.mode !== 'menu') || ui.sleeping || home?.busy) return;
   state.mode = 'map';
   player.enabled = false;
   releasePointer();
@@ -819,7 +871,97 @@ function openOmikuji(f) {
   if (usingPad()) focusEl(document.getElementById('close-omikuji'));
 }
 
+// her house's screens (systems/home.js): the wardrobe and the diary open over what she is
+// doing, like the map; the night going by while she sleeps
+function homeUI() {
+  const open = (mode) => {
+    state.mode = mode;
+    player.enabled = false;
+    releasePointer();
+  };
+  const back = () => {
+    if (state.mode !== 'wardrobe' && state.mode !== 'diary') return;
+    state.mode = 'play';
+    player.enabled = true;
+    lockPointer();
+  };
+  return {
+    sleep: (s, hooks) => ui.sleep(s, hooks),
+    sparkle: () => ui.sparkle(),
+    chooseOutfit: (current, cb) => {
+      open('wardrobe');
+      const first = ui.openWardrobe(OUTFITS, current, (i) => {
+        back();
+        cb(i);
+      });
+      if (usingPad()) focusEl(first);
+    },
+    openDiary: (page, cb) => {
+      open('diary');
+      ui.openDiary(page, () => {
+        back();
+        cb?.();
+      });
+      if (usingPad()) focusEl(document.getElementById('close-diary'));
+    },
+    closeDiary: () => ui.closeDiary(),
+  };
+}
+
+// her diary: the date (the town's calendar starts on Friday 10 April) and her day so far
+const WEEK = { ja: ['日', '月', '火', '水', '木', '金', '土'], zh: ['日', '一', '二', '三', '四', '五', '六'] };
+function diaryPage() {
+  const T = state.today, zh = getLang() === 'zh';
+  // (the clock counts hours from the midnight before the first day; past midnight it is
+  // still the same day for her until four)
+  const n = Math.floor((tod.abs - 4) / 24) - 1;
+  const date = new Date(2026, 3, 10 + n);
+  const m = date.getMonth() + 1, d = date.getDate(), w = date.getDay();
+  const h = tod.hour;
+  const lines = [tf(weather.raining ? 'diaryRain' : h >= 4 && h < 10 ? 'diaryMorning' : h >= 10 && h < 16.5 ? 'diaryDay' : h >= 16.5 && h < 19 ? 'diaryEvening' : 'diaryNight')];
+  const said = [];
+  const places = T.places.map((p) => tr(p));
+  if (!places.length) said.push(tf('diaryHome'));
+  else said.push(tf(places.length > 3 ? 'diaryPlacesMore' : 'diaryPlaces', { p: places.slice(0, 3).join('、') }));
+  const cat = tr([...T.cats][0] ?? '');
+  if (T.cats.size) said.push(T.cats.size > 1 ? tf('diaryCats', { n: T.cats.size, c: cat }) : tf('diaryCat', { c: cat }));
+  if (T.shells) said.push(tf('diaryShells', { n: T.shells }));
+  if (T.drinks > 2) said.push(tf('diaryDrinks', { n: T.drinks }));
+  else if (T.drink) said.push(tf('diaryDrink', { d: tr(T.drink) }));
+  if (T.luck) said.push(tf('diaryLuck', { l: tr(T.luck) }));
+  if (T.sailed) said.push(tf('diarySail'));
+  if (T.lap) said.push(tf('diaryLap', { t: T.lap }));
+  else if (T.rode) said.push(tf('diaryBike'));
+  if (T.trains) said.push(tf('diaryTrains', { n: T.trains }));
+  if (T.rained && !weather.raining) said.push(tf('diaryRained'));
+  lines.push(...said.slice(0, 6));
+  if (body.tired) lines.push(tf('diaryTired'));
+  else if (body.awake > 14) lines.push(tf('diarySleepy'));
+  lines.push(tf('diaryEnd'));
+  return { date: zh ? `${m}月${d}日　星期${WEEK.zh[w]}` : `${m}月${d}日（${WEEK.ja[w]}）`, lines };
+}
+
+// the map's 「家に帰る」: at her gate, looking at the house (on foot: not from the boat or
+// the bicycle)
+function goHome() {
+  if (state.mode !== 'map') return;
+  if (boat.on || bike.on) {
+    ui.toast(boat.on ? 'ボートを桟橋に着けてから帰ろう。' : '自転車を降りてから帰ろう。', 2.6);
+    return;
+  }
+  backToPlay();
+  if (player.sitting) player.stand();
+  lap.running = false;
+  player.place(HOME.arrive.x, HOME.arrive.z, HOME.arrive.yaw, -0.06);
+  if (avatar) {
+    avatar.heading = HOME.arrive.yaw + Math.PI;
+    avatar.fresh = true; // (hair and skirt at rest where she stands)
+  }
+  ui.toast('家の前に帰ってきた。', 2.4);
+}
+
 function cycleTime(dir) {
+  if (ui.sleeping) return;
   let i = 0, best = 99;
   PRESETS.forEach((p, k) => {
     const d = Math.abs(p.hour - tod.hour);
@@ -835,7 +977,7 @@ function cycleTime(dir) {
 
 // controller
 function modalRoot() {
-  for (const id of ['omikuji', 'map', 'menu']) {
+  for (const id of ['omikuji', 'wardrobe', 'diary', 'map', 'menu']) {
     const el = document.getElementById(id);
     if (!el.hidden) return el;
   }
@@ -850,7 +992,8 @@ pad.on('active', () => ui.setInputMode('pad'));
 pad.on('start', startPlay);
 pad.on('interact', interact);
 pad.on('back', () => {
-  if (boat.on) leaveBoat();
+  if (home?.busy) home.interact();
+  else if (boat.on) leaveBoat();
   else if (bike.on) bike.dismount();
   else if (player.sitting) player.stand();
 });
@@ -861,7 +1004,7 @@ pad.on('minimap', () => toggleMinimap());
 pad.on('view', () => toggleView());
 pad.on('menu', openMenu);
 pad.on('time', (d) => (bike.riding ? shiftGear(d) : cycleTime(d)));
-pad.on('rain', () => weather.toggle());
+pad.on('rain', () => !ui.sleeping && weather.toggle());
 pad.on('confirm', () => activateFocused(modalRoot()));
 pad.on('close', backToPlay);
 pad.on('nav', (dx, dy) => moveFocus(modalRoot(), dx, dy));
@@ -871,6 +1014,7 @@ ui.on('resume', backToPlay);
 ui.on('menu', () => (state.mode === 'menu' ? backToPlay() : openMenu()));
 ui.on('map', openMap);
 ui.on('closeMap', backToPlay);
+ui.on('goHome', goHome);
 ui.on('closeOmikuji', backToPlay);
 ui.on('time', (h) => {
   tod.setHour(h);
@@ -883,7 +1027,9 @@ ui.on('weather', (w) => {
 });
 ui.on('weatherAuto', (v) => weather.setAuto(v));
 // the rain starting and stopping (by itself or called for), the rainbow after
-weather.onChange = (raining) => {
+weather.onChange = (raining, why) => {
+  if (why === 'skip') return;
+  if (raining) state.today.rained = true;
   if (state.mode === 'play') ui.toast(tr(raining ? (weather.kind === 'drizzle' ? '小雨が降りだした' : weather.kind === 'heavy' ? '雨が強くなってきた' : '雨が降りだした') : '雨があがった'), 2.6);
   if (state.mode === 'menu') ui.syncMenu(menuState());
 };
@@ -900,11 +1046,12 @@ ui.on('subtitles', (v) => {
 });
 ui.on('minimap', (v) => toggleMinimap(v));
 ui.on('view', (third) => toggleView(third ? 'third' : 'first'));
-ui.on('outfit', (i) => {
+ui.on('outfit', (i) => wearOutfit(i));
+function wearOutfit(i) {
   const was = outfit;
   outfit = i;
   ui.setOutfit(i);
-  avatar
+  return avatar
     ?.setOutfit(i)
     .then(() => {
       bike.setRider(avatar.ch);
@@ -923,7 +1070,7 @@ ui.on('outfit', (i) => {
       }
       ui.toast(tr('服を読み込めなかった。もう一度選ぶと読み込み直します'), 3);
     });
-});
+}
 ui.on('sens', (v) => (player.sensitivity = v));
 ui.on('outlines', (v) => (pipe.outlines = v));
 ui.on('quality', (q) => {
@@ -966,11 +1113,16 @@ addEventListener('keydown', (e) => {
     startPlay();
     return;
   }
+  // asleep: nothing until she wakes
+  if (ui.sleeping) {
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
   if (e.code === 'Escape') {
     // (held down it repeats; and the press that just released the lock and opened the menu
     // is not a second one)
     if (e.repeat) return;
-    if (state.mode === 'map' || state.mode === 'omikuji' || state.mode === 'menu') {
+    if (state.mode === 'map' || state.mode === 'omikuji' || state.mode === 'menu' || state.mode === 'wardrobe' || state.mode === 'diary') {
       if (performance.now() - menuAt > 400) backToPlay();
     }
     // in fullscreen Chrome hands Esc to the page with the pointer still locked (Keyboard Lock)
@@ -1047,6 +1199,7 @@ let lastTrainState = 'wait';
 let rumbleT = 0;
 const walkers = []; // feet positions of everyone the train must not run into
 let prevHour = tod.hour;
+const WHITE = new THREE.Color(1, 1, 1);
 let umbrellas = false;
 const covered = (x, y, z) => rainMap.covered(x, y, z, 0.3);
 const fwd = new THREE.Vector3();
@@ -1135,7 +1288,10 @@ function simulate(dt) {
   if (walking) walkers.push(player.pos);
   residents?.positions(walkers);
   train.update(dt, walkers);
-  if (lastTrainState === 'depart' && train.state === 'wait') state.trains++;
+  if (lastTrainState === 'depart' && train.state === 'wait') {
+    state.trains++;
+    state.today.trains++;
+  }
   lastTrainState = train.state;
   updateCrossings(world.crossings, train, dt, t, walking ? player.pos : null);
   if (padOn && train.v > 2 && Math.abs(player.pos.z - 56) < 12) {
@@ -1168,6 +1324,20 @@ function simulate(dt) {
   }
   residents?.setRain?.(umbrellas, covered);
   passersby?.setRain?.(umbrellas, covered);
+  // tired after 20 hours up: slower, heavy-eyed, yawning (systems/body.js)
+  const tiredK = state.mode === 'title' ? 0 : body.tiredness;
+  player.tired = tiredK;
+  if (avatar) avatar.tired = tiredK;
+  if (body.tired && !state.toldTired && state.mode === 'play') {
+    state.toldTired = true;
+    ui.toast(tr('なんだか眠くなってきた……家に帰って休もう。'), 4);
+  } else if (!body.tired) state.toldTired = false;
+  ui.setTired(state.mode === 'title' ? null : { tired: body.tired, awake: body.awake });
+  // (the wardrobe and the diary are open on what she is doing: it goes on behind them)
+  if (home) home.update(state.mode === 'play' || state.mode === 'wardrobe' || state.mode === 'diary' || home.sleeping ? dt : 0);
+  // a new day once she has slept
+  if (state.today.nights !== body.nights) state.today = newDay();
+  G.uRoomLight.value.copy(home?.roomLight ?? WHITE);
   avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
   const head = tpShown ? avatar.head(headPos) : camera.position;
   residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour, here);
@@ -1199,9 +1369,9 @@ function simulate(dt) {
     state.fortune = null;
   }
   if (state.mode === 'play') {
-    focus = bike.on || boat.on ? null : findInteractable();
+    focus = bike.on || boat.on || home?.busy ? null : findInteractable();
     const dock = boat.dockTarget();
-    ui.setPrompt(player.sitting ? '立ち上がる' : boat.on ? (dock ? tf('boatDock', { p: dock.name }) : null) : focus ? focus.label : null);
+    ui.setPrompt(home?.busy ? home.prompt() : player.sitting ? '立ち上がる' : boat.on ? (dock ? tf('boatDock', { p: dock.name }) : null) : focus ? focus.label : null);
     ui.setBike(bike.on ? { gear: bike.gear, kmh: Math.abs(bike.v) * 3.6, standing: bike.stand > 0.5 } : null);
     ui.setBoat(boat.on ? { kmh: Math.abs(boat.v) * 3.6, throttle: boat.throttle, full: !!boat.boosting } : null);
     const lev = lap.update(dt, player.pos.x, player.pos.z, bike.on);
@@ -1214,6 +1384,7 @@ function simulate(dt) {
     } else if (lev?.kind === 'lap') {
       ui.toast(tf(lev.isBest ? 'lapBest' : 'lapDone', { t: lapTime(lev.time), b: lapTime(lev.best) }), 6);
       audio.sfx('lapDone');
+      state.today.lap = lapTime(lev.time);
     }
     ui.setLap(lap.running ? { t: lapTime(lap.t), n: lap.next, of: lap.cps.length } : null);
     areaCheck -= dt;
@@ -1224,6 +1395,7 @@ function simulate(dt) {
       if (name && name !== state.lastArea) {
         ui.showArea(a);
         state.visited.add(name);
+        seeToday(name);
       }
       state.lastArea = name;
     }

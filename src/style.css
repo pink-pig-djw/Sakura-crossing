@@ -1020,3 +1020,233 @@ kbd {
   outline: 3px solid var(--sakura) !important;
   outline-offset: 2px;
 }
+
+/* ---------- tired (up more than 20 hours): a little "zz" chip under the clock ---------- */
+.tired-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  box-shadow: var(--shadow);
+  font: 700 0.82rem var(--font-ui);
+  color: #6a5a8e;
+}
+.tired-chip .zz {
+  font: 900 0.8rem var(--font-label);
+  font-style: normal;
+  color: #8a78c0;
+  letter-spacing: 0.04em;
+  animation: zz-float 2.4s ease-in-out infinite;
+}
+.tired-chip .zz b {
+  font-size: 1.05rem;
+}
+@keyframes zz-float {
+  0%,
+  100% {
+    transform: translateY(1px);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
+/* ---------- the map: her way home ---------- */
+.map-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* ---------- the wardrobe ---------- */
+.wardrobe-panel {
+  width: min(640px, 100%);
+}
+.wardrobe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.8rem;
+}
+.wardrobe-grid button {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  padding: 0.9rem 0.6rem 0.8rem;
+  border: 2px solid transparent;
+  border-radius: 18px;
+  background: #f7f1e6;
+  font: 700 0.95rem var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.wardrobe-grid button:hover,
+.wardrobe-grid button:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--sakura);
+  background: #fff;
+  outline: none;
+}
+.wardrobe-grid button.on {
+  border-color: var(--sea);
+}
+.wardrobe-grid .hanger {
+  width: 64px;
+  height: 78px;
+  position: relative;
+}
+.wardrobe-grid .hanger::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 34px;
+  height: 14px;
+  transform: translateX(-50%);
+  border: 2.5px solid #b39672;
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
+}
+.wardrobe-grid .cloth {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 52px;
+  height: 64px;
+  transform: translateX(-50%);
+  background: var(--c);
+  border: 1.5px solid rgba(39, 48, 73, 0.2);
+  border-radius: 10px 10px 16px 16px;
+  clip-path: polygon(22% 0, 78% 0, 100% 18%, 88% 30%, 82% 100%, 18% 100%, 12% 30%, 0 18%);
+}
+.wardrobe-grid small {
+  font: 600 0.7rem var(--font-label);
+  color: var(--sea);
+}
+
+/* ---------- her diary ---------- */
+.diary-book {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 0.9rem;
+  justify-items: center;
+}
+.diary-page {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fffdf6;
+  border-radius: 6px 18px 18px 6px;
+  border-left: 14px solid #f2b6c4;
+  box-shadow: var(--shadow);
+  padding: 1.2rem 1.4rem 1.4rem 1.6rem;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 1.95rem, rgba(110, 140, 190, 0.22) 1.95rem, rgba(110, 140, 190, 0.22) 2rem);
+  background-position: 0 2.65rem;
+}
+.diary-date {
+  margin: 0 0 0.4rem;
+  font: 700 0.95rem var(--font-title);
+  color: var(--sakura-deep);
+  letter-spacing: 0.08em;
+}
+.diary-lines p {
+  margin: 0;
+  font: 500 1.02rem/2rem var(--font-ui);
+  color: #3a3f58;
+}
+
+/* ---------- asleep: the room goes dark, the clock runs on ---------- */
+.sleep-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 40%, #1f2a52 0%, #0d1330 70%);
+  opacity: 0;
+  transition: opacity 1.6s ease;
+  pointer-events: none;
+}
+.sleep-veil.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sleep-card {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: center;
+  color: #e8ecff;
+  text-shadow: 0 2px 18px rgba(140, 160, 255, 0.35);
+}
+.sleep-zz {
+  margin: 0;
+  font: 900 1.6rem var(--font-label);
+  letter-spacing: 0.2em;
+  color: #b9c4ff;
+  animation: zz-float 2.6s ease-in-out infinite;
+}
+.sleep-zz b {
+  font-size: 2rem;
+}
+.sleep-zz i {
+  font-style: normal;
+  font-size: 2.5rem;
+}
+.sleep-clock {
+  margin: 0;
+  font: 700 3.2rem var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+.sleep-note {
+  margin: 0;
+  font: 500 0.95rem var(--font-ui);
+  color: #c9d0f4;
+  min-height: 1.4em;
+}
+
+/* ---------- a sparkle: changing clothes ---------- */
+.sparkle {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 55%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 228, 238, 0.85) 30%, rgba(255, 240, 246, 0) 70%);
+  animation: sparkle-veil 1.25s ease forwards;
+}
+.sparkle i {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  background: #fff6c8;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  animation: sparkle-star 1.25s ease forwards;
+}
+.sparkle i:nth-child(1) { left: 38%; top: 30%; animation-delay: 0.05s; }
+.sparkle i:nth-child(2) { left: 58%; top: 26%; animation-delay: 0.18s; background: #ffd0de; }
+.sparkle i:nth-child(3) { left: 64%; top: 52%; animation-delay: 0.1s; }
+.sparkle i:nth-child(4) { left: 34%; top: 58%; animation-delay: 0.24s; background: #d6e8ff; }
+.sparkle i:nth-child(5) { left: 48%; top: 44%; animation-delay: 0.0s; width: 34px; height: 34px; }
+.sparkle i:nth-child(6) { left: 52%; top: 68%; animation-delay: 0.3s; background: #ffd0de; }
+@keyframes sparkle-veil {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  65% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes sparkle-star {
+  0% { transform: scale(0) rotate(0deg); opacity: 0; }
+  40% { transform: scale(1.2) rotate(45deg); opacity: 1; }
+  100% { transform: scale(0.2) rotate(120deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sparkle,
+  .sparkle i,
+  .sleep-zz,
+  .tired-chip .zz {
+    animation: none;
+  }
+}

@@ -29,6 +29,7 @@ import { buildHills2 } from './hills2.js';
 import { buildShores, lighthouseBeam } from './shores.js';
 import { buildPier } from './pier.js';
 import { buildFireflies } from './fireflies.js';
+import { buildHome } from './home.js';
 import { roadDist } from './routeplan.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -118,6 +119,12 @@ export async function buildWorld(scene, opts = {}) {
   // shelf and locker contents (furnish.js): their own batches so they can be culled by distance
   materials.props = { ...materials.interior };
   materials.propsSign = { ...materials.interiorSign };
+  // 桜井家 (world/home.js): its own copy of the room light, so the house's lights can go
+  // down when she is out at night or asleep (systems/home.js)
+  materials.home = { material: createInteriorMaterial({ name: 'home' }), castShadow: false, receiveShadow: false };
+  materials.propsHome = { ...materials.home };
+  materials.homeSign = { material: createInteriorMaterial({ name: 'homeSign', map: signTex2, alphaTest: 0.5, emissiveFlag: true }), castShadow: false, receiveShadow: false };
+  materials.homeSign.material.uniforms.uLight = materials.home.material.uniforms.uLight;
   const ctx = {
     scene,
     materials,
@@ -155,9 +162,13 @@ export async function buildWorld(scene, opts = {}) {
   progress(0.08, '家を建てています');
   await tick();
   const lots = generateLots();
+  // 桜井家: her own house, on the lot across 桜坂 from where she starts (world/home.js)
+  const homeLot = lots.find((l) => l.street === 'sakura' && l.front === 'W' && l.x0 === 35.5 && Math.abs(l.z1 + 18.05) < 0.01);
+  if (homeLot) homeLot.type = 'home';
   ctx.lots = lots;
   let n = 0;
   const builders = {
+    home: buildHome,
     house: buildHouse,
     cornershop: buildHouse,
     oldhouse: buildOldHouse,

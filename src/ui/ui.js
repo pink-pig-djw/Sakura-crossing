@@ -170,6 +170,12 @@ export class UI {
     e.minimap.addEventListener('click', () => this.emit('map'));
     for (const b of document.querySelectorAll('#controls-tabs button')) b.addEventListener('click', () => this.showControls(b.dataset.ctl));
     $('close-map').addEventListener('click', () => this.emit('closeMap'));
+    $('go-home').addEventListener('click', () => this.emit('goHome'));
+    $('close-wardrobe').addEventListener('click', () => this.closeWardrobe());
+    $('close-diary').addEventListener('click', () => this.closeDiary());
+    $('wardrobe').addEventListener('click', (ev) => {
+      if (ev.target.id === 'wardrobe') this.closeWardrobe();
+    });
     $('close-omikuji').addEventListener('click', () => this.emit('closeOmikuji'));
     e.map.addEventListener('click', (ev) => {
       if (ev.target === e.map) this.emit('closeMap');
@@ -425,6 +431,7 @@ export class UI {
       this.subTimer -= dt;
       if (this.subTimer <= 0) this.el.subtitle.hidden = true;
     }
+    this._sleepUpdate(dt);
   }
 
   // voice subtitle: { who, ja, zh } shown in the current language for `secs`
@@ -599,6 +606,11 @@ export class UI {
     add(tr('おみくじ'), tr(state.luck || 'まだ'));
     add(tr('電車を見送った'), tf('timesN', { n: state.trains }));
     add(tr('さくら一周ライン ベスト'), state.lapBest ?? tr('まだ'));
+    if (state.awake !== undefined) {
+      const m = Math.floor(state.awake * 60);
+      add(tr('起きてから'), tf('awakeN', { h: Math.floor(m / 60), m: m % 60 }));
+      add(tr('ベッドで眠った'), tf('timesN', { n: state.nights }));
+    }
   }
 
   openOmikuji(luck, text, show = true) {
@@ -619,6 +631,129 @@ export class UI {
   closeMap() {
     this.el.map.hidden = true;
   }
+
+  // up more than 20 hours: { tired, awake (hours) } shows the sleepy chip under the clock
+  setTired(info) {
+    const on = !!info?.tired;
+    if (on !== this.tiredOn) {
+      this.tiredOn = on;
+      $('tired-chip').hidden = !on;
+    }
+    if (!on) return;
+    const h = Math.floor(info.awake);
+    if (h !== this.tiredH || getLang() !== this.tiredLang) {
+      this.tiredH = h;
+      this.tiredLang = getLang();
+      $('tired-text').textContent = tf('tiredChip', { h });
+    }
+  }
+
+  // the wardrobe: outfits [{ name, color }], the one she has on; cb(index) or cb(null)
+  openWardrobe(outfits, current, cb) {
+    const grid = $('wardrobe-grid');
+    grid.innerHTML = '';
+    outfits.forEach((o, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.classList.toggle('on', i === current);
+      b.innerHTML = `<span class="hanger"><span class="cloth" style="--c:${o.color}"></span></span><span>${esc(tr(o.name))}</span>${i === current ? `<small>${esc(tr('いま着ている'))}</small>` : ''}`;
+      b.addEventListener('click', () => this._wardrobeDone(i));
+      grid.appendChild(b);
+    });
+    this.wardrobeArgs = [outfits, current];
+    this.wardrobeCb = cb;
+    $('wardrobe').hidden = false;
+    return grid.children[current] ?? grid.firstElementChild;
+  }
+  _wardrobeDone(i) {
+    $('wardrobe').hidden = true;
+    const cb = this.wardrobeCb;
+    this.wardrobeCb = null;
+    cb?.(i);
+  }
+  closeWardrobe() {
+    if (!$('wardrobe').hidden) this._wardrobeDone(null);
+  }
+
+  // her diary: { date, lines: [...] } (already in the language shown); cb when shut
+  openDiary(page, cb) {
+    $('diary-date').textContent = page?.date ?? '';
+    const lines = $('diary-lines');
+    lines.innerHTML = '';
+    for (const l of page?.lines ?? []) {
+      const p = document.createElement('p');
+      p.textContent = l;
+      lines.appendChild(p);
+    }
+    this.diaryCb = cb;
+    $('diary').hidden = false;
+  }
+  closeDiary() {
+    if ($('diary').hidden) return;
+    $('diary').hidden = true;
+    const cb = this.diaryCb;
+    this.diaryCb = null;
+    cb?.();
+  }
+
+  // asleep: the screen fades to night, the clock runs on from `from` by `hours`, the screen
+  // comes back. hooks.dark() once it is dark (the time jumps then), hooks.done() as it lifts.
+  sleep(s, hooks) {
+    this.sleepS = { from: s.from, hours: s.hours, hooks, t: 0, phase: 'in' };
+    const v = $('sleep');
+    v.hidden = false;
+    void v.offsetWidth; // (laid out unlit first, so it fades in)
+    v.classList.add('on');
+    $('sleep-clock').textContent = clockText(s.from);
+    $('sleep-note').textContent = '';
+  }
+  get sleeping() {
+    return !!this.sleepS;
+  }
+  _sleepUpdate(dt) {
+    const S = this.sleepS;
+    if (!S) return;
+    S.t += dt;
+    if (S.phase === 'in' && S.t > 1.9) {
+      S.phase = 'run';
+      S.t = 0;
+      S.hooks?.dark?.();
+    } else if (S.phase === 'run') {
+      const k = Math.min(1, S.t / 2.8);
+      const e = k * k * (3 - 2 * k);
+      $('sleep-clock').textContent = clockText(S.from + S.hours * e);
+      if (k >= 1) {
+        S.phase = 'hold';
+        S.t = 0;
+        const m = Math.round(S.hours * 60);
+        $('sleep-note').textContent = tf(m % 60 ? 'sleptFor' : 'sleptForH', { h: Math.floor(m / 60), m: m % 60 });
+      }
+    } else if (S.phase === 'hold' && S.t > 1.3) {
+      S.phase = 'out';
+      S.t = 0;
+      $('sleep').classList.remove('on');
+      S.hooks?.done?.();
+    } else if (S.phase === 'out' && S.t > 1.7) {
+      $('sleep').hidden = true;
+      this.sleepS = null;
+    }
+  }
+
+  // a burst of light while she changes clothes
+  sparkle() {
+    const s = $('sparkle');
+    s.hidden = true;
+    void s.offsetWidth; // (restart the animation)
+    s.hidden = false;
+    clearTimeout(this.sparkleT);
+    this.sparkleT = setTimeout(() => (s.hidden = true), 1300);
+  }
+}
+
+// 23:40 for an hour of the day (any hour, past midnight wraps)
+function clockText(h) {
+  const m = Math.floor((((h % 24) + 24) % 24) * 60);
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -81,6 +81,7 @@
         </div>
         <div class="hud-right">
           <div class="clock-chip"><i id="clock-icon" class="sun"></i><span id="clock">10:30</span><span id="period">昼</span><svg id="rain-icon" class="rain-ico" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M12 3.2C7.2 3.2 3.4 6.8 3 11.4c1.2-1 2.6-1 3.8 0 1.2-1 2.8-1 4 0 1.3-1 2.9-1 4.2 0 1.2-1 2.7-1 3.9 0 1.1-1 2.4-1 3.6.1C22.1 6.9 17.9 3.2 12 3.2Z"/><path class="stick" d="M12 3.2V2M12 11.4v6.8c0 1.6 2.6 1.6 2.6 0"/></svg></div>
+          <div class="tired-chip" id="tired-chip" hidden><i class="zz" aria-hidden="true">z<b>z</b></i><span id="tired-text">眠い</span></div>
           <div class="bike-chip" id="bike-chip" hidden>
             <svg class="bike-ico" viewBox="0 0 34 22" aria-hidden="true"><circle cx="7.5" cy="14.5" r="6"/><circle cx="26.5" cy="14.5" r="6"/><path d="M7.5 14.5 13 6.5h9M15.5 14.5l-2.5-8M15.5 14.5 22 6.5l4.5 8M22 6.5l-1.5-3.5h3.5M11.5 4.5h4"/></svg>
             <span class="gears" id="bike-gears"><i>1</i><i>2</i><i>3</i></span>
@@ -211,9 +212,34 @@
         <div class="panel map-panel">
           <header class="panel-head">
             <h2 data-i18n>桜ヶ浜 散歩マップ</h2>
-            <button class="btn ghost" id="close-map" type="button" data-i18n>とじる</button>
+            <div class="map-actions">
+              <button class="btn primary" id="go-home" type="button" data-i18n>家に帰る</button>
+              <button class="btn ghost" id="close-map" type="button" data-i18n>とじる</button>
+            </div>
           </header>
           <canvas id="map-canvas" width="1100" height="520"></canvas>
+        </div>
+      </section>
+
+      <!-- the wardrobe: what to wear -->
+      <section id="wardrobe" class="screen modal" hidden>
+        <div class="panel wardrobe-panel">
+          <header class="panel-head">
+            <h2 data-i18n>なにを着ようかな</h2>
+            <button class="btn ghost" id="close-wardrobe" type="button" data-i18n>やめる</button>
+          </header>
+          <div class="wardrobe-grid" id="wardrobe-grid"></div>
+        </div>
+      </section>
+
+      <!-- her diary -->
+      <section id="diary" class="screen modal" hidden>
+        <div class="diary-book">
+          <div class="diary-page">
+            <p class="diary-date" id="diary-date"></p>
+            <div class="diary-lines" id="diary-lines"></div>
+          </div>
+          <button class="btn primary" id="close-diary" type="button" data-i18n>日記をとじる</button>
         </div>
       </section>
 
@@ -226,6 +252,16 @@
           <button class="btn primary" id="close-omikuji" type="button" data-i18n>ありがとう</button>
         </div>
       </section>
+      <!-- asleep: the night going by -->
+      <div id="sleep" class="sleep-veil" hidden>
+        <div class="sleep-card">
+          <p class="sleep-zz" aria-hidden="true">z<b>z</b><i>z</i></p>
+          <p class="sleep-clock" id="sleep-clock">23:00</p>
+          <p class="sleep-note" id="sleep-note"></p>
+        </div>
+      </div>
+      <!-- a sparkle: changing clothes -->
+      <div id="sparkle" class="sparkle" hidden><i></i><i></i><i></i><i></i><i></i><i></i></div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

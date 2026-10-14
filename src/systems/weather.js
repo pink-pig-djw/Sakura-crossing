@@ -51,7 +51,7 @@ export class Weather {
     this.fast = false; // called for: comes and goes quicker
     this.spell = rand(4, 9); // game hours until the first rain (when auto)
     this.wobble = 0;
-    this.onChange = null; // (raining, why) => void: 'auto' | 'manual'
+    this.onChange = null; // (raining, why) => void: 'auto' | 'manual' | 'skip' (asleep)
     this.boltT = rand(20, 60); // a distant rumble now and then in a downpour
     this.onThunder = null;
   }
@@ -87,6 +87,36 @@ export class Weather {
 
   toggle() {
     this.set(!this.raining, 'manual');
+  }
+
+  // hours gone by at once (a night's sleep): the spells that came and went meanwhile, and the
+  // sky and the streets as they are by now rather than easing there (onChange hears 'skip')
+  skip(hours) {
+    let t = 0, turned = -1; // when (hours into the sleep) it last started or stopped
+    if (this.auto) {
+      while (hours - t > this.spell) {
+        t += this.spell;
+        this.set(!this.raining, 'skip');
+        turned = t;
+      }
+      this.spell -= hours - t;
+    }
+    const ago = turned < 0 ? hours : hours - turned;
+    // (the overcast lingers about half an hour, the rain soaks the ground in about as long,
+    // the streets take about four hours to dry: the rates update() eases at, in game hours)
+    if (this.raining) {
+      this.cloud = 1;
+      this.rain = this.amount;
+      this.wet = Math.min(1, (turned < 0 ? this.wet : 0) + ago / 0.6);
+    } else {
+      this.cloud = (turned < 0 ? this.cloud : 1) * Math.exp(-ago / 0.55);
+      if (this.cloud < 0.01) this.cloud = 0;
+      this.rain = 0;
+      this.wet = Math.max(0, (turned < 0 ? this.wet : 1) - ago / 4.2);
+    }
+    this.bowLeft = 0;
+    this.bowGoal = 0;
+    this.rainbow = 0;
   }
 
   // dt: real seconds; hours: game hours gone by

@@ -250,6 +250,11 @@ vec3 applyPattern(vec3 albedo, float patF, vec2 uv, vec3 wp, vec3 N) {
     float h = hash12(vec2(floor(ux / 0.2), row));
     albedo *= h > 0.8 ? 0.86 : (0.97 + 0.05 * h);
     albedo *= 1.0 - 0.18 * l;
+  } else if (pat == 23) { // tatami: rush woven across the mat (u runs along it), a soft sheen
+    float w = aaLines(uv.x, 0.0125, 0.005);
+    albedo *= 1.0 - 0.12 * w;
+    albedo *= 0.96 + 0.07 * vnoise(vec2(uv.x * 0.8, uv.y * 3.0));
+    albedo *= 0.97 + 0.05 * vnoise(vec2(uv.x * 30.0, uv.y * 1.5));
   } else if (pat == 24) { // rock
     float n = fbm5(vec2(wp.x + wp.z, wp.y) * 0.8);
     albedo *= 0.75 + 0.45 * n;

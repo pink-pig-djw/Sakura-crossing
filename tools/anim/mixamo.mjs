@@ -2,6 +2,9 @@
 //
 //   node tools/anim/mixamo.mjs <MixamoLibrary dir> public/chars/motions.json
 //
+// Clips marked `own` (the protagonist's life at home, and how she moves when she is tired) go
+// to a second file next to it, motions_own.json, loaded only for her (systems/avatar.js).
+//
 // The library (https://github.com/pink-pig-djw/mixamoLibrary): Mixamo clips on the standard
 // X Bot rig, exported as FBX Binary at 30 fps, "Without Skin". The FBX files are not part of
 // this repository; only the converted motions are.
@@ -90,7 +93,12 @@ export function calibrate({ g, joint }) {
 export function sample(fbx, Q, fps) {
   const { g, clip, joint } = fbx;
   const mixer = new THREE.AnimationMixer(g);
-  mixer.clipAction(clip).play();
+  // (played once and held: sampled at its very end, a repeating action would wrap round to
+  // its first frame)
+  const action = mixer.clipAction(clip);
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
   const n = Math.round(clip.duration * fps) + 1;
   const joints = MAP.map(([jn]) => joint(jn));
   const feet = ['LeftToeBase', 'RightToeBase'].map(joint);
@@ -218,7 +226,7 @@ for (const [s, A, sx] of [['left', X, 1], ['right', X.clone().negate(), -1]]) {
   LAP[s + 'Hand'] = aimPalmDown(A, [-0.6 * sx, -0.55, 0.58]);
 }
 
-function kneesTogether(frames, gap) {
+function kneesTogether(frames, gap, lap = true) {
   const legBones = (s) => ['UpperLeg', 'LowerLeg', 'Foot', 'Toes'].map((b) => BONE[s + b]);
   for (const f of frames) {
     let seated = 0;
@@ -236,7 +244,8 @@ function kneesTogether(frames, gap) {
       for (const i of legBones(s)) f.rot[i].premultiply(turn);
       seated += lying / 2;
     }
-    // and the hands rest together on her lap, over the skirt
+    // and the hands rest together on her lap, over the skirt (unless they are busy: writing)
+    if (!lap) continue;
     const rel = MAP.map(([, b], i) => (isFinger(b) ? f.rot[BONE[b.startsWith('left') ? 'leftHand' : 'rightHand']].clone().invert().multiply(f.rot[i]) : null));
     for (const [b, q] of Object.entries(LAP)) f.rot[BONE[b]].slerp(q, seated);
     MAP.forEach(([, b], i) => {
@@ -299,6 +308,7 @@ function pack(frames, o) {
   if (o.reps) out.reps = o.reps;
   if (o.root) out.root = true;
   if (o.rise) out.rise = +o.rise.toFixed(4);
+  if (o.yaw) out.yaw = o.yaw.map((a) => +a.toFixed(4));
   out.rot = Buffer.from(rot.buffer).toString('base64');
   out.hips = Buffer.from(pos.buffer).toString('base64');
   return out;
@@ -313,11 +323,16 @@ function pack(frames, o) {
 // root: keep the hips' travel (sitting down / standing up move onto and off the seat)
 // after: start where that clip ends
 // seat: sit at the height that clip sits at (seated clips are captured on different chairs)
-// knees: sitting, knees brought together this far apart
+// knees: sitting, knees brought together this far apart (and the hands laid in her lap,
+//   unless lap: false)
 // airborne: a jump: the hips keep only their height over the lower foot
 // legs: blend the legs this far toward the standing pose
 // stairs: a stair-climbing loop: the climb comes out (the game moves her along the stairs),
 //   the hips sit at standing height over the line through the treads, `rise` = one riser
+// own: only the protagonist uses it (written to motions_own.json)
+// turn: turning on the spot: the turn comes out of the take (the steps stay), and how far the
+//   hips have turned at each frame is kept (`yaw`, radians, to her left positive) for the game
+//   to turn her by
 export const CLIPS = {
   idle: { file: '15_NPC_Idle/Idle - Female.fbx', loop: true },
   happy: { file: '01_Idle/Happy Idle.fbx', loop: true, level: true },
@@ -364,21 +379,42 @@ export const CLIPS = {
   talkB: { file: '12_Dialogue/Hand Raising.fbx', level: true },
   think: { file: '06_Emote/Thinking.fbx', level: true },
   nod: { file: '06_Emote/Head Nod Yes.fbx' },
+  // at home (systems/home.js): into bed and asleep, kneeling on a cushion, writing her diary,
+  // tea, doors, the sofa
+  lieDown: { file: '11_Seaside/Lying Down.fbx', root: true, own: true }, // sitting on the bed's edge to lying on her back
+  lieBack: { file: '05_Interact/Laying Idle.fbx', loop: true, own: true },
+  lieSide: { file: '05_Interact/Laying Sleeping.fbx', loop: true, own: true }, // asleep on her side, hands under her cheek
+  kneel: { file: '10_Transitions/Kneeling Down.fbx', root: true, own: true }, // standing to kneeling on a knee
+  kneelIdle: { file: '13_Japanese/Kneeling Idle.fbx', loop: true, own: true }, // on both knees, upright (systems/home.js lowers her onto her heels: 正座)
+  write: { file: '22_Work_Scenery/Writing Seated.fbx', loop: true, after: 'sitDown', seat: 'sit', knees: 0.11, lap: false, own: true },
+  drink: { file: '08_Daily/Drinking.fbx', own: true },
+  open: { file: '05_Interact/Opening.fbx', own: true }, // a hand out to a handle, drawn back
+  sitHands: { file: '16_Sitting/Sitting Hands On Thighs.fbx', loop: true, after: 'sitDown', seat: 'sit', knees: 0.11, lap: false, own: true },
+  sitLaugh: { file: '12_Dialogue/Sitting Laughing.fbx', after: 'sitDown', seat: 'sit', knees: 0.11, lap: false, own: true },
+  doze: { file: '16_Sitting/Waking Up While Sitting.fbx', after: 'sitDown', seat: 'sit', knees: 0.11, lap: false, own: true }, // nodding off, waking with a start
+  // tired (up more than 20 hours): a heavy walk, stretching a stiff neck
+  tiredWalk: { file: '09_Female_Locomotion/Sad Walk.fbx', loop: true, walk: true, own: true },
+  neck: { file: '14_Daily_Plus/Neck Stretching.fbx', own: true },
+  // turning round at home to sit down, to a door, to the counter: stepping round, a quarter turn
+  // a take (systems/home.js turns her by its yaw; two for a half turn)
+  turnL: { file: '02_Locomotion/Left Turn.fbx', turn: true, own: true },
+  turnR: { file: '02_Locomotion/Right Turn.fbx', turn: true, own: true },
 };
 
-function convert(dir, only) {
+export function convert(dir, only) {
   const fps = 30;
   const rest = loadFBX(path.join(dir, CLIPS.walk.file));
   const Q = calibrate(rest);
   rest.g.updateMatrixWorld(true);
   const hipsHeight = rest.joint('Hips').getWorldPosition(new THREE.Vector3()).y * 0.01;
-  const out = {
+  const head = () => ({
     fps,
     source: 'Mixamo (X Bot rig)',
     bones: MAP.map((m) => m[1]),
     axes: Object.fromEntries(MAP.map(([, b, A]) => [b, A ? A.toArray().map((v) => +v.toFixed(4)) : null])),
     clips: {},
-  };
+  });
+  const out = head(), own = head();
   let standFrame = null;
   const ends = {}, starts = {};
   for (const [name, c] of Object.entries(CLIPS)) {
@@ -386,7 +422,7 @@ function convert(dir, only) {
     const fbx = loadFBX(path.join(dir, c.file));
     let frames = sample(fbx, Q, fps);
     if (c.range) frames = frames.slice(Math.round(c.range[0] * fps), Math.round(c.range[1] * fps) + 1);
-    if (c.knees) kneesTogether(frames, c.knees);
+    if (c.knees) kneesTogether(frames, c.knees, c.lap !== false);
     // in the air the game lifts the body: keep only the hips' height over the lower foot
     if (c.airborne) for (const f of frames) f.hips.y -= Math.min(f.toes[0].y, f.toes[1].y);
     // legs: tone down the legs toward standing (a skirt does not forgive a high tuck)
@@ -399,6 +435,28 @@ function convert(dir, only) {
     }
     if (c.level) levelHead(frames);
     if (c.bow) bowInstead(frames, c.bow);
+    // turning on the spot: the hips' heading (from the first frame) taken out of every frame
+    let yaw = null;
+    if (c.turn) {
+      const heading = (f) => {
+        const v = new THREE.Vector3(0, 0, 1).applyQuaternion(f.rot[BONE.hips]);
+        return Math.atan2(v.x, v.z);
+      };
+      const y0 = heading(frames[0]);
+      let prev = 0;
+      yaw = frames.map((f) => {
+        let a = heading(f) - y0;
+        while (a - prev > Math.PI) a -= 2 * Math.PI;
+        while (a - prev < -Math.PI) a += 2 * Math.PI;
+        return (prev = a);
+      });
+      frames.forEach((f, k) => {
+        const R = new THREE.Quaternion().setFromAxisAngle(Y, -yaw[k]);
+        for (const q of f.rot) q.premultiply(R);
+        f.hips.applyQuaternion(R);
+        for (const p of [...f.toes, ...f.legs]) p.applyQuaternion(R);
+      });
+    }
     const N = frames.length;
     let speed = 0;
     if (c.walk) speed = inPlaceSpeed(frames, fps);
@@ -450,18 +508,22 @@ function convert(dir, only) {
     if (name === 'idle') standFrame = frames[0];
     ends[name] = frames[frames.length - 1].hips.clone();
     starts[name] = frames[0].hips.clone();
-    out.clips[name] = pack(frames, { ...c, speed, hipsHeight, rise });
+    (c.own ? own : out).clips[name] = pack(frames, { ...c, speed, hipsHeight, rise, yaw });
     console.log(name.padEnd(10), String(frames.length).padStart(4), 'frames', (frames.length / fps).toFixed(2).padStart(6), 's', c.loop ? `loop seam ${THREE.MathUtils.radToDeg(seam).toFixed(1)}°` : '', speed ? `speed ${speed.toFixed(2)} m/s` : '');
   }
   out.clips.point = pack(synthPoint(standFrame, fps), { hipsHeight });
   out.clips.startle = pack(synthStartle(standFrame, fps), { hipsHeight });
   console.log('point, startle synthesized from the idle pose');
-  return out;
+  return { out, own };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
   const [dir, outPath, only] = process.argv.slice(2);
-  const out = convert(dir, only?.split(','));
-  fs.writeFileSync(outPath, JSON.stringify(out));
-  console.log('wrote', outPath, (fs.statSync(outPath).size / 1024).toFixed(0), 'KB,', MAP.length, 'bones');
+  const { out, own } = convert(dir, only?.split(','));
+  const ownPath = outPath.replace(/\.json$/, '_own.json');
+  for (const [p, m] of [[outPath, out], [ownPath, own]]) {
+    if (!Object.keys(m.clips).length) continue;
+    fs.writeFileSync(p, JSON.stringify(m));
+    console.log('wrote', p, (fs.statSync(p).size / 1024).toFixed(0), 'KB,', Object.keys(m.clips).length, 'clips,', MAP.length, 'bones');
+  }
 }
