@@ -5,7 +5,6 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { RNG } from '../core/rng.js';
 import { PAT } from '../core/builder.js';
 import { ROADS, terrainH, roadAt, PLAZA, CROSSINGS, RIVER } from './layout.js';
-import { roadSurfaceY } from './roads.js';
 import { Kit, signOnFace } from './kit.js';
 import { FONTS, fitText, roundRect } from '../render/atlas.js';
 import { G } from '../render/materials.js';
@@ -466,91 +465,6 @@ export function buildStreetProps(ctx) {
   const by = Math.min(terrainH(bx, bz - 0.75), terrainH(bx, bz + 0.75));
   benchAt(ctx, ctx.builders.get('toon', bx, bz), bx, by, bz, Math.PI / 2, 0x9a7454, '桜の下のベンチに座る');
   ctx.spots = { ...ctx.spots, sakuraBench: { x: bx, y: by, z: bz, ry: Math.PI / 2, it: ctx.interactables[ctx.interactables.length - 1] } };
-}
-
-// Night light pools on the ground (additive decals) + lamp registry
-export function buildLightPools(ctx) {
-  const pos = [];
-  const colr = [];
-  const uv = [];
-  const idx = [];
-  let n = 0;
-  const c = new THREE.Color();
-  for (const l of ctx.lamps) {
-    const r = l.pool?.r ?? l.r ?? 6;
-    const lx = l.pool?.x ?? l.x, lz = l.pool?.z ?? l.z;
-    const gy = (l.ground ? l.y - 0.1 : terrainH(l.x, l.z)) + 0.06;
-    c.set(l.color ?? 0xffd9a0);
-    const segs = 4;
-    // a small grid that follows the terrain (or a deck / floor at a fixed height)
-    for (let j = 0; j <= segs; j++) {
-      for (let i = 0; i <= segs; i++) {
-        let x = lx - r + (2 * r * i) / segs;
-        let z = lz - r + (2 * r * j) / segs;
-        if (l.clip) {
-          x = Math.min(l.clip.x1, Math.max(l.clip.x0, x));
-          z = Math.min(l.clip.z1, Math.max(l.clip.z0, z));
-        }
-        const y = l.floor !== undefined ? l.floor + 0.04 : Math.max(roadSurfaceY(x, z), terrainH(x, z)) + 0.05;
-        pos.push(x, y, z);
-        colr.push(c.r, c.g, c.b);
-        uv.push(i / segs, j / segs);
-      }
-    }
-    for (let j = 0; j < segs; j++) {
-      for (let i = 0; i < segs; i++) {
-        const a = n + j * (segs + 1) + i;
-        idx.push(a, a + segs + 1, a + 1, a + 1, a + segs + 1, a + segs + 2);
-      }
-    }
-    n += (segs + 1) * (segs + 1);
-    void gy;
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  const m = new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.CustomBlending,
-    blendEquation: THREE.AddEquation,
-    blendSrc: THREE.OneFactor,
-    blendDst: THREE.OneFactor,
-    blendSrcAlpha: THREE.ZeroFactor,
-    blendDstAlpha: THREE.OneFactor,
-    vertexColors: true,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-    uniforms: { uNight: G.uNight },
-    vertexShader: /* glsl */ `
-      varying vec2 vUv;
-      varying vec3 vColor;
-      void main() {
-        vUv = uv;
-        vColor = color;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform float uNight;
-      varying vec2 vUv;
-      varying vec3 vColor;
-      void main() {
-        float d = length(vUv - 0.5) * 2.0;
-        float k = pow(max(1.0 - d, 0.0), 1.25);
-        k += smoothstep(0.55, 0.0, d) * 0.35;
-        gl_FragColor = vec4(vColor * k * 0.95 * smoothstep(0.35, 0.9, uNight), 0.0);
-      }
-    `,
-  });
-  const mesh = new THREE.Mesh(g, m);
-  mesh.renderOrder = 4;
-  mesh.frustumCulled = false;
-  mesh.name = 'lightpools';
-  return mesh;
 }
 
 export function crossingPositions() {

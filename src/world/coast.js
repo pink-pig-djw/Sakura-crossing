@@ -47,6 +47,7 @@ export function createWater() {
       uReflMap: G.uReflMap,
       uReflMat: G.uReflMat,
       uReflOn: G.uReflOn,
+      uReflTexel: G.uReflTexel,
       uIsleMap: G.uIsleMap,
       uIsleRect: G.uIsleRect,
     },
@@ -81,6 +82,7 @@ export function createWater() {
       uniform sampler2D uReflMap;
       uniform mat4 uReflMat;
       uniform float uReflOn;
+      uniform vec2 uReflTexel;
       uniform sampler2D uIsleMap;
       uniform vec4 uIsleRect;
       varying vec3 vWorldPos;
@@ -166,9 +168,9 @@ export function createWater() {
         if (uRain > 0.01 && dist < 70.0) g += seaRings(p, t) * 0.45 * uRain * (1.0 - smoothstep(25.0, 70.0, dist));
         vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
         float cosV = max(dot(N, V), 0.0);
-        // how much it mirrors: like water, all of it at a glancing look; toward the camera a
-        // little more than real water does, so the sea keeps the sky's colour
-        float fres = 0.08 + 0.92 * pow(1.0 - cosV, 4.0);
+        // how much it mirrors: more at a glancing look, but never all of it (the sea keeps its
+        // own deep colour under the sky's, at dusk too, rather than turning the sky's colour)
+        float fres = 0.06 + 0.56 * pow(1.0 - cosV, 4.0);
         vec3 R = reflect(-V, N);
         R.y = abs(R.y);
         // the sky it mirrors, from the horizon's haze up to the zenith in soft painted steps, the
@@ -181,6 +183,8 @@ export function createWater() {
         vec2 rh = normalize(R.xz + 1e-4), sh = normalize(uSunDir.xz + 1e-4);
         float toSun = pow(max(dot(rh, sh), 0.0), 4.0) * (1.0 - uNight) * (1.0 - smoothstep(0.0, 0.4, el));
         sky = mix(sky, uHorizon * 1.04 + uSunGlow * 0.9, toSun * 0.65);
+        // (darker than the sky itself, cooler, and toward the water's blue)
+        sky = mix(sky * vec3(0.78, 0.84, 0.94), uWaterShallow * 1.3, 0.15 * (1.0 - toSun));
         // the water's own colour by its depth: turquoise shallows, cobalt open sea, lit by the
         // sun through the waves
         float dk = smoothstep(0.3, 7.0, depth);
@@ -189,10 +193,13 @@ export function createWater() {
         vec3 col = mix(body, sky, fres);
         // what stands over the water (her boat, the pier, the island), mirrored and broken up by
         // the waves: looked up a little way off along their slope
-        if (uReflOn > 0.5) {
+        if (uReflOn > 0.001) {
           vec4 rp = uReflMat * vec4(p.x + g.x * 2.4, uTide, p.y + g.y * 2.4, 1.0);
-          vec4 rf = texture2D(uReflMap, rp.xy / rp.w);
-          float cov = clamp(rf.a, 0.0, 1.0);
+          // (four taps round the point: the mirror is drawn small, and one tap of it showed its
+          // jagged edges magnified as steps)
+          vec2 ruv = rp.xy / rp.w, ro = uReflTexel * 0.85;
+          vec4 rf = (texture2D(uReflMap, ruv + ro) + texture2D(uReflMap, ruv - ro) + texture2D(uReflMap, ruv + vec2(ro.x, -ro.y)) + texture2D(uReflMap, ruv + vec2(-ro.x, ro.y))) * 0.25;
+          float cov = clamp(rf.a, 0.0, 1.0) * uReflOn;
           vec3 rc = rf.rgb / max(rf.a, 1e-3);
           col = mix(col, mix(rc * 0.88, body, 0.1), cov * clamp(fres * 1.3 + 0.12, 0.0, 0.92));
         }
@@ -217,8 +224,8 @@ export function createWater() {
         float foam = clamp(max(crest, max(swash, lace * 0.8)), 0.0, 1.0);
         vec3 foamCol = mix(vec3(1.0), uHorizon, 0.15) * (0.75 + 0.35 * (1.0 - uNight));
         col = mix(col, foamCol, foam);
-        // haze
-        float h = (1.0 - exp(-dist * uHazeDensity * 0.6)) * 0.85;
+        // haze (lighter over the water than over land: far off it still reads as sea)
+        float h = (1.0 - exp(-dist * uHazeDensity * 0.4)) * 0.78;
         float sglow = pow(max(dot(-V, uSunDir), 0.0), 6.0);
         col = mix(col, uHazeColor + uSunGlow * sglow * 0.6, h);
         float alpha = mix(0.25, 1.0, smoothstep(0.0, 1.6, depth));

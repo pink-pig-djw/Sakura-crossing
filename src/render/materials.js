@@ -54,14 +54,28 @@ export const G = {
   uReflMap: { value: null },
   uReflMat: { value: new THREE.Matrix4() },
   uReflOn: { value: 0 },
+  uReflTexel: { value: new THREE.Vector2(1 / 16, 1 / 16) }, // (one texel of it)
   uReflPass: { value: 0 },
   // 凪ノ島's sea floor (world/island.js): heights over its box (x0, z0, 1 / width, 1 / depth)
   uIsleMap: { value: emptyRainMap() },
   // the light of the room the protagonist is in at home (lamps on, out, asleep): characters lit
   // by a room take its colour (systems/home.js); white elsewhere
   uRoomLight: { value: new THREE.Color(1, 1, 1) },
+  // the town's lamps (render/lamps.js): their data, the grid of cells listing those that reach
+  // into each, the grid's place (x0, z0, 1 / cell size, cells across) and rows, how many lamps
+  uLampData: { value: emptyLampTexture() },
+  uLampCells: { value: emptyLampTexture() },
+  uLampGrid: { value: new THREE.Vector4(0, 0, 1, 0) },
+  uLampRows: { value: 0 },
+  uLampCount: { value: 0 },
   uIsleRect: { value: new THREE.Vector4(1e6, 1e6, 1e-6, 1e-6) },
 };
+
+function emptyLampTexture() {
+  const t = new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType);
+  t.needsUpdate = true;
+  return t;
+}
 
 function emptyRainMap() {
   const t = new THREE.DataTexture(new Uint8Array(4), 1, 1);
@@ -222,6 +236,7 @@ export function createToonMaterial(opts = {}) {
           col += albedo * max(glow - 1.0, 0.0) * 0.8;
         #endif
         col = wetSheen(col, N, vWorldPos, wet, pd);
+        col += lampLight(lit, vWorldPos, N, wet, pd);
         col = applyHaze(col, vWorldPos);
         gl_FragColor = vec4(col, max(uOutline, uReflPass) * cov);
       }
@@ -428,6 +443,7 @@ export function createGroundMaterial(groundMap, mapRect) {
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
         col = wetSheen(col, N, vWorldPos, rw, pd);
+        col += lampLight(albedo, vWorldPos, N, rw, pd);
         col = applyHaze(col, vWorldPos);
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
@@ -651,6 +667,7 @@ export function createRoadMaterial() {
         float sh = getShadowMask();
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
         col = wetSheen(col, N, vWorldPos, rw, pd);
+        col += lampLight(albedo, vWorldPos, N, rw, pd);
         col = applyHaze(col, vWorldPos);
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
@@ -1086,6 +1103,7 @@ export function createFoliageMaterial(tex, opts = {}) {
         col += albedo * uSunColor * back * 0.45 * sh;
         // thin petals: daylight filtering through keeps the underside of a crown glowing pink
         col += albedo * uSunColor * uTrans * (1.0 - L) * smoothstep(-0.1, 0.5, uSunDir.y);
+        col += lampLight(albedo, vWorldPos, N, 0.0, 0.0);
         col = applyHaze(col, vWorldPos);
         gl_FragColor = vec4(col, max(uOutline, uReflPass));
       }
@@ -1180,6 +1198,7 @@ export function createGrassMaterial(tex, opts = {}) {
         // blades darken toward the roots (painted value in the texture)
         vec3 albedo = vColor * mix(0.62, 1.12, t.r);
         vec3 col = toonShade(albedo, N, sh, uSoft, uWrap);
+        col += lampLight(albedo, vWorldPos, N, 0.0, 0.0);
         col = applyHaze(col, vWorldPos);
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);

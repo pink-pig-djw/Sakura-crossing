@@ -14,7 +14,7 @@ const Y0 = -60, SPAN = 400; // heights kept: Y0 .. Y0 + SPAN
 const W = 2048, H = 1024;
 const M = 40; // margin round the town (the beach, the sea's edge)
 
-const LEAVE_OUT = new Set(['sky', 'clouds', 'train', 'lightpools', 'fireflies', 'petals', 'grass', 'foliage', 'pampas', 'bicycleRoot', 'cats', 'birds', 'traffic', 'shells']);
+const LEAVE_OUT = new Set(['sky', 'clouds', 'train', 'fireflies', 'petals', 'grass', 'foliage', 'pampas', 'bicycleRoot', 'cats', 'birds', 'traffic', 'shells']);
 
 function leftOut(o) {
   for (let p = o; p; p = p.parent) if (LEAVE_OUT.has(p.name)) return true;

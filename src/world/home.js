@@ -559,7 +559,8 @@ function roofAndTrim(ctx) {
   const pb = TB(ctx, X0 - 0.6, -25.85);
   pb.boxMM(X0 - 1.25, DOMA + 2.42, DOOR.z0 - 0.55, X0, DOMA + 2.52, DOOR.z1 + 0.55, { color: TRIM });
   EB(ctx, X0 - 0.6, -25.85).box(X0 - 0.62, DOMA + 2.405, (DOOR.z0 + DOOR.z1) / 2, 0.14, 0.02, 0.14, { color: 0xffe8c0 });
-  ctx.lamps.push({ x: X0 - 0.75, y: PORCH, z: (DOOR.z0 + DOOR.z1) / 2, r: 2.2, color: 0xffd9a0 });
+  // (the downlight in the canopy, its pool on the porch tiles)
+  ctx.lamps.push({ x: X0 - 0.62, y: DOMA + 2.38, z: (DOOR.z0 + DOOR.z1) / 2, r: 2.2, color: 0xffd9a0, floor: PORCH });
   // a wooden accent wall round the entrance (a nod to the street)
   const ab = TB(ctx, X0, -25.85);
   ab.boxMM(X0 - 0.03, DOMA + 0.05, DOOR.z0 - 0.62, X0, DOMA + 2.42, DOOR.z0 - 0.02, { color: 0x9a6f4c, pattern: PAT.BOARDS });

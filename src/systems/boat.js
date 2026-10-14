@@ -97,6 +97,7 @@ function buildHull(b) {
     ];
   };
   const pts = (ys) => ys.filter((y) => y !== null);
+  const bilge = new THREE.Color(C.rib);
   for (let i = 0; i < N; i++) {
     const ta = i / N, tb = (i + 1) / N;
     const sa = section(ta), sb = section(tb);
@@ -121,6 +122,20 @@ function buildHull(b) {
           const a = base + r * 2, c = a + 2;
           if (side > 0) b.idx.push(a, c + 1, a + 1, a, c, c + 1);
           else b.idx.push(a, a + 1, c + 1, a, c + 1, c);
+        }
+        // and the skin's inside face, bare wood: wherever the planking inside her leaves a seam
+        // (along the floorboards, round the stem) it shows, not the sea under her
+        const base2 = b.count;
+        for (let r = 0; r < n; r++) {
+          for (const [s, y, t] of [[sa, ya[r], ta], [sb, yb[r], tb]]) {
+            const nn = hullNormal(t, y, side);
+            b.vtx(halfAt(s, y) * side, y, s.z, -nn.x, -nn.y, -nn.z, bilge, s.z, y, PAT.SIDING);
+          }
+        }
+        for (let r = 0; r < n - 1; r++) {
+          const a = base2 + r * 2, c = a + 2;
+          if (side > 0) b.idx.push(a, a + 1, c + 1, a, c + 1, c);
+          else b.idx.push(a, c + 1, a + 1, a, c, c + 1);
         }
       }
     }
@@ -186,7 +201,7 @@ function buildHull(b) {
     for (let i = 0; i < n; i++) {
       const ta = t0 + ((t1 - t0) * i) / n, tb = t0 + ((t1 - t0) * (i + 1)) / n;
       const sa = section(ta), sb = section(tb);
-      const wa = halfAt(sa, FLOOR) - 0.05, wb = halfAt(sb, FLOOR) - 0.05;
+      const wa = halfAt(sa, FLOOR) - 0.035, wb = halfAt(sb, FLOOR) - 0.035;
       if (wa < 0.05 || wb < 0.05) continue;
       b.quad(V(-wa, FLOOR, sa.z), V(-wb, FLOOR, sb.z), V(wb, FLOOR, sb.z), V(wa, FLOOR, sa.z), C.floor, PAT.PLANKS);
     }
@@ -1419,6 +1434,16 @@ export class Boat {
     g.position.set(this.x, this.y, this.z);
     g.rotation.set(this.pitch, this.h, this.roll);
     G.uBoat.value.set(this.x, this.z, Math.sin(this.h), Math.cos(this.h));
+    g.updateMatrixWorld(true);
+    // the sea is left out of her hull as broad as the hull is where the sea's surface meets it
+    // now (she rides up and down, the tide comes and goes, she pitches): narrower, the water
+    // showed in slivers along her planking inside and round her stem; broader, a gap round her
+    const H = G.uBoatHull.value, sea = G.uTide.value, heel = Math.abs(this.roll) * 0.5;
+    for (let i = 0; i < H.length; i++) {
+      const s = section(i / (H.length - 1));
+      const wy = _v.set(0, 0, s.z).applyMatrix4(g.matrixWorld).y;
+      H[i] = Math.max(0, halfAt(s, sea - wy + heel) - 0.012);
+    }
     // the tiller over to the side she steers (the motor swivels; less toward her, she sits
     // there), the propeller turning
     this.parts.motor.rotation.y = clamp(-this.steer * 0.58, -0.36, 0.16);

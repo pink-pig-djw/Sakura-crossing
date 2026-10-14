@@ -24,17 +24,24 @@ export class SeaReflection {
     this.cam = new THREE.PerspectiveCamera();
     this.cam.layers.set(1);
     this.on = true;
+    this.fade = 0; // (eased in and out as the camera comes to the sea and goes: never switched)
     G.uReflMap.value = this.rt.texture;
   }
 
   setSize(w, h) {
-    this.rt.setSize(Math.max(16, Math.round(w * this.scale)), Math.max(16, Math.round(h * this.scale)));
+    const W = Math.max(16, Math.round(w * this.scale)), H = Math.max(16, Math.round(h * this.scale));
+    this.rt.setSize(W, H);
+    G.uReflTexel.value.set(1 / W, 1 / H);
   }
 
   // the sea's surface at y; want: whether a reflection is wanted this frame at all
   render(renderer, scene, camera, y, want = true) {
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - (this.lastT ?? now)) / 1000);
+    this.lastT = now;
+    this.fade = want ? Math.min(1, this.fade + dt * 1.25) : Math.max(0, this.fade - dt * 1.25);
     G.uReflOn.value = 0;
-    if (!this.on || !want) return;
+    if (!this.on || this.fade <= 0) return;
     camera.updateMatrixWorld();
     const cp = camera.getWorldPosition(_cp);
     if (cp.y < y + 0.05) return;
@@ -89,7 +96,7 @@ export class SeaReflection {
     renderer.autoClear = autoClear;
     renderer.shadowMap.autoUpdate = shadows;
     scene.background = bg;
-    G.uReflOn.value = 1;
+    G.uReflOn.value = this.fade;
   }
 
   dispose() {

@@ -11,7 +11,8 @@ import { SeaReflection } from './render/reflection.js';
 import { TimeOfDay, PRESETS } from './systems/timeofday.js';
 import { Weather } from './systems/weather.js';
 import { RainMap } from './render/rainmap.js';
-import { createRain, createLampGlints } from './render/rain.js';
+import { createRain } from './render/rain.js';
+import { buildLampGrid } from './render/lamps.js';
 import { Player } from './systems/player.js';
 import { AudioEngine } from './systems/audio.js';
 import { buildWorld } from './world/world.js';
@@ -83,6 +84,28 @@ sun.shadow.radius = 1.5;
 scene.add(sun);
 // (the sea's mirror draws layer 1 only, lit by the sun too)
 sun.layers.enable(1);
+// The shadow cascades are fitted to a view of a fixed width (as wide as the camera ever gets):
+// the camera's own widens with speed on the bicycle and the boat, and cascades refitted to it
+// every frame change their texel size every frame, so every shadow shimmered (the pier's
+// railings, the boat, all of them at once).
+{
+  const view = new THREE.PerspectiveCamera(72, 1, 0.15, 5000);
+  const fit = sun.shadow.updateMatrices.bind(sun.shadow);
+  sun.shadow.updateMatrices = (light, cam) => {
+    if (!cam?.isPerspectiveCamera) return fit(light, cam);
+    view.matrixWorld.copy(cam.matrixWorld);
+    view.matrixWorldInverse.copy(cam.matrixWorldInverse);
+    if (view.aspect !== cam.aspect || view.near !== cam.near || view.far !== cam.far || view._reversedDepth !== cam.reversedDepth || view.coordinateSystem !== cam.coordinateSystem) {
+      view.aspect = cam.aspect;
+      view.near = cam.near;
+      view.far = cam.far;
+      view._reversedDepth = cam.reversedDepth;
+      view.coordinateSystem = cam.coordinateSystem;
+      view.updateProjectionMatrix();
+    }
+    return fit(light, view);
+  };
+}
 
 const tod = new TimeOfDay(sun);
 // the weather lays its overcast over the light of each hour (?rain: raining from the start)
@@ -118,7 +141,7 @@ function applyQuality(q) {
   pipe.width = 0;
   pipe.setSize(innerWidth, innerHeight, ratio);
   // the sea's mirror at half the resolution (a third on the light setting)
-  seaRefl.scale = Q.lite ? 0.34 : 0.5;
+  seaRefl.scale = Q.lite ? 0.42 : 0.55;
   seaRefl.setSize(innerWidth * ratio, innerHeight * ratio);
   if (sun.shadow.mapSize.x !== Q.shadow) {
     sun.shadow.mapSize.set(Q.shadow, Q.shadow);
@@ -220,8 +243,8 @@ const rainMap = new RainMap().build(renderer, scene);
 rainfall = createRain();
 rainfall.userData.setDensity(QUALITY[quality].lite ? 0.5 : 1);
 scene.add(rainfall);
-const glints = createLampGlints(world.lamps, (x, z) => world.colliders.groundAt(x, z));
-scene.add(glints);
+// the lamps' light at night, in the shaders (the rain map says which places are under a roof)
+buildLampGrid(world.lamps, (x, z, y) => world.colliders.groundAt(x, z, y), rainMap);
 // her bicycle (B to get on and off), in the colour picked last time
 const bike = new Bicycle(world, scene, { audio });
 // さくら一周ライン: timed from the START / GOAL arch (across the promenade and the coast road)
@@ -1354,8 +1377,9 @@ function simulate(dt) {
   anims.update(t, tod.hour);
   clouds.userData.update(camera, t);
   rainfall.userData.update(dt, avatar?.canopy?.() ?? null);
-  glints.visible = G.uWet.value > 0.01 && G.uNight.value > 0.35;
-  G.uTide.value = 0.06 * Math.sin(t * 0.42) + 0.025 * Math.sin(t * 1.13);
+  // (the sea's level rises and falls a little, slowly: the whole surface going up and down by a
+  // hand's breadth every few seconds read as the sea jumping)
+  G.uTide.value = 0.03 * Math.sin(t * 0.21) + 0.012 * Math.sin(t * 0.57);
   gustT -= dt;
   if (gustT <= 0) {
     gust = Math.random() < 0.35 ? 1 : 0;

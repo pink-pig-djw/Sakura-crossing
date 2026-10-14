@@ -128,16 +128,17 @@ const pathY = (s) => {
 };
 export const PATH_W = 2.4;
 
-// the nearest point of the path: { d (m), y (its height there), s (m along it) }
+// the nearest point of the path: { d (m), y (its height there), s (m along it), u, w (the
+// point) }
 export function pathNear(u, w) {
-  let best = { d: Infinity, y: 0, s: 0 };
+  let best = { d: Infinity, y: 0, s: 0, u: 0, w: 0 };
   const P = PATH.pts;
   for (let i = 0; i < P.length - 1; i++) {
     const a = P[i], b = P[i + 1];
     const dx = b.u - a.u, dw = b.w - a.w, l2 = dx * dx + dw * dw;
     const t = clamp(((u - a.u) * dx + (w - a.w) * dw) / l2, 0, 1);
     const d = Math.hypot(u - (a.u + dx * t), w - (a.w + dw * t));
-    if (d < best.d) best = { d, y: 0, s: lerp(a.s, b.s, t) };
+    if (d < best.d) best = { d, y: 0, s: lerp(a.s, b.s, t), u: a.u + dx * t, w: a.w + dw * t };
   }
   best.y = pathY(best.s);
   return best;

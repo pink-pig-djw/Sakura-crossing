@@ -11,10 +11,10 @@ import { buildTrees, fitTrees } from './trees.js';
 import { FoliageSet, useFoliage, buildFoliageMeshes, fitFoliage } from './greenery.js';
 import { buildGrass } from './grass.js';
 import { Colliders } from './collision.js';
-import { buildPolesAndWires, buildStreetProps, buildVending, buildLightPools, createWireMaterial, WireSet } from './props.js';
+import { buildPolesAndWires, buildStreetProps, buildVending, createWireMaterial, WireSet } from './props.js';
 import { buildTrack, buildCrossings, buildTrain } from './railway.js';
 import { buildCoast, createWater, createSailboats } from './coast.js';
-import { buildIsland } from './island.js';
+import { buildIsland, clearIslandPath } from './island.js';
 import { ISLAND } from './islandplan.js';
 import { buildStation, buildPlaza, buildShotengai, buildPark, buildShrine, lanternMesh } from './places.js';
 import { buildRiver } from './river.js';
@@ -260,6 +260,8 @@ export async function buildWorld(scene, opts = {}) {
   SOLIDS.on = false;
   if (opts.fitFoliage !== false) ctx.foliageFit = fitFoliage(ctx.foliage, SOLIDS.list);
   SOLIDS.list.length = 0;
+  // and none over the way up 凪ノ島's hill
+  ctx.islandTrim = clearIslandPath(ctx.foliage);
   buildFoliageMeshes(ctx.foliage, scene);
   useFoliage(null);
   // street-level colliders above the subway must not block anyone walking below
@@ -305,7 +307,6 @@ export async function buildWorld(scene, opts = {}) {
   const wireMat = createWireMaterial(1.35);
   ctx.wireMaterial = wireMat;
   scene.add(ctx.wires.build(wireMat));
-  scene.add(buildLightPools(ctx));
   if (ctx.lanterns?.length) scene.add(lanternMesh(ctx));
   scene.add(createWater());
   const boats = createSailboats(materials);

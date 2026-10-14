@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { G } from './materials.js';
-import { RAINTOP, NOISE } from './glsl.js';
+import { RAINTOP } from './glsl.js';
 
 // Falling rain and its splashes, all on the GPU.
 //
@@ -236,97 +236,3 @@ export function createRain() {
   return group;
 }
 
-// The street lamps on the wet ground at night: each lamp's light mirrored in the wet surface
-// under it, drawn out toward you (as a lamp's reflection is on a wet road), brightest in the
-// puddles, broken up by the ripples; none where the ground is dry (under a roof).
-export function createLampGlints(lamps, groundAt) {
-  const pos = [], lamp = [], col = [], idx = [];
-  const c = new THREE.Color();
-  let n = 0;
-  const S = 6;
-  for (const l of lamps) {
-    const base = l.floor ?? groundAt(l.x, l.z);
-    const h = l.y - base;
-    if (h < 0.8) continue;
-    const R = Math.min(12, Math.max(4, h * 2.2));
-    c.set(l.color ?? 0xffd9a0);
-    for (let j = 0; j <= S; j++) {
-      for (let i = 0; i <= S; i++) {
-        const x = l.x - R + (2 * R * i) / S, z = l.z - R + (2 * R * j) / S;
-        const y = (l.floor !== undefined ? l.floor : groundAt(x, z)) + 0.07;
-        pos.push(x, y, z);
-        lamp.push(l.x, l.y, l.z);
-        col.push(c.r, c.g, c.b);
-      }
-    }
-    for (let j = 0; j < S; j++) {
-      for (let i = 0; i < S; i++) {
-        const a = n + j * (S + 1) + i;
-        idx.push(a, a + S + 1, a + 1, a + 1, a + S + 1, a + S + 2);
-      }
-    }
-    n += (S + 1) * (S + 1);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('lamp', new THREE.Float32BufferAttribute(lamp, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
-  const m = new THREE.ShaderMaterial({
-    ...BLEND,
-    vertexColors: true,
-    polygonOffset: true,
-    polygonOffsetFactor: -5,
-    polygonOffsetUnits: -5,
-    uniforms: { uNight: G.uNight, uWet: G.uWet, uRain: G.uRain, uTime: G.uTime, uRainMap: G.uRainMap, uRainRect: G.uRainRect, uRainRange: G.uRainRange },
-    vertexShader: /* glsl */ `
-      attribute vec3 lamp;
-      varying vec3 vWP;
-      varying vec3 vLamp;
-      varying vec3 vCol;
-      void main() {
-        vWP = position;
-        vLamp = lamp;
-        vCol = color;
-        gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform float uNight;
-      uniform float uWet;
-      uniform float uRain;
-      uniform float uTime;
-      ${RAINTOP}
-      ${NOISE}
-      varying vec3 vWP;
-      varying vec3 vLamp;
-      varying vec3 vCol;
-      void main() {
-        float on = smoothstep(0.35, 0.9, uNight) * uWet;
-        if (on < 0.01) discard;
-        float open = smoothstep(-0.45, -0.12, vWP.y - rainTop(vWP.xz));
-        if (open < 0.01) discard;
-        vec3 V = normalize(cameraPosition - vWP);
-        vec3 L = vLamp - vWP;
-        float dl = length(L);
-        L /= dl;
-        // the surface: wet asphalt, puddles here and there; raindrops shake the reflection
-        float n = vnoise(vWP.xz * 0.5) * 0.6 + vnoise(vWP.xz * 1.6 + 7.3) * 0.4;
-        float pd = smoothstep(0.725, 0.75, n + 0.06 * uWet * uWet);
-        vec2 jit = (vec2(vnoise(vWP.xz * 6.0 + uTime * 2.0), vnoise(vWP.xz * 6.0 - uTime * 2.3)) - 0.5) * (0.12 + 0.2 * uRain) * (1.0 - 0.6 * pd);
-        vec3 N = normalize(vec3(jit.x, 1.0, jit.y));
-        vec3 H = normalize(V + L);
-        float rough = mix(55.0, 420.0, pd);
-        float spec = pow(max(dot(N, H), 0.0), rough) * mix(1.0, 2.6, pd);
-        spec *= 0.7 + 0.6 * vnoise(vWP.xz * 2.5);
-        float fall = 1.0 / (1.0 + dl * dl * 0.012);
-        gl_FragColor = vec4(vCol * spec * fall * on * open * 1.6, 0.0);
-      }
-    `,
-  });
-  const mesh = new THREE.Mesh(g, m);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 5;
-  mesh.name = 'lampGlints';
-  return mesh;
-}

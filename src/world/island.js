@@ -514,6 +514,46 @@ function woods(ctx, rng) {
   return n;
 }
 
+// The woods cut back over the path up the hill (world.js, once the trees are grown): no clump
+// of leaves hangs into the way, over it at head height or across its edges. A clump a little
+// low goes up over the way; one further down (a crown on the slope above, low over the path)
+// goes out to the side, a little smaller.
+export function clearIslandPath(fs) {
+  const half = PATH_W / 2 + 0.4, head = 2.5;
+  let moved = 0;
+  for (const fb of fs.map.values()) {
+    const P = fb.pos, Cd = fb.card;
+    for (let v = 0; v < fb.count; v += 4) {
+      let px = P[v * 3], py = P[v * 3 + 1], pz = P[v * 3 + 2];
+      if (px < I.x0 || px > I.x1 || pz < I.z0 || pz > I.z1) continue;
+      let size = Cd[v * 4 + 2];
+      const R = size * 0.95;
+      const pn = pathNear(px - I.x, pz - I.z);
+      if (pn.d > half + R) continue;
+      const top = pn.y + head;
+      const low = top - (py - R * 0.8);
+      if (low <= 0) continue;
+      if (low < 1.2) py += low;
+      else {
+        const k = pn.d > 1e-3 ? 1 / pn.d : 0;
+        const nx = pn.d > 1e-3 ? (px - I.x - pn.u) * k : 1, nz = pn.d > 1e-3 ? (pz - I.z - pn.w) * k : 0;
+        size *= 0.85;
+        const out = half + size * 0.95;
+        px = I.x + pn.u + nx * out;
+        pz = I.z + pn.w + nz * out;
+      }
+      for (let k = v; k < v + 4; k++) {
+        P[k * 3] = px;
+        P[k * 3 + 1] = py;
+        P[k * 3 + 2] = pz;
+        Cd[k * 4 + 2] = size;
+      }
+      moved++;
+    }
+  }
+  return moved;
+}
+
 export function buildIsland(ctx, scene) {
   const rng = new RNG(9191);
   const map = new GroundMap(I.x0, I.z0, I.x1, I.z1, 3);

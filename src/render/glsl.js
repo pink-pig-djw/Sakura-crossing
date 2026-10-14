@@ -395,4 +395,59 @@ vec3 toonShade(vec3 albedo, vec3 N, float shadow, float softness, float wrap) {
   col += albedo * band * uSunColor * vec3(0.20, 0.08, 0.02);
   return col;
 }
+
+// ---- the town's lamps at night (render/lamps.js) ----
+// (a wet street shows a lamp this many times further off than its pool reaches: lamps.js too)
+const float SHEEN_REACH = 2.2;
+uniform sampler2D uLampData;  // a column a lamp: (light x, y, z, pool radius), (pool x, z, floor, height), (colour, open sky)
+uniform sampler2D uLampCells; // per 8 m cell, two texels: up to eight lamps (index + 1; 0 none)
+uniform vec4 uLampGrid;       // x0, z0, 1 / cell, cells across
+uniform float uLampRows;
+uniform float uLampCount;
+// the lamps' light at P on a surface of colour albedo facing N: a soft pool under each and
+// round it (falling to nothing at its edge), on whatever faces it; on a wet surface (w, pd:
+// puddles) the lamp mirrored in it as well, a long way further off. A lamp out under the sky
+// does not reach under a roof (a shop's floor behind its wall)
+vec3 lampLight(vec3 albedo, vec3 P, vec3 N, float w, float pd) {
+  float on = smoothstep(0.35, 0.9, uNight);
+  if (on < 0.01 || uLampCount < 0.5) return vec3(0.0);
+  vec2 c = floor((P.xz - uLampGrid.xy) * uLampGrid.z);
+  if (c.x < 0.0 || c.y < 0.0 || c.x >= uLampGrid.w || c.y >= uLampRows) return vec3(0.0);
+  vec3 V = normalize(cameraPosition - P);
+  float roof = rainTop(P.xz) - P.y;
+  vec3 dif = vec3(0.0), spec = vec3(0.0);
+  for (int t = 0; t < 2; t++) {
+    vec4 ids = texelFetch(uLampCells, ivec2(int(c.x) * 2 + t, int(c.y)), 0);
+    for (int k = 0; k < 4; k++) {
+      int i = int(ids[k] + 0.5) - 1;
+      if (i < 0) break;
+      vec4 L = texelFetch(uLampData, ivec2(i, 0), 0);
+      vec4 Q = texelFetch(uLampData, ivec2(i, 1), 0);
+      vec4 C = texelFetch(uLampData, ivec2(i, 2), 0);
+      // over the lamp's head or well below its floor: none of its light
+      float v = P.y - Q.z;
+      float vf = smoothstep(-1.4, -0.5, v) * (1.0 - smoothstep(Q.w + 0.1, Q.w + 0.8, v));
+      // under a roof, from a lamp out under the sky (but for its own head over its foot)
+      if (C.a > 0.5 && roof > 0.4 && length(P.xz - L.xz) > 0.7) vf *= 0.1;
+      if (vf <= 0.0) continue;
+      vec3 d = L.xyz - P;
+      vec3 l = d / max(length(d), 1e-3);
+      float x = length(P.xz - Q.xy) / L.w;
+      if (x < 1.0) {
+        float u = 1.0 - x * x;
+        float pool = u * u * (0.7 + 0.3 * u);
+        dif += C.rgb * pool * vf * (0.12 + 0.88 * smoothstep(-0.1, 0.55, dot(N, l)));
+      }
+      float xs = x * (1.0 / SHEEN_REACH);
+      if (w > 0.0 && xs < 1.0) {
+        vec3 H = normalize(V + l);
+        float s = pow(max(dot(N, H), 0.0), mix(60.0, 380.0, pd)) * mix(1.0, 2.4, pd);
+        float us = 1.0 - xs * xs;
+        spec += C.rgb * s * us * us * vf;
+      }
+    }
+    if (int(ids.w + 0.5) == 0) break;
+  }
+  return (albedo * dif * 1.45 + spec * w * 1.3) * on;
+}
 `;

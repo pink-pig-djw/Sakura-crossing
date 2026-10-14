@@ -438,6 +438,17 @@ export class Player {
     } else {
       this.onGround = false;
     }
+    if (this.onGround) {
+      this.lastGround = g;
+      // the safety net: in deep water (shoved off a landing, set down beside it), back to where
+      // she last stood dry
+      if (!this._deep(this.pos.x, this.pos.z, g)) (this.dry ||= new THREE.Vector3()).copy(this.pos);
+      else if (this.dry) {
+        this.pos.copy(this.dry);
+        this.vel.set(0, 0, 0);
+        this.lastGround = this.pos.y;
+      }
+    }
 
     this._probeStairs(dt);
     // smooth eye height (stairs feel soft) + head bob
@@ -510,11 +521,28 @@ export class Player {
     if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return false;
     // the hills are off limits but for the cycling loop's roads and the places along them
     if (outsideDist(x, z) > 18 && g > terrainH(x, z) - 0.01 && g > 22 && !onRoute(x, z)) return false;
-    // deep sea (the subway lies below sea level, so only out past the shoreline)
-    if (g < -0.65 && z > shoreZ(x) - 4) return false;
+    // the sea: from the beach no further than ankle-deep in the surf (the subway lies below sea
+    // level, so only out past the shoreline); the river's mouth across the beach likewise
+    if (g < -0.2 && z > shoreZ(x) - 4) return false;
+    if (inRiver(x, z) && g < riverLevel(z) - 0.2) return false;
+    // never off an edge into the water: from a landing, a quay, a deck, stairs or a wall, a step
+    // (or a jump) that would drop her more than a stride into the sea or the river is a wall
+    // (wading in from the sand drops no more than a step at a time)
+    if (this.waterBelow(x, z, g) && (this.onGround ? this.pos.y : this.lastGround ?? this.pos.y) - g > 0.45) return false;
     // no wading up the walled river: only the stones, stairs and the open mouth on the beach
     if (z < SEAWALL_Z + 1.4 && inRiver(x, z) && g < riverLevel(z) - 0.02) return false;
     return true;
+  }
+
+  // the ground at x, z (g) lies under water: the sea's or the river's
+  waterBelow(x, z, g) {
+    const sea = G.uTide.value;
+    if (g < sea + 0.05 && terrainH(x, z) < sea + 0.05) return true;
+    return inRiver(x, z) && g < riverLevel(z) + 0.05;
+  }
+  // in water too deep to stand in (only ever by some mishap: see allowed)
+  _deep(x, z, g) {
+    return (g < -0.45 && z > shoreZ(x) - 4) || (inRiver(x, z) && g < riverLevel(z) - 0.45);
   }
 
   surface() {
