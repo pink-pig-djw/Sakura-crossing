@@ -1287,6 +1287,7 @@ function simulate(dt) {
       fz: fwd.z,
       shoreZ: shoreZ(cx),
       night: G.uNight.value,
+      hour: tod.hour,
       inTown: cz < 60,
       indoor: under || inside ? 1 : 0,
       under,

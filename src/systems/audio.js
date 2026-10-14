@@ -1,8 +1,12 @@
 // Procedural soundscape (Web Audio): sea, wind, birds, crossing bells, the
-// train, footsteps, wind chimes and a gentle generative piano. No samples.
+// train, footsteps, wind chimes and generative music for the time of day. No samples.
+
+import { MusicDirector } from './music.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+// how far ahead (s) rhythmic sounds are laid out on the audio clock
+const LOOK = 0.3;
 
 export class AudioEngine {
   constructor() {
@@ -10,8 +14,12 @@ export class AudioEngine {
     this.started = false;
     this.ambVol = 0.7;
     this.musicVol = 0.45;
-    this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, frog: 2, knock: 2, pfrog: 1, lark: 6, gull: 4, drip: 1, lap: 1, eave: 1, rfrog: 2 };
+    this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, knock: 2, lark: 6, gull: 4, drip: 1, lap: 1, eave: 1, rfrog: 2 };
     this.wet = 0; // the ground (wet footsteps and tyres)
+    this.baked = {}; // short sounds rendered once (bakeSheet)
+    // clocks for the sounds laid out ahead (ahead): the night's frogs, the paddies', the
+    // train's wheels, the crosswalks' tones
+    this.clocks = { frog: {}, pfrog: {}, clack: {}, walk: {} };
   }
 
   start() {
@@ -21,11 +29,12 @@ export class AudioEngine {
     }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    // a little more buffer than the lowest-latency default: with the town drawing hard on
-    // the same machine, the smallest buffers ran dry now and then (clicks and drop-outs)
+    // more buffer than the lowest-latency default: with the town drawing hard on the same
+    // machine, small buffers ran dry now and then (clicks and drop-outs). 80 ms is still
+    // well within a footstep
     let ctx;
     try {
-      ctx = new AC({ latencyHint: 0.05 });
+      ctx = new AC({ latencyHint: 0.08 });
     } catch {
       ctx = new AC();
     }
@@ -68,8 +77,9 @@ export class AudioEngine {
     this.setupRoute();
     this.setupRain();
     this.crossingVoices = new Map();
-    this.music = new PianoMusic(this);
-    this.music.start();
+    this.walkPans = new Map();
+    this.bakeSheet();
+    this.music = new MusicDirector(this);
   }
 
   setVolumes(amb, music) {
@@ -148,6 +158,106 @@ export class AudioEngine {
     param.setTargetAtTime(v, this.ctx.currentTime, tc);
   }
 
+  // ------------------------------------------------------------------ baked sounds
+  // The short sounds heard over and over (crossing bells, the wheels' clack, the crosswalks'
+  // tones, frogs, footsteps) are rendered once at the start, all in one offline pass (off the
+  // main thread), from the same recipes that play them live; then each sounds as one node
+  // instead of up to a dozen. Building and tearing down hundreds of nodes a second (the frogs'
+  // chorus, every step, the rain's drops) was what made the sound stutter on a busy machine.
+  // Until the pass is done the recipes play live.
+  bakeSheet() {
+    const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OC) return;
+    const items = [];
+    const add = (name, len, build) => items.push({ name, len, build });
+    for (const alt of [0, 1]) add('kan' + alt, 0.5, (d, t) => this.strikeRecipe(d, !!alt, t));
+    for (let i = 0; i < 2; i++) add('clack' + i, 0.24, (d, t) => this.clackRecipe(d, t));
+    add('piyo', 0.36, (d, t) => this.walkRecipe(d, 'piyo', t));
+    add('kakko', 0.72, (d, t) => this.walkRecipe(d, 'kakko', t));
+    for (let i = 0; i < 6; i++) {
+      const n = Math.floor(rand(3, 8)), f0 = rand(380, 620);
+      add('frogA' + i, n * 0.16 + 0.15, (d, t) => this.frogRecipe(d, t, n, f0, 0.16, 0.06));
+    }
+    for (let i = 0; i < 6; i++) {
+      const n = Math.floor(rand(2, 6)), f0 = rand(420, 680), gap = rand(0.13, 0.19);
+      add('frogB' + i, n * gap + 0.15, (d, t) => this.frogRecipe(d, t, n, f0, gap, 1));
+    }
+    for (let i = 0; i < 4; i++) add('stepHard' + i, 0.12, (d, t) => {
+      this.noiseHit(d, t, rand(1800, 2600), 1.4, 0.05, 0.06);
+      this.noiseHit(d, t, 160, 1, 0.07, 0.08, 'lowpass');
+    });
+    for (let i = 0; i < 3; i++) add('stepSand' + i, 0.16, (d, t) => this.noiseHit(d, t, rand(620, 780), 0.6, 0.12, 0.09, 'lowpass'));
+    for (let i = 0; i < 3; i++) add('stepWater' + i, 0.28, (d, t) => {
+      this.noiseHit(d, t, rand(1450, 1750), 0.8, 0.22, 0.1);
+      this.tone(d, t + 0.03, rand(500, 800), rand(900, 1300), 0.06, 0.02);
+    });
+    for (let i = 0; i < 3; i++) add('stepSplash' + i, 0.14, (d, t) => this.noiseHit(d, t + 0.01, rand(2600, 3800), 0.9, 0.09, 0.05));
+    const rate = 32000;
+    let at = 0;
+    for (const it of items) {
+      it.at = at;
+      at += it.len + 0.05;
+    }
+    let off;
+    try {
+      off = new OC(2, Math.ceil(at * rate), rate);
+    } catch {
+      return;
+    }
+    const real = this.ctx;
+    this.ctx = off;
+    try {
+      for (const it of items) it.build(off.destination, it.at);
+    } finally {
+      this.ctx = real;
+    }
+    off.startRendering().then((sheet) => {
+      for (const it of items) this.baked[it.name] = this.slice(sheet, it.at, it.len);
+    }, () => {});
+  }
+
+  // len seconds of a buffer from at, as a buffer of its own; with loop, the part past the end
+  // laid over the start (so it loops without a seam)
+  slice(buf, at, len, loop = false) {
+    const r = buf.sampleRate, i0 = Math.floor(at * r), n = Math.floor(len * r);
+    const out = this.ctx.createBuffer(buf.numberOfChannels, n, r);
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const src = buf.getChannelData(ch), dst = out.getChannelData(ch);
+      dst.set(src.subarray(i0, i0 + n));
+      if (loop) for (let i = i0 + n, k = 0; i < src.length && k < n; i++, k++) dst[k] += src[i];
+    }
+    return out;
+  }
+
+  // a baked sound: one buffer source into dest at t (with a gain if it is not 1)
+  playBaked(b, dest, t, gain = 1, rate = 1) {
+    const s = this.ctx.createBufferSource();
+    s.buffer = b;
+    if (rate !== 1) s.playbackRate.value = rate;
+    if (gain !== 1) {
+      const g = this.ctx.createGain();
+      g.gain.value = gain;
+      s.connect(g).connect(dest);
+    } else s.connect(dest);
+    s.start(t);
+    return s;
+  }
+  // one of a baked sound's takes (name0, name1 ...), or null before the bake is done
+  take(name, n) {
+    return this.baked[name + Math.floor(Math.random() * n)] ?? null;
+  }
+
+  // Rhythmic and dense sounds are laid out on the audio clock a little ahead (LOOK s), so a
+  // slow or stalled frame never shows in their rhythm: fire(t) for each time due, gap (s, or a
+  // function giving one) apart; after a stall, picked up from now rather than caught up
+  ahead(clock, gap, fire, now) {
+    if (!(clock.next > now - 0.05)) clock.next = now + 0.03;
+    while (clock.next < now + LOOK) {
+      fire(clock.next);
+      clock.next += typeof gap === 'function' ? gap() : gap;
+    }
+  }
+
   setPos(p, x, y, z) {
     if (p.positionX) {
       p.positionX.value = x;
@@ -218,14 +328,19 @@ export class AudioEngine {
     this.nightG.connect(this.amb);
   }
 
-  frogCall() {
+  frogCall(t = this.ctx.currentTime) {
     const ctx = this.ctx;
-    const t = ctx.currentTime;
     const pan = ctx.createStereoPanner();
     pan.pan.value = rand(-0.9, 0.9);
     pan.connect(this.nightG);
-    const n = Math.floor(rand(3, 8));
-    const f0 = rand(380, 620);
+    const b = this.take('frogA', 6);
+    if (b) this.playBaked(b, pan, t, 1, rand(0.92, 1.08));
+    else this.frogRecipe(pan, t, Math.floor(rand(3, 8)), rand(380, 620), 0.16, 0.06);
+  }
+
+  // ケロケロ: n croaks gap apart (a square wave's buzz through a band)
+  frogRecipe(dest, t, n, f0, gap, vol) {
+    const ctx = this.ctx;
     for (let i = 0; i < n; i++) {
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -235,13 +350,13 @@ export class AudioEngine {
       bp.frequency.value = f0 * 2;
       bp.Q.value = 6;
       const g = ctx.createGain();
-      const st = t + i * 0.16;
+      const st = t + i * gap * rand(0.95, 1.05);
       g.gain.setValueAtTime(0, st);
-      g.gain.linearRampToValueAtTime(0.06, st + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, st + 0.09);
-      o.connect(bp).connect(g).connect(pan);
+      g.gain.linearRampToValueAtTime(vol, st + 0.01);
+      g.gain.exponentialRampToValueAtTime(vol * 0.016, st + 0.085);
+      o.connect(bp).connect(g).connect(dest);
       o.start(st);
-      o.stop(st + 0.12);
+      o.stop(st + 0.11);
     }
   }
 
@@ -318,8 +433,13 @@ export class AudioEngine {
   }
 
   // ------------------------------------------------------------------ crossing bell (カンカン)
-  crossingStrike(p, alt) {
-    const t = this.ctx.currentTime;
+  crossingStrike(p, alt, t = this.ctx.currentTime) {
+    const b = this.baked[alt ? 'kan1' : 'kan0'];
+    if (b) this.playBaked(b, p, t);
+    else this.strikeRecipe(p, alt, t);
+  }
+
+  strikeRecipe(p, alt, t) {
     const f = alt ? 720 : 690;
     for (const [k, v, d] of [[1, 0.12, 0.42], [2.43, 0.06, 0.28], [4.1, 0.025, 0.15]]) this.tone(p, t, f * k, f * k * 0.995, d, v, 'triangle');
     // strike click
@@ -359,12 +479,17 @@ export class AudioEngine {
     this.motorG.gain.value = 0;
     this.motor.connect(mf).connect(this.motorG).connect(this.trainPan);
     this.motor.start();
-    this.clackT = 0;
   }
 
-  clack() {
+  // the wheels over a rail joint: clack-clack
+  clack(t = this.ctx.currentTime) {
+    const b = this.take('clack', 2);
+    if (b) this.playBaked(b, this.trainPan, t, 1, rand(0.95, 1.05));
+    else this.clackRecipe(this.trainPan, t);
+  }
+
+  clackRecipe(dest, t) {
     const ctx = this.ctx;
-    const t = ctx.currentTime;
     for (const dt of [0, 0.11]) {
       const s = ctx.createBufferSource();
       s.buffer = this.white;
@@ -376,8 +501,8 @@ export class AudioEngine {
       g.gain.setValueAtTime(0.0001, t + dt);
       g.gain.exponentialRampToValueAtTime(0.35, t + dt + 0.005);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.07);
-      s.connect(bp).connect(g).connect(this.trainPan);
-      s.start(t + dt);
+      s.connect(bp).connect(g).connect(dest);
+      s.start(t + dt, Math.random());
       s.stop(t + dt + 0.1);
     }
   }
@@ -606,6 +731,17 @@ export class AudioEngine {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const v = running ? 1.25 : 1;
+    const r = rand(0.93, 1.07);
+    const hard = this.take('stepHard', 4);
+    if (hard) {
+      if (surface === 'sand') this.playBaked(this.take('stepSand', 3), this.sfxBus, t, v, r);
+      else if (surface === 'water') this.playBaked(this.take('stepWater', 3), this.sfxBus, t, v, r);
+      else {
+        this.playBaked(hard, this.sfxBus, t, v, r);
+        if (this.wet > 0.25) this.playBaked(this.take('stepSplash', 3), this.sfxBus, t, v * this.wet, r);
+      }
+      return;
+    }
     if (surface === 'sand') {
       this.noiseHit(this.sfxBus, t, 700, 0.6, 0.12, 0.09 * v, 'lowpass');
     } else if (surface === 'water') {
@@ -833,12 +969,21 @@ export class AudioEngine {
     }
   }
 
-  // pedestrian signal guide tones: ピヨピヨ / カッコー
-  crosswalkTone(kind, x, y, z) {
+  // pedestrian signal guide tones: ピヨピヨ / カッコー (each crosswalk keeps its panner)
+  crosswalkTone(kind, c, t = this.ctx.currentTime) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    const p = this.panner(x, y, z, 6, 1.4);
-    p.connect(this.amb);
+    let p = this.walkPans.get(c);
+    if (!p) {
+      p = this.panner(c.x, 4, c.z, 6, 1.4);
+      p.connect(this.amb);
+      this.walkPans.set(c, p);
+    }
+    const b = this.baked[kind];
+    if (b) this.playBaked(b, p, t);
+    else this.walkRecipe(p, kind, t);
+  }
+
+  walkRecipe(p, kind, t) {
     if (kind === 'piyo') {
       this.tone(p, t, 2600, 2200, 0.12, 0.035);
       this.tone(p, t + 0.16, 2600, 2200, 0.12, 0.035);
@@ -889,7 +1034,6 @@ export class AudioEngine {
     this.subG = ctx.createGain();
     this.subG.gain.value = 0;
     sn.connect(this.subF).connect(this.subG).connect(this.subPan);
-    this.walkT = 0;
   }
 
   // ------------------------------------------------------------------ the cycling loop's places
@@ -934,30 +1078,12 @@ export class AudioEngine {
   }
 
   // a frog in the paddies (ケロケロ), placed
-  frogAt(x, y, z, vol) {
-    const ctx = this.ctx;
-    const t = ctx.currentTime;
+  frogAt(x, y, z, vol, t = this.ctx.currentTime) {
     const p = this.panner(x, y, z, 5, 1.2);
     p.connect(this.amb);
-    const n = Math.floor(rand(2, 6));
-    const f0 = rand(420, 680);
-    for (let i = 0; i < n; i++) {
-      const o = ctx.createOscillator();
-      o.type = 'square';
-      o.frequency.value = f0 * rand(0.97, 1.03);
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = f0 * 2;
-      bp.Q.value = 6;
-      const g = ctx.createGain();
-      const st = t + i * rand(0.13, 0.19);
-      g.gain.setValueAtTime(0, st);
-      g.gain.linearRampToValueAtTime(vol, st + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, st + 0.08);
-      o.connect(bp).connect(g).connect(p);
-      o.start(st);
-      o.stop(st + 0.11);
-    }
+    const b = this.take('frogB', 6);
+    if (b) this.playBaked(b, p, t, vol, rand(0.9, 1.1));
+    else this.frogRecipe(p, t, Math.floor(rand(2, 6)), rand(420, 680), rand(0.13, 0.19), vol);
   }
 
   // 雲雀: a skylark's long tumbling song from high over the fields
@@ -1099,7 +1225,57 @@ export class AudioEngine {
     tn.connect(tf).connect(R.tyreG).connect(this.sfxBus);
     R.dropAcc = 0;
     R.umbAcc = 0;
+    R.beds = null;
     this.rainSet = R;
+  }
+
+  // The rain's patter as loops, made the first time it rains: drops scattered at random over a
+  // few seconds (two layers of different lengths for the ground and two for the umbrella, so
+  // together they never come round the same way), rendered offline. Lighter rain plays the
+  // sparse layer only; their levels follow how hard it rains. (It was a buffer source, a gain
+  // and a panner for every drop, seventy a second.)
+  bakeRain() {
+    const R = this.rainSet;
+    const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    R.beds = [];
+    if (!OC) return;
+    const layers = [
+      { bus: R.dropBus, secs: 5.3, per: 9, vol: [0.01, 0.035], rate: [0.55, 1.3], pan: 1, k: 'light' },
+      { bus: R.dropBus, secs: 7.1, per: 17, vol: [0.01, 0.035], rate: [0.55, 1.3], pan: 1, k: 'heavy' },
+      { bus: R.umbBus, secs: 4.7, per: 14, vol: [0.03, 0.09], rate: [0.35, 0.65], pan: 0.45, k: 'light' },
+      { bus: R.umbBus, secs: 6.3, per: 28, vol: [0.03, 0.09], rate: [0.35, 0.65], pan: 0.45, k: 'heavy' },
+    ];
+    const sr = 24000;
+    for (const L of layers) {
+      let off;
+      try {
+        off = new OC(2, Math.ceil((L.secs + 0.3) * sr), sr);
+      } catch {
+        continue;
+      }
+      for (let i = 0, n = Math.round(L.secs * L.per); i < n; i++) {
+        const s = off.createBufferSource();
+        s.buffer = pick(R.drops);
+        s.playbackRate.value = rand(L.rate[0], L.rate[1]);
+        const g = off.createGain();
+        g.gain.value = rand(L.vol[0], L.vol[1]);
+        const pn = off.createStereoPanner();
+        pn.pan.value = rand(-L.pan, L.pan);
+        s.connect(g).connect(pn).connect(off.destination);
+        s.start(Math.random() * L.secs);
+      }
+      off.startRendering().then((buf) => {
+        const ctx = this.ctx;
+        const src = ctx.createBufferSource();
+        src.buffer = this.slice(buf, 0, L.secs, true);
+        src.loop = true;
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        src.connect(g).connect(L.bus);
+        src.start();
+        R.beds.push({ g, k: L.k, umb: L.bus === R.umbBus });
+      }, () => {});
+    }
   }
 
   rainDrop(dest, vol, rate, pan) {
@@ -1154,20 +1330,26 @@ export class AudioEngine {
     this.ease(R.roar.g.gain, 0.12 * Math.max(0, a - 0.55) * (1 - 0.5 * inside), 1.0);
     this.ease(R.dropBus.gain, roof ? 0.35 : 1, 0.3);
     this.ease(R.umbBus.gain, r.umbrella, 0.15);
-    // drops landing round about
-    R.dropAcc += dt * a * 26;
-    while (R.dropAcc > 1) {
-      R.dropAcc -= 1;
-      this.rainDrop(R.dropBus, rand(0.01, 0.035), rand(0.55, 1.3), rand(-1, 1));
-    }
-    // on the umbrella: quick light taps, close
-    if (r.umbrella > 0.05) {
-      R.umbAcc += dt * a * 42;
-      while (R.umbAcc > 1) {
-        R.umbAcc -= 1;
-        this.rainDrop(R.umbBus, rand(0.03, 0.09), rand(0.35, 0.65), rand(-0.45, 0.45));
+    // drops landing round about, and on the umbrella quick light taps, close: the beds once
+    // they are made (live drops until then)
+    if (a > 0.01 && !R.beds) this.bakeRain();
+    if (R.beds && R.beds.length === 4) {
+      const light = Math.min(1, a / 0.35), heavy = a < 0.25 ? 0 : Math.min(1, (a - 0.25) / 0.65);
+      for (const b of R.beds) this.ease(b.g.gain, b.k === 'light' ? light : heavy * heavy * (3 - 2 * heavy), 0.4);
+    } else {
+      R.dropAcc += dt * a * 26;
+      while (R.dropAcc > 1) {
+        R.dropAcc -= 1;
+        this.rainDrop(R.dropBus, rand(0.01, 0.035), rand(0.55, 1.3), rand(-1, 1));
       }
-    } else R.umbAcc = 0;
+      if (r.umbrella > 0.05) {
+        R.umbAcc += dt * a * 42;
+        while (R.umbAcc > 1) {
+          R.umbAcc -= 1;
+          this.rainDrop(R.umbBus, rand(0.03, 0.09), rand(0.35, 0.65), rand(-0.45, 0.45));
+        }
+      } else R.umbAcc = 0;
+    }
     // a drip from the eaves when under a roof (out of the rain)
     const T = this.timers;
     if (roof && !inside && a > 0.2 && T.eave <= 0) {
@@ -1241,10 +1423,8 @@ export class AudioEngine {
       T.chime = rand(3, 9);
     }
     this.ease(this.nightG.gain, s.night > 0.6 ? 0.9 : 0, 1);
-    if (s.night > 0.6 && T.frog <= 0) {
-      this.frogCall();
-      T.frog = rand(0.6, 2.2);
-    }
+    if (s.night > 0.6) this.ahead(this.clocks.frog, () => rand(0.6, 2.2), (at) => this.frogCall(at), t);
+    else this.clocks.frog.next = undefined;
 
     // crossings
     for (const c of s.crossings || []) {
@@ -1254,14 +1434,13 @@ export class AudioEngine {
         v.p.connect(this.amb);
         this.crossingVoices.set(c, v);
       }
+      // (the bell's beat laid out on the audio clock: steady whatever the frame rate)
       if (c.active) {
-        v.t -= dt;
-        if (v.t <= 0) {
-          this.crossingStrike(v.p, v.alt);
+        this.ahead(v, 0.52, (at) => {
+          this.crossingStrike(v.p, v.alt, at);
           v.alt = !v.alt;
-          v.t = 0.52;
-        }
-      } else v.t = 0;
+        }, t);
+      } else v.next = undefined;
     }
     // train
     const tr = s.train;
@@ -1274,13 +1453,8 @@ export class AudioEngine {
       this.ease(this.trainF.frequency, 160 + sp * 40, 0.4);
       this.ease(this.motorG.gain, vis && sp > 0.2 ? 0.015 + sp * 0.002 : 0, 0.3);
       this.ease(this.motor.frequency, 90 + sp * 38, 0.3);
-      if (sp > 1) {
-        this.clackT -= dt;
-        if (this.clackT <= 0) {
-          this.clack();
-          this.clackT = 18 / sp;
-        }
-      }
+      if (sp > 1) this.ahead(this.clocks.clack, 18 / sp, (at) => this.clack(at), t);
+      else this.clocks.clack.next = undefined;
       for (const e of tr.events.splice(0)) {
         if (e === 'horn') this.horn();
         if (e === 'melody') this.melody(s.station.x, 5, s.station.z);
@@ -1315,14 +1489,12 @@ export class AudioEngine {
         }
       }
       if (s.crosswalks && !s.under) {
-        this.walkT -= dt;
-        if (this.walkT <= 0) {
-          this.walkT = 0.75;
+        this.ahead(this.clocks.walk, 0.75, (at) => {
           for (const c of s.crosswalks) {
             if (Math.hypot(c.x - s.x, c.z - s.z) > 28 || !c.walk) continue;
-            this.crosswalkTone(c.axis === 1 ? 'piyo' : 'kakko', c.x, 4, c.z);
+            this.crosswalkTone(c.axis === 1 ? 'piyo' : 'kakko', c, at);
           }
-        }
+        }, t);
       }
     }
     // the cycling loop's places
@@ -1342,11 +1514,12 @@ export class AudioEngine {
         this.ease(this.millG.gain, r.mill.d < 130 ? (0.03 + 0.09 * ph * ph) * outside : 0, 0.15);
       }
       // the paddies: a frog now and then by day, a chorus by night
-      if (r.paddy < 45 && T.pfrog <= 0 && outside > 0.5) {
-        const a = rand(0, Math.PI * 2), d = rand(6, 26);
-        this.frogAt(s.x + Math.cos(a) * d, s.y - 1, s.z + Math.sin(a) * d, s.night > 0.6 ? 0.07 : 0.05);
-        T.pfrog = s.night > 0.6 ? rand(0.12, 0.45) : rand(1.8, 6);
-      }
+      if (r.paddy < 45 && outside > 0.5) {
+        this.ahead(this.clocks.pfrog, () => (s.night > 0.6 ? rand(0.12, 0.45) : rand(1.8, 6)), (at) => {
+          const a = rand(0, Math.PI * 2), d = rand(6, 26);
+          this.frogAt(s.x + Math.cos(a) * d, s.y - 1, s.z + Math.sin(a) * d, s.night > 0.6 ? 0.07 : 0.05, at);
+        }, t);
+      } else this.clocks.pfrog.next = undefined;
       if (day && r.fields < 40 && T.lark <= 0) {
         this.hibari(s.x + rand(-50, 50), s.y + rand(25, 45), s.z + rand(-50, 50));
         T.lark = rand(8, 20);
@@ -1365,96 +1538,6 @@ export class AudioEngine {
       }
     }
     this.rainUpdate(dt, s);
-    if (this.music) this.music.update(t);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Generative piano: IV - V - iii - vi (王道進行) in D major, slow and airy
-// ---------------------------------------------------------------------------
-class PianoMusic {
-  constructor(engine) {
-    this.e = engine;
-    this.bpm = 68;
-    this.beat = 60 / this.bpm;
-    this.next = 0;
-    this.step = 0;
-    // MIDI chord tones
-    this.chords = [
-      { bass: 43, tones: [55, 59, 62, 66, 69] }, // Gmaj7(9)
-      { bass: 45, tones: [57, 61, 64, 66, 71] }, // A6(9)
-      { bass: 42, tones: [54, 57, 61, 64, 68] }, // F#m7(11)
-      { bass: 47, tones: [54, 59, 62, 66, 69] }, // Bm7(9)
-    ];
-    this.scale = [62, 64, 66, 69, 71, 74, 76, 78, 81];
-  }
-
-  start() {
-    this.next = this.e.ctx.currentTime + 1.5;
-  }
-
-  note(t, midi, vel, dur = 3.5) {
-    const ctx = this.e.ctx;
-    const f = 440 * Math.pow(2, (midi - 69) / 12);
-    const out = ctx.createGain();
-    out.gain.value = 1;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 1800 + vel * 2000;
-    out.connect(lp);
-    lp.connect(this.e.musicBus);
-    const send = ctx.createGain();
-    send.gain.value = 0.55;
-    lp.connect(send).connect(this.e.revSend);
-    for (const [k, a, d] of [[1, 1, 1], [2, 0.32, 0.55], [3, 0.12, 0.35], [4.01, 0.05, 0.22]]) {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.value = f * k;
-      o.detune.value = (Math.random() - 0.5) * 6;
-      const g = ctx.createGain();
-      const peak = 0.05 * vel * a;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(peak, t + 0.008);
-      g.gain.exponentialRampToValueAtTime(peak * 0.35, t + 0.4 * d);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * d);
-      o.connect(g).connect(out);
-      o.start(t);
-      o.stop(t + dur * d + 0.05);
-    }
-  }
-
-  update(now) {
-    if (this.e.musicVol <= 0.001) {
-      this.next = Math.max(this.next, now + 0.5);
-      return;
-    }
-    // a long stall of the page (a model loading, shaders compiling) left the schedule
-    // behind: skip what was missed rather than sounding it all at once
-    if (this.next < now - 0.05) {
-      const missed = Math.ceil((now - this.next) / (this.beat / 2));
-      this.step += missed;
-      this.next += (missed * this.beat) / 2;
-    }
-    // scheduled well ahead, so a stall shorter than that does not reach the music at all
-    while (this.next < now + 1.6) {
-      const bar = Math.floor(this.step / 8);
-      const chord = this.chords[Math.floor(bar / 2) % 4];
-      const sub = this.step % 8; // eighth notes in a bar
-      const t = this.next;
-      if (sub === 0 && bar % 2 === 0) this.note(t, chord.bass, 0.75, 6);
-      if (sub === 0 && bar % 2 === 1) this.note(t, chord.bass + 12, 0.5, 4);
-      // broken chord, gently varied
-      if ([0, 2, 3, 5, 6].includes(sub) && Math.random() < 0.85) {
-        const idx = [0, 2, 1, 3, 4][[0, 2, 3, 5, 6].indexOf(sub)];
-        this.note(t + rand(0, 0.015), chord.tones[idx] + 12, rand(0.35, 0.55), 3.2);
-      }
-      // sparse melody on top
-      if ((sub === 1 || sub === 4 || sub === 7) && Math.random() < 0.28) {
-        const m = pick(this.scale) + 12;
-        this.note(t + rand(0, 0.02), m, rand(0.4, 0.6), 2.6);
-      }
-      this.step++;
-      this.next += this.beat / 2;
-    }
+    if (this.music) this.music.update(t, s.hour ?? 12);
   }
 }
