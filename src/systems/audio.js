@@ -504,6 +504,104 @@ export class AudioEngine {
     if (this.rainSet) this.ease(this.rainSet.tyreG.gain, sand ? 0 : Math.min(1, v / 6) * 0.07 * this.wet, 0.1);
   }
 
+  // ------------------------------------------------------------------ the boat
+  // the outboard: a single cylinder's putter at idle rising to a buzz at full throttle (a
+  // sawtooth pulsed at the firing rate, its exhaust's breath and the whine of the gears), the
+  // water rushing along the hull and hissing off the bow with the speed, and now and then a
+  // wavelet slapping the planks
+  setupBoat() {
+    const ctx = this.ctx;
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(this.sfxBus);
+    const eng = ctx.createOscillator();
+    eng.type = 'sawtooth';
+    eng.frequency.value = 40;
+    const ef = ctx.createBiquadFilter();
+    ef.type = 'lowpass';
+    ef.frequency.value = 420;
+    ef.Q.value = 1.2;
+    // (each firing a pulse: the oscillator's level beaten by a square wave at the firing rate)
+    const pulse = ctx.createGain();
+    pulse.gain.value = 0.5;
+    const fire = ctx.createOscillator();
+    fire.type = 'square';
+    fire.frequency.value = 9;
+    const fireG = ctx.createGain();
+    fireG.gain.value = 0.5;
+    fire.connect(fireG).connect(pulse.gain);
+    const eg = ctx.createGain();
+    eg.gain.value = 0.12;
+    eng.connect(ef).connect(pulse).connect(eg).connect(out);
+    const ex = this.loopNoise(this.pink);
+    const xf = ctx.createBiquadFilter();
+    xf.type = 'bandpass';
+    xf.frequency.value = 260;
+    xf.Q.value = 1.4;
+    const xg = ctx.createGain();
+    xg.gain.value = 0.05;
+    ex.connect(xf).connect(xg).connect(pulse);
+    const whine = ctx.createOscillator();
+    whine.type = 'triangle';
+    whine.frequency.value = 600;
+    const wg = ctx.createGain();
+    wg.gain.value = 0;
+    whine.connect(wg).connect(out);
+    eng.start();
+    fire.start();
+    whine.start();
+    // the water: a rush along the hull, the bow's hiss
+    const rush = this.loopNoise(this.brown);
+    const rf = ctx.createBiquadFilter();
+    rf.type = 'lowpass';
+    rf.frequency.value = 500;
+    const rg = ctx.createGain();
+    rg.gain.value = 0;
+    rush.connect(rf).connect(rg).connect(this.sfxBus);
+    const hiss = this.loopNoise(this.white);
+    const hf = ctx.createBiquadFilter();
+    hf.type = 'highpass';
+    hf.frequency.value = 1800;
+    const hg = ctx.createGain();
+    hg.gain.value = 0;
+    hiss.connect(hf).connect(hg).connect(this.sfxBus);
+    this.bt = { out, eng, ef, fire, fireG, eg, whine, wg, rf, rg, hg, slap: 1 };
+  }
+
+  // s: { on (her in it, the engine running), rpm (0..1), v (m/s), throttle (-1..1) }
+  boat(dt, s) {
+    if (!this.ctx) return;
+    if (!this.bt) {
+      if (!s.on) return;
+      this.setupBoat();
+    }
+    const B = this.bt;
+    const r = s.on ? s.rpm : 0;
+    this.ease(B.out.gain, s.on ? 1 : 0, s.on ? 0.15 : 0.35);
+    // firing 8 times a second at idle, near 45 flat out
+    const fire = 8 + r * 37;
+    this.ease(B.fire.frequency, fire, 0.12);
+    this.ease(B.eng.frequency, fire * 2.1, 0.12);
+    this.ease(B.ef.frequency, 300 + r * 1100, 0.15);
+    this.ease(B.eg.gain, 0.06 + r * 0.09, 0.15);
+    // (at speed the pulses run together into a hum)
+    this.ease(B.fireG.gain, 0.5 - r * 0.32, 0.2);
+    this.ease(B.whine.frequency, 420 + r * 900, 0.15);
+    this.ease(B.wg.gain, r * r * 0.012, 0.2);
+    const v = s.v;
+    this.ease(B.rg.gain, Math.min(1, v / 6) * 0.14, 0.2);
+    this.ease(B.rf.frequency, 300 + v * 120, 0.2);
+    this.ease(B.hg.gain, Math.max(0, v - 2.5) * 0.01, 0.2);
+    // a wavelet slapping the hull now and then (more often under way)
+    B.slap -= dt * (1 + v * 0.4);
+    if (s.on && B.slap <= 0) {
+      B.slap = rand(0.5, 1.6);
+      const t = this.ctx.currentTime;
+      this.noiseHit(this.sfxBus, t, rand(260, 420), 1.1, rand(0.08, 0.14), 0.05 + Math.min(v, 5) * 0.012, 'lowpass');
+      this.noiseHit(this.sfxBus, t + 0.01, rand(1400, 2200), 1.2, 0.05, 0.015);
+    }
+  }
+
   step(surface, running) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
@@ -662,6 +760,45 @@ export class AudioEngine {
       case 'bikeStroke':
         // the chain over the ring on each stroke, very soft
         this.noiseHit(out, t, rand(2400, 3200), 2, 0.05, 0.012);
+        break;
+      // the boat: her step down onto the floorboards (a hollow thump, the water sloshing), the
+      // outboard's pull cord and its first coughs, the engine cut, a knock on the hull, the
+      // mooring line creaking as it takes up
+      case 'boatStep':
+        this.noiseHit(out, t, 170, 1, 0.13, 0.24, 'lowpass');
+        this.noiseHit(out, t + 0.01, 950, 1.4, 0.05, 0.05);
+        this.noiseHit(out, t + 0.09, 650, 0.8, 0.3, 0.05, 'lowpass');
+        break;
+      case 'boatStart': {
+        const s = this.ctx.createBufferSource();
+        s.buffer = this.pink;
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.Q.value = 2.5;
+        f.frequency.setValueAtTime(400, t);
+        f.frequency.exponentialRampToValueAtTime(1500, t + 0.32);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+        s.connect(f).connect(g).connect(out);
+        s.start(t, Math.random() * 2);
+        s.stop(t + 0.4);
+        for (let i = 0; i < 4; i++) this.noiseHit(out, t + 0.42 + i * 0.11 + rand(0, 0.03), rand(120, 180), 1, 0.08, 0.2 - i * 0.03, 'lowpass');
+        break;
+      }
+      case 'boatStop':
+        this.noiseHit(out, t, 140, 1, 0.12, 0.16, 'lowpass');
+        this.noiseHit(out, t + 0.16, 110, 1, 0.16, 0.1, 'lowpass');
+        break;
+      case 'boatBump':
+        this.noiseHit(out, t, 120, 1, 0.2, 0.32, 'lowpass');
+        this.noiseHit(out, t + 0.015, 700, 1.4, 0.1, 0.07);
+        this.tone(out, t + 0.03, 230, 180, 0.25, 0.02, 'triangle');
+        break;
+      case 'boatRope':
+        this.tone(out, t, 520, 760, 0.22, 0.012, 'sawtooth', 6);
+        this.noiseHit(out, t + 0.05, 1800, 2, 0.18, 0.03);
         break;
       default:
         break;

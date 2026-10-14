@@ -49,12 +49,12 @@ export class Colliders {
     return item;
   }
 
-  addSegment(x0, z0, x1, z1, thick = 0.25, yTop = 99) {
+  addSegment(x0, z0, x1, z1, thick = 0.25, yTop = 99, yBottom = -99) {
     const dx = x1 - x0, dz = z1 - z0;
     const len = Math.hypot(dx, dz);
     if (len < 0.01) return null;
     const ry = Math.atan2(-dz, dx);
-    return this.addBox((x0 + x1) / 2, (z0 + z1) / 2, len / 2, thick / 2, ry, yTop);
+    return this.addBox((x0 + x1) / 2, (z0 + z1) / 2, len / 2, thick / 2, ry, yTop, yBottom);
   }
 
   // walkable surface: rect (axis aligned) with height function h(x,z).

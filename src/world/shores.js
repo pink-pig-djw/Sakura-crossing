@@ -300,7 +300,7 @@ function lighthouse(ctx, scene) {
 }
 
 // two broad shafts of light sweeping round from the lantern at night
-function lighthouseBeam(ctx, scene, x, y, z) {
+export function lighthouseBeam(ctx, scene, x, y, z) {
   const L = 130;
   const geo = new THREE.BufferGeometry();
   const pos = [], uv = [];
@@ -478,13 +478,16 @@ function harbor(ctx) {
   const qz = H.quay;
   const conc = { color: 0xc4c0b6, pattern: PAT.CONCRETE, ao: 0.2 };
   // the quay wall along the basin, coping on top, bollards and tyre fenders
+  // (the coping and the low wall on it open where the stairs go down to the boat landing:
+  // world/pier.js)
+  const SG = [495.0, 497.0];
   for (let x = H.x0 + 2; x < H.x1 - 2; x += 6) {
     const x1 = Math.min(H.x1 - 2, x + 6);
     const b = ctx.builders.get('toon', x, qz);
     b.boxMM(x, H.basin - 0.6, qz - 0.2, x1, H.y + 0.02, qz + 0.6, conc);
-    b.boxMM(x, H.y, qz + 0.2, x1, H.y + 0.18, qz + 0.75, { color: 0xd4d0c6, pattern: PAT.CONCRETE });
+    for (const [a, c] of [[x, Math.min(x1, SG[0])], [Math.max(x, SG[1]), x1]]) if (c - a > 0.01) b.boxMM(a, H.y, qz + 0.2, c, H.y + 0.18, qz + 0.75, { color: 0xd4d0c6, pattern: PAT.CONCRETE });
   }
-  ctx.colliders.addBox((H.x0 + H.x1) / 2, qz + 0.5, (H.x1 - H.x0) / 2 - 2, 0.28, 0, H.y + 0.35);
+  for (const [a, c] of [[H.x0 + 2, SG[0]], [SG[1], H.x1 - 2]]) ctx.colliders.addBox((a + c) / 2, qz + 0.5, (c - a) / 2, 0.28, 0, H.y + 0.35);
   const bollards = [];
   for (let x = H.x0 + 6; x < H.x1 - 4; x += 8) {
     const b = ctx.builders.get('toon', x, qz);
@@ -505,7 +508,7 @@ function harbor(ctx) {
     b.boxMM(x, top, bz + 1.6, x1, top + 1.0, bz + 2.2, { color: 0xd0ccc2, pattern: PAT.CONCRETE });
     for (let k = 0; k < 3; k++) {
       const tx = x + rng.range(0, 8), off = rng.range(0.8, 3.2);
-      tetrapod(b, tx, Math.max(terrainH(tx, bz + 2.2 + off), 1.0 - off * 0.5), bz + 2.2 + off, rng.range(1.1, 1.5), rng);
+      tetrapod(b, tx, Math.max(terrainH(tx, bz + 2.2 + off), 1.0 - off * 0.5), bz + 2.2 + off, rng.range(1.1, 1.5), rng, ctx.colliders);
     }
   }
   const tb = ctx.builders.get('toon', bx0, bz);
@@ -517,6 +520,7 @@ function harbor(ctx) {
   for (let i = 0; i < 6; i++) {
     const x = H.x0 + 10 + i * 10.5 + rng.range(-1, 1);
     const z = qz + 4.2 + rng.range(-0.3, 0.6);
+    if (i === 0) continue; // (the boat landing: world/pier.js)
     boat(ctx, x, z, Math.PI / 2 + rng.range(-0.1, 0.1), rng, { float: 0.05 });
     const bo = bollards.reduce((p, c) => (Math.abs(c - x) < Math.abs(p - x) ? c : p), bollards[0]);
     ctx.builders.get('toon', x, z).detail.tube([V(bo, H.y + 0.45, qz + 0.2), V((bo + x) / 2, H.y - 0.3, qz + 1.8), V(x, 1.0, z - 1.6)], 0.025, 4, 0xd8cfa8);

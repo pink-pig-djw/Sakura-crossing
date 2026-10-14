@@ -13,7 +13,9 @@ import { buildGrass } from './grass.js';
 import { Colliders } from './collision.js';
 import { buildPolesAndWires, buildStreetProps, buildVending, buildLightPools, createWireMaterial, WireSet } from './props.js';
 import { buildTrack, buildCrossings, buildTrain } from './railway.js';
-import { buildCoast, createWater, buildIsland, createSailboats } from './coast.js';
+import { buildCoast, createWater, createSailboats } from './coast.js';
+import { buildIsland } from './island.js';
+import { ISLAND } from './islandplan.js';
 import { buildStation, buildPlaza, buildShotengai, buildPark, buildShrine, lanternMesh } from './places.js';
 import { buildRiver } from './river.js';
 import { buildCommercial } from './commercial.js';
@@ -24,7 +26,8 @@ import { buildSentoInterior } from './sento.js';
 import { buildCycleRoute } from './cycleroute.js';
 import { buildHills, openGround } from './hills.js';
 import { buildHills2 } from './hills2.js';
-import { buildShores } from './shores.js';
+import { buildShores, lighthouseBeam } from './shores.js';
+import { buildPier } from './pier.js';
 import { buildFireflies } from './fireflies.js';
 import { roadDist } from './routeplan.js';
 
@@ -92,7 +95,7 @@ function forest(ctx) {
 export async function buildWorld(scene, opts = {}) {
   const progress = opts.progress || (() => {});
   const atlas = new Atlas(2048, 0);
-  const atlas2 = new Atlas(2048, 1, 4096);
+  const atlas2 = new Atlas(2048, 1, 4608);
   const signTex = atlas.texture();
   const signTex2 = atlas2.texture();
   const materials = {
@@ -109,6 +112,9 @@ export async function buildWorld(scene, opts = {}) {
     glass: { material: createGlassMaterial(), castShadow: false, receiveShadow: false, renderOrder: 3 },
   };
   materials.detail = { material: materials.toon.material, castShadow: false };
+  // the pier and its landings: batches of their own, for the sea to mirror (render/reflection.js)
+  materials.pier = { material: materials.toon.material };
+  materials.pierGlow = { material: materials.emissive.material, castShadow: false };
   // shelf and locker contents (furnish.js): their own batches so they can be culled by distance
   materials.props = { ...materials.interior };
   materials.propsSign = { ...materials.interiorSign };
@@ -207,6 +213,13 @@ export async function buildWorld(scene, opts = {}) {
   ctx.hills2 = buildHills2(ctx, scene);
   AUDIT.tag = 'shores';
   ctx.shores = buildShores(ctx, scene);
+  // さくら桟橋 and the harbour's boat landing (the boat ties up at them: systems/boat.js);
+  // the breakwater's lighthouse turns its light at night like the cape's
+  buildPier(ctx);
+  if (ctx.lighthouse) lighthouseBeam(ctx, scene, ctx.lighthouse.x, ctx.lighthouse.y, ctx.lighthouse.z);
+  // 凪ノ島 out in the bay: its harbour (the boat's third landing), village, path and lighthouse
+  AUDIT.tag = 'island';
+  buildIsland(ctx, scene);
   ctx.fireflies = buildFireflies(scene);
 
   progress(0.68, '街をつくっています');
@@ -255,6 +268,16 @@ export async function buildWorld(scene, opts = {}) {
   const group = new THREE.Group();
   group.name = 'static';
   const built = ctx.builders.build(materials, group);
+  for (const m of built) if (m.name.startsWith('pier')) m.layers.enable(1);
+  // the sea mirrors the island whole: its quay and houses, its trees and their crowns, the
+  // lighthouse (not the see-through things)
+  const onIsle = (m) => {
+    if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    const c = m.geometry.boundingSphere.center;
+    return c.x > ISLAND.x0 && c.x < ISLAND.x1 && c.z > ISLAND.z0 && c.z < ISLAND.z1 && !m.material.transparent;
+  };
+  for (const m of built) if (onIsle(m)) m.layers.enable(1);
+  for (const m of scene.getObjectByName('foliage')?.children ?? []) if (onIsle(m)) m.layers.enable(1);
   // shelf and locker contents (and the shops' fittings) are only drawn within ~55 m: from
   // further away they are a few pixels behind glass
   const rooms = built.filter((m) => m.name.startsWith('props')).map((m) => {
@@ -273,7 +296,6 @@ export async function buildWorld(scene, opts = {}) {
   scene.add(ctx.wires.build(wireMat));
   scene.add(buildLightPools(ctx));
   if (ctx.lanterns?.length) scene.add(lanternMesh(ctx));
-  buildIsland(scene, materials);
   scene.add(createWater());
   const boats = createSailboats(materials);
   scene.add(boats);

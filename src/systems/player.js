@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { G } from '../render/materials.js';
 import { outsideDist, terrainH, shoreZ, BOUNDS, inRiver, riverLevel, SEAWALL_Z } from '../world/layout.js';
 import { onRoute, HARBOR } from '../world/routeplan.js';
+import { ISLAND, islandWalk, pathNear, PATH_W } from '../world/islandplan.js';
 
 // The walker: keyboard + mouse (pointer lock or drag), touch joystick, gamepad.
 // Feet position is kept on the walkable height field; colliders push back.
@@ -415,6 +417,8 @@ export class Player {
   }
 
   allowed(x, z, g) {
+    // out on 凪ノ島: its harbour, lanes, path and top (the rest is cliff and wood)
+    if (x > ISLAND.x0 && x < ISLAND.x1 && z > ISLAND.z0 && z < ISLAND.z1) return islandWalk(x, z);
     if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return false;
     // the hills are off limits but for the cycling loop's roads and the places along them
     if (outsideDist(x, z) > 18 && g > terrainH(x, z) - 0.01 && g > 22 && !onRoute(x, z)) return false;
@@ -427,6 +431,7 @@ export class Player {
 
   surface() {
     const { x, z } = this.pos;
+    if (x > ISLAND.x0 && x < ISLAND.x1 && z > ISLAND.z0 && z < ISLAND.z1) return pathNear(x - ISLAND.x, z - ISLAND.z).d < PATH_W / 2 + 0.3 ? 'sand' : 'hard';
     if (inRiver(x, z) && this.pos.y < riverLevel(z) + 0.02) return 'water';
     // the fishing harbour's concrete quays and slipway, and anything built over the beach
     // (decks, steps) are hard going, not sand
@@ -467,7 +472,7 @@ export class Player {
     const c = this.camera;
     const px = this.pos.x, pz = this.pos.z;
     // the pivot follows the feet smoothly (steps and stairs do not jolt the view)
-    const want = this.pos.y + (this.sitting ? PIVOT_SIT : PIVOT);
+    const want = this.pos.y + (this.ride?.pivot ?? (this.sitting ? PIVOT_SIT : PIVOT));
     if (this.pivotY === undefined || !this.onGround || Math.abs(want - this.pivotY) > 2) this.pivotY = want;
     else this.pivotY += (want - this.pivotY) * Math.min(1, (this._dt || 0.016) * 10);
     const py = this.pivotY;
@@ -482,6 +487,8 @@ export class Player {
       const g = this.col.groundAt(x, z, y);
       // (things lower than the camera, a bench under her, a low wall, are passed over)
       let hit = this.col.solidAt(x, z, y - 0.2) || y < g + 0.3 || this.col.movingAt(x, z, y);
+      // nor under the sea (or close over it)
+      if (!hit && g < G.uTide.value && y < G.uTide.value + 0.4) hit = true;
       // another level's floor between the pivot and the camera
       if (!hit && g > floorHere + 0.9 && g < y + 0.2) hit = true;
       if (!hit && room) hit = y > room.y1 - 0.3 || x < room.x0 + 0.2 || x > room.x1 - 0.2 || z < room.z0 + 0.2 || z > room.z1 - 0.2;

@@ -165,15 +165,22 @@ const C_RIVERBED_DK = new THREE.Color('#6f7466');
 
 export function buildTerrain(groundMap) {
   // 2 m grid over the town (aligned to even coordinates: stairwell holes and the river
-  // walls sit on grid lines), coarser over the hills and the sea
+  // walls sit on grid lines), coarser over the hills and the sea, and very coarse out to the
+  // coast and hills kilometres off along the shore and inland (seen from far out on the water
+  // they go on into the haze: no edge of the land)
   const xs = axisSamples([
+    [-6000, -2400, 250],
+    [-2400, -1000, 30],
     [-1000, -480, 20],
     [-480, -440, 4],
     [-440, 700, 2],
     [700, 740, 4],
     [740, 1300, 20],
+    [1300, 2600, 30],
+    [2600, 6000, 250],
   ]);
   const zs = axisSamples([
+    [-3000, -900, 300],
     [-900, -332, 20],
     [-332, -292, 4],
     [-292, 150, 2],
@@ -224,6 +231,12 @@ export function buildTerrain(groundMap) {
           p = PAT.ROCK;
         }
         tmp.lerp(C_GRASS, 1 - smoothstep(0, 12, out));
+        // (the far coast's beaches, at the water's edge)
+        if (y < 2.4) {
+          tmp.lerp(slope > 0.35 ? C_ROCK : C_SAND, smoothstep(2.4, 1.2, y));
+          if (y < 1.6) p = slope > 0.35 ? PAT.ROCK : PAT.SAND;
+          if (y < 0.2) tmp.lerp(C_SEABED, smoothstep(0.2, -1.5, y));
+        }
       } else {
         const f = noise2(x * 0.05, z * 0.05);
         tmp.copy(C_GRASS).lerp(C_GRASS_DRY, f * 0.6);

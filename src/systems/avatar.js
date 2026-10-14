@@ -43,6 +43,7 @@ export class Avatar {
     // her clear umbrella (ビニール傘): up while it rains (set by the game), closed and carried
     // under a roof or while she does something with her hands, in the basket on her bicycle
     this.umbrella = new Umbrella({ canopy: 'clear' });
+    this.umbrella.group.traverse((o) => o.layers.enable(1));
     this.carrier = new UmbrellaCarrier(this.umbrella);
     this.drips = new Drips();
     scene.add(this.drips.mesh);
@@ -54,7 +55,7 @@ export class Avatar {
   // what to do with the umbrella (her feet at x, y, z)
   _umbrellaWant(x, y, z) {
     if (!this.rain) return 'away';
-    if (this.bike?.on) return 'basket';
+    if (this.bike?.on || this.boat?.on) return 'basket';
     if (this.act || this.shelter?.(x, y + 1.8, z)) return 'hang';
     return 'open';
   }
@@ -94,6 +95,8 @@ export class Avatar {
     };
     if (old) old.root.removeFromParent();
     this.scene.add(ch.root);
+    // (mirrored by the sea: render/reflection.js)
+    ch.root.traverse((o) => o.layers.enable(1));
     ch.root.visible = old ? old.root.visible : false;
     if (old) old.hold = null;
     ch.hold = (c, dt) => this.carrier.pose(c, dt);
@@ -129,12 +132,17 @@ export class Avatar {
       this.drips.mesh.visible = false;
       return;
     }
-    // on her bicycle (getting on, riding, getting off)
+    // on her bicycle (getting on, riding, getting off), in her boat
     if (this.bike?.on) {
       this._ride(dt, still);
       return;
     }
     if (this.riding) this._offBike();
+    if (this.boat?.on) {
+      this._sail(dt, still);
+      return;
+    }
+    if (this.sailing) this._offBoat();
 
     let x = p.pos.x, y = p.pos.y, z = p.pos.z;
     if (p.sitting) {
@@ -313,6 +321,87 @@ export class Avatar {
     ch.wind = still ? null : wind;
     ch.update(dt);
     this.drips.update(dt, this.umbrella, 0);
+  }
+
+  // In the boat, and getting in and out of it: the boat says where she is and what she does
+  // (Boat.rider): a few steps along the landing to its side, two steps over the gunwale onto the
+  // floorboards, sitting down on the stern thwart (the boat poses her there: Boat.pose), and
+  // back. Seated she looks ahead over the bow, into the turns, or the way you look; the sea
+  // wind blows her hair and skirt back.
+  _sail(dt, still) {
+    const ch = this.ch, B = this.boat, p = this.player;
+    if (this.sailing !== ch) {
+      if (this.sailing) this._offBoat();
+      this.sailing = ch;
+      this.seat = null;
+      ch.seat = null;
+      this.act = null;
+      ch.stairs = null;
+      ch.eyesClosed = 0;
+      ch.pose = (c) => B.pose(c);
+      ch.skirtFollow = false;
+      this.sailClip = null;
+      this.gait = 'sail';
+    }
+    const R = B.rider();
+    if (R.inBoat) B.placeRider(ch.root);
+    else {
+      ch.root.rotation.order = 'YXZ';
+      ch.root.position.set(R.x, R.y, R.z);
+      ch.root.rotation.set(0, R.h, 0);
+    }
+    ch.noFit = !R.fit;
+    if (R.clip !== this.sailClip) {
+      this.sailClip = R.clip;
+      ch.play(R.clip, R.fade, R.rate);
+    }
+    this.heading = R.inBoat ? B.h : R.h;
+    this.carrier.want = this._umbrellaWant(0, 0, 0);
+    this.carrier.basket = B.parts?.stow ?? null;
+    const seated = B.k > 0.5;
+    const v = Math.abs(B.v);
+    ch.setMood(0.2 + Math.min(v / 5, 1) * 0.35);
+    // where she looks: ahead (a little into the turn), or where you look; getting in and out,
+    // where she is going
+    if (seated) {
+      const turn = THREE.MathUtils.clamp(-B.steer, -0.6, 0.6);
+      const hx = Math.sin(B.h + turn * 0.6), hz = Math.cos(B.h + turn * 0.6);
+      ch.node('head').getWorldPosition(_v);
+      const cam = _w.set(-Math.sin(p.yaw), Math.sin(p.pitch), -Math.cos(p.yaw));
+      const ahead = cam.x * Math.sin(B.h) + cam.z * Math.cos(B.h);
+      const lookCam = p.lookIdle < 1.2 && ahead > -0.1 ? 1 : 0;
+      this.lookK = (this.lookK ?? 0) + (lookCam - (this.lookK ?? 0)) * Math.min(1, dt * 3);
+      _v.x += (hx * (1 - this.lookK) + cam.x * this.lookK) * 10;
+      _v.z += (hz * (1 - this.lookK) + cam.z * this.lookK) * 10;
+      _v.y += -0.3 + cam.y * 6 * this.lookK;
+      ch.lookAt(_v, 0.6);
+    } else {
+      ch.node('head').getWorldPosition(_v);
+      _v.x += Math.sin(this.heading) * 4;
+      _v.z += Math.cos(this.heading) * 4;
+      _v.y -= 1.0;
+      ch.lookAt(_v, 0.5);
+    }
+    // the wind off the sea and of going: a breeze even at rest
+    const wind = (this.wind ||= new THREE.Vector3());
+    const gust = 1 + 0.3 * Math.sin(ch.t * 5.1) * Math.sin(ch.t * 1.7 + 0.4);
+    wind.set(-Math.sin(B.h) * (B.v + 0.8), 0.02 * v, -Math.cos(B.h) * (B.v + 0.8)).multiplyScalar(0.07 * gust);
+    ch.wind = still ? null : wind;
+    ch.update(dt);
+    this.drips.update(dt, this.umbrella, 0);
+  }
+
+  _offBoat() {
+    const ch = this.sailing;
+    this.sailing = null;
+    ch.pose = null;
+    ch.noFit = false;
+    ch.wind = null;
+    ch._hipsY = ch.hipsHeight;
+    ch.root.rotation.set(0, this.heading, 0);
+    ch.setMood(0.15);
+    this.carrier.basket = null;
+    this.gait = '';
   }
 
   _offBike() {

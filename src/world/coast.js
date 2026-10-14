@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { RNG, noise2 } from '../core/rng.js';
+import { RNG } from '../core/rng.js';
 import { PAT, MeshBuilder } from '../core/builder.js';
-import { terrainH, shoreZ, beachH, SEAWALL_Z, PROM, COAST, BEACH_STAIRS, BREAKWATER, SHORE, RIVER } from './layout.js';
+import { terrainH, shoreZ, beachH, SEAWALL_Z, PROM, COAST, BEACH_STAIRS, BREAKWATER, SHORE, RIVER, PIER } from './layout.js';
 import { HARBOR } from './routeplan.js';
 import { G } from '../render/materials.js';
 import { NOISE } from '../render/glsl.js';
@@ -12,9 +12,10 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 // Sea
 // ---------------------------------------------------------------------------
 export function createWater() {
-  const geo = new THREE.PlaneGeometry(9000, 6000, 1, 1);
+  // (big enough to reach the far plane from anywhere the boat can go)
+  const geo = new THREE.PlaneGeometry(40000, 20000, 1, 1);
   geo.rotateX(-Math.PI / 2);
-  geo.translate(0, 0, 3000 + 70);
+  geo.translate(0, 0, 10000 + 70);
   const mat = new THREE.ShaderMaterial({
     name: 'water',
     transparent: true,
@@ -41,6 +42,13 @@ export function createWater() {
       uMoonDir: G.uMoonDir,
       uSkyAmb: G.uSkyAmb,
       uRain: G.uRain,
+      uBoat: G.uBoat,
+      uBoatHull: G.uBoatHull,
+      uReflMap: G.uReflMap,
+      uReflMat: G.uReflMat,
+      uReflOn: G.uReflOn,
+      uIsleMap: G.uIsleMap,
+      uIsleRect: G.uIsleRect,
     },
     vertexShader: /* glsl */ `
       uniform float uTide;
@@ -68,6 +76,13 @@ export function createWater() {
       uniform vec3 uMoonDir;
       uniform vec3 uSkyAmb;
       uniform float uRain;
+      uniform vec4 uBoat;
+      uniform float uBoatHull[17];
+      uniform sampler2D uReflMap;
+      uniform mat4 uReflMat;
+      uniform float uReflOn;
+      uniform sampler2D uIsleMap;
+      uniform vec4 uIsleRect;
       varying vec3 vWorldPos;
       ${NOISE}
 
@@ -92,55 +107,101 @@ export function createWater() {
       float shoreZ(float x) { return 98.0 + 3.5 * sin(0.011 * x + 0.6) + 1.8 * sin(0.027 * x + 2.1); }
       float seabed(vec2 p) {
         float u = p.y - shoreZ(p.x);
-        if (u < 45.0) return -u * 0.052;
-        return -45.0 * 0.052 - (u - 45.0) * 0.02;
+        float b = u < 45.0 ? -u * 0.052 : -45.0 * 0.052 - (u - 45.0) * 0.02;
+        // (and round the island, its own shallows, going over into the open sea's floor toward
+        // the edges of its map)
+        vec2 iuv = (p - uIsleRect.xy) * uIsleRect.zw;
+        if (iuv.x > 0.0 && iuv.x < 1.0 && iuv.y > 0.0 && iuv.y < 1.0) {
+          vec2 e = min(iuv, 1.0 - iuv);
+          b = max(b, mix(b, texture2D(uIsleMap, iuv).r, smoothstep(0.0, 0.14, min(e.x, e.y))));
+        }
+        return b;
       }
-      float waveH(vec2 p, float t) {
-        float h = sin(dot(p, vec2(0.02, 0.23)) - t * 1.1) * 0.5;
-        h += sin(dot(p, vec2(-0.13, 0.31)) - t * 1.7) * 0.25;
-        h += sin(dot(p, vec2(0.37, 0.41)) - t * 2.3) * 0.12;
-        h += (vnoise(p * 0.6 + vec2(t * 0.3, -t * 0.5)) - 0.5) * 0.4;
-        return h;
+      // the long low swell rolling in from the open sea (toward the shore, -z), in sets: the
+      // slope of the surface it makes. Three trains crossing at shallow angles, each at the
+      // speed deep water gives a wave of its length
+      vec2 swell(vec2 p, float t) {
+        // (the crests bent and broken by slow eddies, so they never line up like ruled lines)
+        vec2 w = vec2(vnoise(p * 0.017 + 3.7), vnoise(p * 0.017 - 8.1)) - 0.5;
+        vec2 q = p + w * 26.0;
+        vec2 d1 = vec2(0.177, 0.984), d2 = vec2(-0.387, 0.922), d3 = vec2(0.482, 0.876), d4 = vec2(-0.83, 0.56);
+        vec2 g = d1 * (0.072 * cos(dot(d1, q) * 0.27 + t * 1.63));
+        g += d2 * (0.05 * cos(dot(d2, q) * 0.43 + t * 2.05 + 1.3));
+        g += d3 * (0.034 * cos(dot(d3, p) * 0.71 + t * 2.64 + 4.1));
+        g += d4 * (0.026 * cos(dot(d4, q) * 0.58 + t * 2.38 + 2.2));
+        return g * (0.45 + 1.1 * vnoise(p * 0.011 + vec2(t * 0.01, -t * 0.03)));
       }
+      // wind waves and ripples over it, drifting with the wind
+      vec2 ripple(vec2 p, float t) {
+        const float e = 0.15;
+        vec2 q = p * 0.85 + vec2(t * 0.33, t * 0.21);
+        float h0 = vnoise(q);
+        vec2 g = vec2(vnoise(q + vec2(e, 0.0)) - h0, vnoise(q + vec2(0.0, e)) - h0) * (0.85 * 0.075 / e);
+        vec2 q2 = p * 2.4 - vec2(t * 0.52, -t * 0.37);
+        float k0 = vnoise(q2);
+        g += vec2(vnoise(q2 + vec2(e, 0.0)) - k0, vnoise(q2 + vec2(0.0, e)) - k0) * (2.4 * 0.02 / e);
+        return g;
+      }
+
       void main() {
         vec2 p = vWorldPos.xz;
+        // none inside her boat (a 4.3 m hull, its middle at uBoat.xy)
+        vec2 bd = p - uBoat.xy;
+        float blz = bd.x * uBoat.z + bd.y * uBoat.w;
+        if (abs(blz) < 2.15) {
+          float bt = (blz + 2.15) / 4.3 * 16.0;
+          int bi = min(int(bt), 15);
+          if (abs(bd.x * uBoat.w - bd.y * uBoat.z) < mix(uBoatHull[bi], uBoatHull[bi + 1], bt - float(bi))) discard;
+        }
         vec3 toCam = cameraPosition - vWorldPos;
         float dist = length(toCam);
         vec3 V = toCam / dist;
         float depth = uTide - seabed(p);
         float t = uTime;
         float off = p.y - shoreZ(p.x); // meters seaward from the shoreline
-        // normals from analytic-ish waves, damped with distance
-        float e = 0.35;
-        float amp = 0.06 * (1.0 - smoothstep(60.0, 900.0, dist));
-        float hx = waveH(p + vec2(e, 0.0), t) - waveH(p - vec2(e, 0.0), t);
-        float hz = waveH(p + vec2(0.0, e), t) - waveH(p - vec2(0.0, e), t);
-        vec3 N = normalize(vec3(-hx * amp / e, 1.0, -hz * amp / e));
-        if (uRain > 0.01 && dist < 70.0) {
-          vec2 rs = seaRings(p, t) * 0.45 * uRain * (1.0 - smoothstep(25.0, 70.0, dist));
-          N = normalize(N + vec3(rs.x, 0.0, rs.y));
-        }
-        float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+        // the surface: the swell (calmer in the shallows), the small waves close by, the rain
+        float shoal = smoothstep(0.2, 3.0, depth);
+        vec2 g = swell(p, t) * (1.0 - smoothstep(300.0, 2600.0, dist)) * (0.3 + 0.7 * shoal);
+        g += ripple(p, t) * (1.0 - smoothstep(30.0, 280.0, dist));
+        if (uRain > 0.01 && dist < 70.0) g += seaRings(p, t) * 0.45 * uRain * (1.0 - smoothstep(25.0, 70.0, dist));
+        vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
+        float cosV = max(dot(N, V), 0.0);
+        // how much it mirrors: like water, all of it at a glancing look; toward the camera a
+        // little more than real water does, so the sea keeps the sky's colour
+        float fres = 0.08 + 0.92 * pow(1.0 - cosV, 4.0);
         vec3 R = reflect(-V, N);
-        vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.45));
-        // water body color: turquoise shallows -> cobalt -> paler toward the horizon
+        R.y = abs(R.y);
+        // the sky it mirrors, from the horizon's haze up to the zenith in soft painted steps, the
+        // glow round the sun spreading low over the water toward it
+        float el = clamp(R.y, 0.0, 1.0);
+        float e1 = pow(el, 0.45);
+        float es = (floor(e1 * 5.0) + smoothstep(0.3, 0.7, fract(e1 * 5.0))) / 5.0;
+        e1 = mix(e1, es, 0.5);
+        vec3 sky = mix(uHorizon, uZenith, e1);
+        vec2 rh = normalize(R.xz + 1e-4), sh = normalize(uSunDir.xz + 1e-4);
+        float toSun = pow(max(dot(rh, sh), 0.0), 4.0) * (1.0 - uNight) * (1.0 - smoothstep(0.0, 0.4, el));
+        sky = mix(sky, uHorizon * 1.04 + uSunGlow * 0.9, toSun * 0.65);
+        // the water's own colour by its depth: turquoise shallows, cobalt open sea, lit by the
+        // sun through the waves
         float dk = smoothstep(0.3, 7.0, depth);
-        vec3 base = mix(uWaterShallow, uWaterDeep, dk);
-        base = mix(base, mix(uWaterDeep, uHorizon, 0.35), smoothstep(250.0, 2200.0, dist));
-        vec3 skyMid = mix(uZenith, uHorizon, 0.45);
-        vec3 col = mix(base, mix(sky, skyMid, 0.5), 0.06 + 0.32 * fres);
-        // shading by sky ambient / sun
-        col *= 0.72 + 0.4 * clamp(dot(N, uSunDir), 0.0, 1.0) * (1.0 - uNight);
-        // drawn ripple strokes
-        float rip = vnoise(vec2(p.x * 0.05, p.y * 0.16) + vec2(t * 0.02, -t * 0.05));
-        float stroke = smoothstep(0.035, 0.0, abs(fract(rip * 7.0) - 0.5) - 0.465);
-        stroke *= smoothstep(450.0, 40.0, dist) * (0.35 + 0.65 * vnoise(p * 0.11 + t * 0.05));
-        col = mix(col, mix(col, vec3(1.0), 0.55), stroke * 0.6 * (1.0 - uNight * 0.7));
-        // sun / moon glitter
+        vec3 body = mix(uWaterShallow, uWaterDeep, dk);
+        body *= 0.72 + 0.4 * clamp(dot(N, uSunDir), 0.0, 1.0) * (1.0 - uNight);
+        vec3 col = mix(body, sky, fres);
+        // what stands over the water (her boat, the pier, the island), mirrored and broken up by
+        // the waves: looked up a little way off along their slope
+        if (uReflOn > 0.5) {
+          vec4 rp = uReflMat * vec4(p.x + g.x * 2.4, uTide, p.y + g.y * 2.4, 1.0);
+          vec4 rf = texture2D(uReflMap, rp.xy / rp.w);
+          float cov = clamp(rf.a, 0.0, 1.0);
+          vec3 rc = rf.rgb / max(rf.a, 1e-3);
+          col = mix(col, mix(rc * 0.88, body, 0.1), cov * clamp(fres * 1.3 + 0.12, 0.0, 0.92));
+        }
+        // the sun's (or the moon's) path: its mirror image broken by the swell, and a scatter of
+        // flecks of light on the small waves either side
         vec3 L = uNight > 0.6 ? uMoonDir : uSunDir;
         float sd = max(dot(R, L), 0.0);
-        float spark = step(0.72, vnoise(p * 3.1 + vec2(t * 1.3, -t * 0.7))) * step(0.5, vnoise(p * 1.7 - t * 0.9));
-        float glit = pow(sd, 90.0) * 1.2 + pow(sd, 900.0) * 6.0 * spark + pow(sd, 18.0) * spark * 1.6;
+        float fleck = step(0.76, vnoise(p * 4.6 + vec2(t * 1.5, -t * 0.8))) * step(0.42, vnoise(p * 1.9 - t * 1.1));
+        float glit = pow(sd, 110.0) * 1.3 + pow(sd, 700.0) * 5.0 * fleck + pow(sd, 22.0) * fleck * 1.3 * smoothstep(10.0, 70.0, dist);
         vec3 glitCol = uNight > 0.6 ? vec3(0.8, 0.85, 1.0) * 0.6 : (uSunColor * 1.6 + uSunGlow);
         col += glitCol * glit;
         // breaking waves: foam bands rolling in toward the shore
@@ -229,7 +290,7 @@ export function buildCoast(ctx) {
   }
   // the parapet runs on over the river's wall tops up to the bridge railings
   // (and where the cycling loop's ramp goes down through the wall onto the harbour quay)
-  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0 + RIVER.wall, RW1 - RIVER.wall], HARBOR.ramp]);
+  const gaps = BEACH_STAIRS.map((sx) => [sx - 1.8, sx + 1.8]).concat([[RW0 + RIVER.wall, RW1 - RIVER.wall], HARBOR.ramp, [PIER.x - PIER.half - 0.05, PIER.x + PIER.half + 0.05]]);
   const inGap = (x) => gaps.some(([a, b]) => x > a && x < b);
   let x = X0;
   while (x < X1) {
@@ -296,7 +357,8 @@ export function buildCoast(ctx) {
   // palms along the promenade
   for (let px = X0 + 8; px < X1 - 4; px += rng.range(17, 23)) {
     if (BEACH_STAIRS.some((s) => Math.abs(s - px) < 4) || nearRiver(px, 4)) continue;
-    palm(ctx, px, wallTop, 69.6, rng);
+    // (one in front of the pier's gateway stands aside)
+    palm(ctx, Math.abs(px - PIER.x) < 3.5 ? PIER.x + (px < PIER.x ? -3.5 : 3.5) : px, wallTop, 69.6, rng);
   }
   // street lamps on the promenade
   for (let lx = X0 + 10; lx < X1 - 4; lx += 30) {
@@ -317,6 +379,7 @@ export function buildCoast(ctx) {
     const dz = rng.range(SEAWALL_Z + 4, shoreZ(dx) - 6);
     const L = rng.range(1.8, 3.6);
     const a = rng.range(0, Math.PI);
+    if (Math.abs(dx - PIER.x) < PIER.half + L) continue; // (under the pier)
     // half sunk in the sand at both ends
     const ya = terrainH(dx - Math.cos(a) * L / 2, dz - Math.sin(a) * L / 2), yb = terrainH(dx + Math.cos(a) * L / 2, dz + Math.sin(a) * L / 2);
     B(dx, dz).rod(V(dx - Math.cos(a) * L / 2, ya + 0.1, dz - Math.sin(a) * L / 2), V(dx + Math.cos(a) * L / 2, yb + 0.06, dz + Math.sin(a) * L / 2), 0.16, 0.1, 6, 0x9a8a78, PAT.BOARDS);
@@ -326,6 +389,7 @@ export function buildCoast(ctx) {
     if (nearRiver(fx, 16) || nearRiver(fx + 10, 16)) continue;
     const fz = SEAWALL_Z + rng.range(4, 7);
     const len = rng.range(6, 10);
+    if (fx < PIER.x + PIER.half + 1 && fx + len > PIER.x - PIER.half - 1) continue; // (under the pier)
     for (let k = 0; k < len / 0.12; k++) {
       const xx = fx + k * 0.12;
       const yy = terrainH(xx, fz);
@@ -520,7 +584,8 @@ export function boat(ctx, x, z, ry, rng, o = {}) {
 }
 
 // a tetrapod resting on the ground: its lowest leg tip bites a little into the sand
-export function tetrapod(b, x, ground, z, s, rng) {
+// (with colliders, if given: in the way of walkers on the sand and of the boat)
+export function tetrapod(b, x, ground, z, s, rng, colliders = null) {
   const c = rng.pick([0xbab6ad, 0xc4c0b6, 0xafaba2]);
   const legs = [V(0, 1, 0), V(0.943, -0.333, 0), V(-0.471, -0.333, 0.816), V(-0.471, -0.333, -0.816)];
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)));
@@ -528,11 +593,15 @@ export function tetrapod(b, x, ground, z, s, rng) {
   const low = Math.min(...dirs.map((d) => d.y * s)) - 0.2 * s;
   const y = ground - low - 0.12;
   for (const d of dirs) b.rod(V(x, y, z), V(x + d.x * s, y + d.y * s, z + d.z * s), 0.42 * s, 0.24 * s, 6, c, PAT.CONCRETE);
+  colliders?.addCircle(x, z, 0.8 * s, y + Math.max(...dirs.map((d) => d.y * s)) + 0.2 * s);
 }
 
 function breakwater(ctx, rng) {
   const bw = BREAKWATER;
-  const top = 2.6;
+  const top = bw.top;
+  // (the east face is kept clear along the stairs and the floating landing, and for the boat
+  // coming and going: pier.js)
+  const clear = (tz) => tz > bw.stairs - 5 && tz < bw.stairs + 32;
   for (let z = bw.z0; z < bw.z1; z += 8) {
     const z1 = Math.min(bw.z1, z + 8);
     const b = ctx.builders.get('toon', bw.x, z);
@@ -547,14 +616,21 @@ function breakwater(ctx, rng) {
       const tx = bw.x + bw.w / 2 + off;
       rng.next();
       // the armour pile climbs the wall above the waterline
-      tetrapod(b, tx, Math.max(terrainH(tx, tz), 1.1 - off * 0.55), tz, rng.range(1.1, 1.5), rng);
+      const s = rng.range(1.1, 1.5);
+      if (clear(tz)) {
+        // (the same draws as a tetrapod's own: its colour and turn, so the rest lie where they
+        // always have)
+        for (let i = 0; i < 4; i++) rng.next();
+        continue;
+      }
+      tetrapod(b, tx, Math.max(terrainH(tx, tz), 1.1 - off * 0.55), tz, s, rng, ctx.colliders);
     }
     for (let k = 0; k < 2; k++) {
       const tz = z + rng.range(0, 8);
       const off = rng.range(0.8, 2.5);
       const tx = bw.x - bw.w / 2 - off;
       rng.next();
-      tetrapod(b, tx, Math.max(terrainH(tx, tz), 0.7 - off * 0.45), tz, rng.range(1.0, 1.3), rng);
+      tetrapod(b, tx, Math.max(terrainH(tx, tz), 0.7 - off * 0.45), tz, rng.range(1.0, 1.3), rng, ctx.colliders);
     }
   }
   for (let k = 0; k < 14; k++) {
@@ -562,12 +638,15 @@ function breakwater(ctx, rng) {
     const r = rng.range(3.5, 6);
     const tx = bw.x + Math.sin(a) * r, tz = bw.z1 + Math.cos(a) * r * 0.8;
     rng.next();
-    tetrapod(ctx.builders.get('toon', tx, tz), tx, Math.max(terrainH(tx, tz), 1.0 - (r - 3.5) * 0.5), tz, rng.range(1.2, 1.6), rng);
+    tetrapod(ctx.builders.get('toon', tx, tz), tx, Math.max(terrainH(tx, tz), 1.0 - (r - 3.5) * 0.5), tz, rng.range(1.2, 1.6), rng, ctx.colliders);
   }
   // walkable top + ramp from the beach
   ctx.colliders.addSurface(bw.x - bw.w / 2 + 0.6, bw.z0, bw.x + bw.w / 2, bw.z1, () => top, 1);
   ctx.colliders.addBox(bw.x - bw.w / 2 + 0.3, (bw.z0 + bw.z1) / 2, 0.3, (bw.z1 - bw.z0) / 2, 0, top + 1.0);
-  for (const e of [-1, 1]) ctx.colliders.addBox(bw.x + e * (bw.w / 2 + 0.2), (bw.z0 + bw.z1) / 2 + 8, 0.2, (bw.z1 - bw.z0) / 2 - 8, 0, top + 0.5);
+  // (along the edges: on the east, open at the head of the stairs down to the landing)
+  const ez0 = bw.z0 + 16, ez1 = bw.z1, sz0 = bw.stairs - 1.4, sz1 = bw.stairs + 3.6;
+  ctx.colliders.addBox(bw.x - bw.w / 2 - 0.2, (ez0 + ez1) / 2, 0.2, (ez1 - ez0) / 2, 0, top + 0.5);
+  for (const [a, c] of [[ez0, sz0], [sz1, ez1]]) ctx.colliders.addBox(bw.x + bw.w / 2 + 0.2, (a + c) / 2, 0.2, (c - a) / 2, 0, top + 0.5);
   // ramp up from the sand at the root
   const rb = ctx.builders.get('toon', bw.x, bw.z0);
   const ry0 = terrainH(bw.x, bw.z0 - 6);
@@ -593,39 +672,8 @@ function breakwater(ctx, rng) {
 }
 
 // ---------------------------------------------------------------------------
-// Distant island with an observation tower, and sailboats
+// Sailboats out in the bay
 // ---------------------------------------------------------------------------
-export function buildIsland(scene, materials) {
-  const b = new MeshBuilder();
-  const cx = 720, cz = 980;
-  const g = new THREE.SphereGeometry(1, 40, 18, 0, Math.PI * 2, 0, Math.PI / 2);
-  const pos = g.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const n = noise2(x * 3 + 5, z * 3 - 2);
-    const r = 1 + (n - 0.5) * 0.35;
-    pos.setXYZ(i, x * r, y * (0.9 + n * 0.3), z * r);
-  }
-  g.computeVertexNormals();
-  b.geom(g, new THREE.Matrix4().compose(V(cx, -6, cz), new THREE.Quaternion(), V(210, 62, 150)), 0x5e8a5a, PAT.GRASS);
-  b.geom(new THREE.CylinderGeometry(1, 1, 1, 24), new THREE.Matrix4().compose(V(cx, -2, cz), new THREE.Quaternion(), V(225, 6, 165)), 0x9a8e7e, PAT.ROCK);
-  // tower
-  b.cyl(cx + 10, 50, cz - 6, 3, 2.2, 38, 12, 0xe8e6e0);
-  b.cyl(cx + 10, 88, cz - 6, 6, 6, 3, 12, 0xdcdad4);
-  b.cyl(cx + 10, 91, cz - 6, 2, 0.6, 6, 8, 0xe8e6e0);
-  // a few houses at the island foot
-  for (let i = 0; i < 9; i++) {
-    const a = -1.2 + i * 0.12;
-    b.box(cx + Math.sin(a) * 205, 6, cz - Math.cos(a) * 140, 9, 7, 8, { color: [0xeeeeee, 0xd8c8b0, 0xc8d4dc][i % 3] });
-  }
-  const mesh = new THREE.Mesh(b.toGeometry(), materials.toon.material);
-  mesh.name = 'island';
-  mesh.castShadow = false;
-  mesh.receiveShadow = false;
-  scene.add(mesh);
-  return mesh;
-}
-
 export function createSailboats(materials) {
   const group = new THREE.Group();
   const rng = new RNG(31337);

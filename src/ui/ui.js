@@ -1,4 +1,5 @@
-import { BOUNDS, terrainH, ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks, SCHOOL, EAST2 } from '../world/layout.js';
+import { BOUNDS, terrainH, ROADS, roadRect, PARK, PLAZA, SHRINE, STATION, SEAWALL_Z, shoreZ, BREAKWATER, RAIL_Z, CROSSINGS, RIVER, BRIDGES, SUBWAY, SHORE, TUNNEL, STEPPING_Z, outsideDist, eastBlocks, SCHOOL, EAST2, SEA, PIER } from '../world/layout.js';
+import { ISLAND, islandH, pathPoints, PATH_W } from '../world/islandplan.js';
 import { MAIN, GYM } from '../world/school.js';
 import { HOSP, POST, KOBAN } from '../world/eastside.js';
 import { PRESETS } from '../systems/timeofday.js';
@@ -38,6 +39,13 @@ const CONTROLS = {
       [['Space'], 'ベル'],
       [['B'], '降りる'],
     ]],
+    ['ボートに乗っているとき', [
+      [['W'], '前進'],
+      [['S'], '後進'],
+      [['A', 'D'], 'かじ'],
+      [['Shift'], '全速'],
+      [['E', 'Enter'], '桟橋に着けて降りる'],
+    ]],
   ],
   pad: [
     ['歩いているとき', [
@@ -63,6 +71,11 @@ const CONTROLS = {
       [['X'], 'ベル'],
       [['B'], '降りる'],
     ]],
+    ['ボートに乗っているとき', [
+      [['L'], '前進・後進・かじ'],
+      [['RT'], '全速'],
+      [['A'], '桟橋に着けて降りる'],
+    ]],
   ],
   touch: [
     ['歩いているとき', [
@@ -83,6 +96,11 @@ const CONTROLS = {
       [['ベル'], 'ベル'],
       [['立ちこぎ'], '立ちこぎ'],
       [['降りる'], '降りる'],
+    ]],
+    ['ボートに乗っているとき', [
+      [['スティック'], '前進・後進・かじ'],
+      [['全速'], '全速'],
+      [['着ける'], '桟橋に着けて降りる'],
     ]],
   ],
 };
@@ -496,6 +514,42 @@ export class UI {
     chip.classList.toggle('standing', !!b.standing);
   }
 
+  // in the boat: { kmh, throttle (-1..1), full } shows the throttle and speed chip (and the
+  // touch buttons turn into full ahead and coming alongside); null hides it
+  setBoat(b) {
+    const chip = $('boat-chip');
+    const on = !!b;
+    if (on !== this.boatOn) {
+      this.boatOn = on;
+      chip.hidden = !on;
+      const label = (id, ja) => {
+        const el = $(id);
+        el.dataset.ja = ja;
+        el.textContent = tr(ja);
+      };
+      label('t-run', on ? '全速' : '走る');
+      label('t-act', on ? '着ける' : 'しらべる');
+      $('t-jump').hidden = on;
+      $('t-bike').hidden = on;
+    }
+    if (!on) return;
+    const th = Math.round(b.throttle * 20) / 20;
+    if (th !== this.boatTh) {
+      this.boatTh = th;
+      const bar = $('boat-throttle');
+      const i = bar.firstElementChild;
+      i.style.width = `${Math.abs(th) * 50}%`;
+      i.style.left = th >= 0 ? '50%' : `${50 - Math.abs(th) * 50}%`;
+      bar.classList.toggle('astern', th < 0);
+    }
+    const kmh = Math.round(b.kmh);
+    if (kmh !== this.boatKmh) {
+      this.boatKmh = kmh;
+      $('boat-kmh').textContent = String(kmh);
+    }
+    chip.classList.toggle('full', !!b.full);
+  }
+
   openMenu(state) {
     this.el.menu.hidden = false;
     this.syncMenu(state);
@@ -718,8 +772,10 @@ function drawMapBase(c, W, H, P, s, lots = []) {
   }
   c.setLineDash([]);
   for (const e of SUBWAY.exits) rect(e.x0, e.z0, e.x1, e.z1, '#2f6fb8');
-  // breakwater
+  // breakwater, and the pier out from the beach (its T-head at the end)
   rect(BREAKWATER.x - BREAKWATER.w / 2, BREAKWATER.z0, BREAKWATER.x + BREAKWATER.w / 2, BREAKWATER.z1, '#d8d4ca');
+  rect(PIER.x - PIER.half, PIER.z0, PIER.x + PIER.half, PIER.z1, '#c9a882');
+  rect(PIER.x - PIER.head, PIER.z1, PIER.x + PIER.headE, PIER.z2, '#c9a882');
   // crossings
   c.fillStyle = '#e8b83a';
   for (const x of CROSSINGS) {
@@ -776,6 +832,7 @@ function mapLabels(landmarks) {
     ['ひだまり公園', (PARK.x0 + PARK.x1) / 2, (PARK.z0 + PARK.z1) / 2, '#273049', true],
     ['桜ヶ浜駅', -35, 46, '#273049', true],
     ['桜ヶ浜海岸', 40, 88, '#2f6fb8', true],
+    ['さくら桟橋', PIER.x + 16, 122, '#2f6fb8', true],
     ['防波堤', BREAKWATER.x + 18, 150, '#2f6fb8', false],
     ['海岸通り', 120, 66.5, '#273049', false],
     ['桜川', RIVER.x, -70, '#2f6fb8', true],
@@ -839,6 +896,10 @@ function playerArrow(c, size = 1) {
 }
 
 export function drawMap(canvas, player, landmarks, lots) {
+  if (player?.sea) {
+    drawChart(canvas, player);
+    return;
+  }
   const c = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   const s = Math.min(W / (MAP.x1 - MAP.x0), H / (MAP.z1 - MAP.z0));
@@ -863,7 +924,8 @@ export function drawMap(canvas, player, landmarks, lots) {
   c.lineTo(W - 24, 50);
   c.closePath();
   c.fill();
-  // player
+  // the moored boat, and her
+  if (player?.boat) boatGlyph(c, ...P(player.boat.x, player.boat.z), 0.9);
   if (player) {
     const [px, pz] = P(player.x, player.z);
     c.save();
@@ -906,6 +968,229 @@ function bikeGlyph(c, x, y, s) {
   c.restore();
 }
 
+// a little boat on a white disc (the moored boat on the minimap and the map)
+function boatGlyph(c, x, y, s) {
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  c.beginPath();
+  c.arc(0, 0, 10, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(255,252,246,0.95)';
+  c.fill();
+  c.lineWidth = 1.5;
+  c.strokeStyle = '#2f6fb8';
+  c.stroke();
+  // the hull from the side, the outboard at the stern, the lantern on its pole
+  c.lineJoin = 'round';
+  c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(-6.5, 0.5);
+  c.lineTo(7, 0.5);
+  c.lineTo(4.5, 4.2);
+  c.lineTo(-5.2, 4.2);
+  c.closePath();
+  c.fillStyle = '#c86a3e';
+  c.fill();
+  c.strokeStyle = '#273049';
+  c.lineWidth = 1.2;
+  c.stroke();
+  c.beginPath();
+  c.moveTo(-6.2, 0.5);
+  c.lineTo(-7, -3);
+  c.moveTo(2.5, 0.5);
+  c.lineTo(2.5, -5);
+  c.stroke();
+  c.fillStyle = '#f2b13a';
+  c.fillRect(1.6, -7.2, 1.8, 2);
+  c.restore();
+}
+
+// ---------------------------------------------------------------------------
+// The sea chart: the bay from the cape to beyond 凪ノ島, out to the edge of the open water (a
+// dashed line), with the places to tie up. The big map while she is out on the water or on
+// the island, and under the minimap (which looks further about out there)
+// ---------------------------------------------------------------------------
+const CHART = { x0: SEA.x0 - 80, x1: SEA.x1 + 80, z0: -200, z1: SEA.z1 + 80 };
+const CHART_K = 0.6; // offscreen pixels per metre
+const MINI_SEA = 240; // the minimap's reach out on the water (m)
+let townBase = null; // the town as the minimap draws it (MINI_K px/m over MAP)
+let chartBase = null, isleBase = null;
+let berthMarks = []; // [name, x, z] of the places the boat can tie up
+const inMap = (x, z) => x > MAP.x0 && x < MAP.x1 && z > MAP.z0 && z < MAP.z1;
+
+// the coast beyond the town: the headlands and the hills behind them, in cells
+function drawCoast(c, P, s) {
+  const cell = 3;
+  for (let z = CHART.z0; z < 280; z += cell) {
+    for (let x = CHART.x0; x < CHART.x1; x += cell) {
+      const mx = x + cell / 2, mz = z + cell / 2;
+      if (inMap(mx, mz)) continue;
+      const h = terrainH(mx, mz);
+      if (h < 0.3) continue;
+      c.fillStyle = h < 2 && mz > SEAWALL_Z ? '#efe0bc' : '#cfe0b8';
+      const [px, pz] = P(x, z);
+      c.fillRect(px, pz, cell * s + 0.6, cell * s + 0.6);
+    }
+  }
+}
+
+// the island: its shore, the harbour's apron and the village, the breakwater arm, the path up
+// and the lighthouse on the top
+function drawIsle(c, P, s) {
+  const I = ISLAND, cell = s >= 2 ? 1 : 2;
+  for (let z = I.z0; z < I.z1; z += cell) {
+    for (let x = I.x0; x < I.x1; x += cell) {
+      const mx = x + cell / 2, mz = z + cell / 2, h = islandH(mx, mz);
+      if (h === null || h < 0.25) continue;
+      const u = mx - I.x, w = mz - I.z;
+      const apron = u > I.quay.u0 && u < I.quay.u1 && w > I.quay.w && w < I.quay.w + I.quay.back;
+      const village = u > I.village.u0 && u < I.village.u1 && w > I.village.w0 && w < I.village.w1;
+      c.fillStyle = apron ? '#e3ded2' : village ? '#e8dccb' : h < 1.1 ? '#efe0bc' : '#cfe0b8';
+      const [px, pz] = P(x, z);
+      c.fillRect(px, pz, cell * s + 0.6, cell * s + 0.6);
+    }
+  }
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  c.strokeStyle = '#d8d4ca';
+  c.lineWidth = Math.max(1.5, 4 * s);
+  c.beginPath();
+  I.mole.forEach(([u, w], i) => (i ? c.lineTo(...P(I.x + u, I.z + w)) : c.moveTo(...P(I.x + u, I.z + w))));
+  c.stroke();
+  c.strokeStyle = '#f6e3e9';
+  c.lineWidth = Math.max(1.2, PATH_W * s);
+  c.beginPath();
+  pathPoints().forEach((p, i) => (i ? c.lineTo(...P(p.x, p.z)) : c.moveTo(...P(p.x, p.z))));
+  c.stroke();
+  const [lx, lz] = P(I.x + I.top.u + 2.5, I.z + I.top.w + 5.5);
+  c.beginPath();
+  c.arc(lx, lz, Math.max(2.5, 2.2 * s), 0, Math.PI * 2);
+  c.fillStyle = '#ffffff';
+  c.fill();
+  c.lineWidth = Math.max(1, 0.8 * s);
+  c.strokeStyle = '#c0392b';
+  c.stroke();
+}
+
+// the edge of the open water, dashed: out along the west side, round the far corners, back
+// along the east
+function seaLine(c, P, s) {
+  const { x0, x1, z1, r } = SEA;
+  c.save();
+  c.setLineDash([Math.max(4, 14 * s), Math.max(3, 10 * s)]);
+  c.strokeStyle = 'rgba(47,111,184,0.7)';
+  c.lineWidth = Math.max(1.2, 3 * s);
+  c.beginPath();
+  c.moveTo(...P(x0, 200));
+  c.lineTo(...P(x0, z1 - r));
+  const [ax, az] = P(x0 + r, z1 - r);
+  c.arc(ax, az, r * s, Math.PI, Math.PI / 2, true);
+  c.lineTo(...P(x1 - r, z1));
+  const [bx, bz] = P(x1 - r, z1 - r);
+  c.arc(bx, bz, r * s, Math.PI / 2, 0, true);
+  c.lineTo(...P(x1, 200));
+  c.stroke();
+  c.restore();
+}
+
+// an anchor on a white disc: a place to tie up
+function anchorGlyph(c, x, y, r) {
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(255,252,246,0.95)';
+  c.fill();
+  c.lineWidth = Math.max(1, r * 0.16);
+  c.strokeStyle = '#2f6fb8';
+  c.stroke();
+  c.lineCap = 'round';
+  c.beginPath();
+  c.arc(x, y - r * 0.5, r * 0.14, 0, Math.PI * 2);
+  c.moveTo(x, y - r * 0.36);
+  c.lineTo(x, y + r * 0.55);
+  c.moveTo(x - r * 0.3, y - r * 0.18);
+  c.lineTo(x + r * 0.3, y - r * 0.18);
+  c.moveTo(x - r * 0.5, y + r * 0.1);
+  c.quadraticCurveTo(x - r * 0.45, y + r * 0.6, x, y + r * 0.58);
+  c.quadraticCurveTo(x + r * 0.45, y + r * 0.6, x + r * 0.5, y + r * 0.1);
+  c.stroke();
+}
+
+// the sea chart's image (made once): the sea, the coast, the town as on the town map, the
+// island, the edge of the open water
+function chartImage() {
+  if (chartBase) return chartBase;
+  const W = Math.ceil((CHART.x1 - CHART.x0) * CHART_K), H = Math.ceil((CHART.z1 - CHART.z0) * CHART_K);
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const c = cv.getContext('2d');
+  const P = (x, z) => [(x - CHART.x0) * CHART_K, (z - CHART.z0) * CHART_K];
+  c.fillStyle = '#a9d4ea';
+  c.fillRect(0, 0, W, H);
+  drawCoast(c, P, CHART_K);
+  if (townBase) c.drawImage(townBase, ...P(MAP.x0, MAP.z0), (MAP.x1 - MAP.x0) * CHART_K, (MAP.z1 - MAP.z0) * CHART_K);
+  drawIsle(c, P, CHART_K);
+  seaLine(c, P, CHART_K);
+  chartBase = cv;
+  return cv;
+}
+// the island in the minimap's detail, over the chart when she is near it
+function isleImage() {
+  if (isleBase) return isleBase;
+  const I = ISLAND, cv = document.createElement('canvas');
+  cv.width = Math.ceil((I.x1 - I.x0) * MINI_K);
+  cv.height = Math.ceil((I.z1 - I.z0) * MINI_K);
+  drawIsle(cv.getContext('2d'), (x, z) => [(x - I.x0) * MINI_K, (z - I.z0) * MINI_K], MINI_K);
+  isleBase = cv;
+  return cv;
+}
+
+// place names on the chart: [japanese, x, z, color] (the island is named by its landing)
+const CHART_LABELS = [
+  ['桜ヶ浜', 130, -60, '#273049'],
+  ['岬の灯台', -362, 130, '#2f6fb8'],
+  ['外洋', (SEA.x0 + SEA.x1) / 2, SEA.z1 + 46, '#2f6fb8'],
+];
+
+function drawChart(canvas, player) {
+  const c = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const s = Math.min(W / (CHART.x1 - CHART.x0), H / (CHART.z1 - CHART.z0));
+  const ox = (W - (CHART.x1 - CHART.x0) * s) / 2, oz = (H - (CHART.z1 - CHART.z0) * s) / 2;
+  const P = (x, z) => [ox + (x - CHART.x0) * s, oz + (z - CHART.z0) * s];
+  c.fillStyle = '#a9d4ea';
+  c.fillRect(0, 0, W, H);
+  c.drawImage(chartImage(), ox, oz, (CHART.x1 - CHART.x0) * s, (CHART.z1 - CHART.z0) * s);
+  c.font = mapFont(14);
+  c.textAlign = 'center';
+  c.textBaseline = 'alphabetic';
+  for (const [txt, x, z, col] of CHART_LABELS) outlinedText(c, tr(txt), ...P(x, z), col);
+  // the places to tie up
+  c.font = mapFont(12);
+  for (const [name, x, z] of berthMarks) {
+    const [px, pz] = P(x, z);
+    anchorGlyph(c, px, pz, 7);
+    outlinedText(c, tr(name), px, pz + 21, '#2f6fb8', 3);
+  }
+  // compass
+  c.fillStyle = '#273049';
+  c.font = '700 14px sans-serif';
+  c.fillText('N', W - 30, 28);
+  c.beginPath();
+  c.moveTo(W - 30, 34);
+  c.lineTo(W - 36, 50);
+  c.lineTo(W - 24, 50);
+  c.closePath();
+  c.fill();
+  if (player.boat) boatGlyph(c, ...P(player.boat.x, player.boat.z), 0.8);
+  const [px, pz] = P(player.x, player.z);
+  c.save();
+  c.translate(px, pz);
+  c.rotate(-player.yaw);
+  playerArrow(c, 0.9);
+  c.restore();
+}
+
 // Round heading-up minimap in the HUD. The town is drawn once into a large offscreen
 // canvas; each update copies the area around the player, rotated so "forward" is up.
 const MINI_K = 2.5; // offscreen pixels per meter
@@ -919,14 +1204,22 @@ class Minimap {
     this.t = 0;
   }
 
-  build(landmarks, lots) {
+  build(landmarks, lots, berths = []) {
     const W = Math.ceil((MAP.x1 - MAP.x0) * MINI_K), H = Math.ceil((MAP.z1 - MAP.z0) * MINI_K);
     const off = document.createElement('canvas');
     off.width = W;
     off.height = H;
     drawMapBase(off.getContext('2d'), W, H, (x, z) => [(x - MAP.x0) * MINI_K, (z - MAP.z0) * MINI_K], MINI_K, lots);
     this.base = off;
+    townBase = off;
     this.labels = mapLabels(landmarks).filter((l) => l[4]);
+    berthMarks = berths.map((b) => [b.name, b.x, b.z]);
+    // (the sea chart and the island are drawn a little later, while the title is up)
+    setTimeout(() => {
+      chartImage();
+      isleImage();
+    }, 2500);
+    this.range = MINI_RANGE;
   }
 
   update(dt, player) {
@@ -944,18 +1237,30 @@ class Minimap {
     }
     const c = cv.getContext('2d');
     const R = N / 2;
-    const k = R / MINI_RANGE; // canvas pixels per meter
+    // out on the water it looks further about (easing out and back)
+    this.range += ((player.sea ? MINI_SEA : MINI_RANGE) - this.range) * 0.12;
+    const range = this.range;
+    const k = R / range; // canvas pixels per meter
+    // (the sea chart under the town where the view reaches past it, the island over it there)
+    const past = player.x - range < MAP.x0 || player.x + range > MAP.x1 || player.z - range < MAP.z0 || player.z + range > MAP.z1;
+    const chart = past ? chartBase : null;
+    const I = ISLAND;
+    const isle = isleBase && player.x + range > I.x0 && player.x - range < I.x1 && player.z + range > I.z0 && player.z - range < I.z1 ? isleBase : null;
     c.save();
     c.clearRect(0, 0, N, N);
     c.beginPath();
     c.arc(R, R, R, 0, Math.PI * 2);
     c.clip();
-    c.fillStyle = '#cfe0b8';
+    c.fillStyle = chart || !inMap(player.x, player.z) ? '#a9d4ea' : '#cfe0b8';
     c.fillRect(0, 0, N, N);
     c.translate(R, R);
     c.rotate(player.yaw);
+    if (chart) c.drawImage(chart, (CHART.x0 - player.x) * k, (CHART.z0 - player.z) * k, (chart.width * k) / CHART_K, (chart.height * k) / CHART_K);
     const sc = k / MINI_K;
-    c.drawImage(this.base, (MAP.x0 - player.x) * k, (MAP.z0 - player.z) * k, this.base.width * sc, this.base.height * sc);
+    if (player.x - range < MAP.x1 && player.x + range > MAP.x0 && player.z - range < MAP.z1 && player.z + range > MAP.z0) {
+      c.drawImage(this.base, (MAP.x0 - player.x) * k, (MAP.z0 - player.z) * k, this.base.width * sc, this.base.height * sc);
+    }
+    if (isle) c.drawImage(isle, (I.x0 - player.x) * k, (I.z0 - player.z) * k, isle.width * sc, isle.height * sc);
     c.restore();
     // labels stay upright
     const cs = Math.cos(player.yaw), sn = Math.sin(player.yaw);
@@ -965,7 +1270,19 @@ class Minimap {
     // labels in priority order; skip ones that would cover the arrow or another label
     const placed = [];
     const lh = 13 * dpr;
-    for (const [txt, x, z, col] of this.labels) {
+    // (the places to tie up, out on the water)
+    const pin = (x, z) => {
+      const dx = (x - player.x) * k, dz = (z - player.z) * k;
+      return [dx * cs - dz * sn, dx * sn + dz * cs];
+    };
+    if (range > 110) {
+      for (const [, x, z] of berthMarks) {
+        const [px, py] = pin(x, z);
+        if (px * px + py * py < (R - 10 * dpr) ** 2) anchorGlyph(c, R + px, R + py, 5.5 * dpr);
+      }
+    }
+    const labels = range > 110 ? [...CHART_LABELS, ...berthMarks.map(([n, x, z]) => [n, x, z + 30, '#2f6fb8'])] : this.labels;
+    for (const [txt, x, z, col] of labels) {
       const dx = (x - player.x) * k, dz = (z - player.z) * k;
       const px = dx * cs - dz * sn, py = dx * sn + dz * cs;
       if (px * px + py * py > (R - 14 * dpr) ** 2) continue;
@@ -976,6 +1293,16 @@ class Minimap {
       if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
       placed.push(box);
       outlinedText(c, label, R + px, R + py, col, 3 * dpr);
+    }
+    // the moored boat (pinned to the rim when out of range)
+    if (player.boat) {
+      let [px, py] = pin(player.boat.x, player.boat.z);
+      const d = Math.hypot(px, py), lim = R - 13 * dpr;
+      if (d > lim) {
+        px *= lim / d;
+        py *= lim / d;
+      }
+      boatGlyph(c, R + px, R + py, 0.85 * dpr);
     }
     // the parked bicycle (pinned to the rim when out of range)
     if (player.bike) {

@@ -2,11 +2,12 @@ import './style.css';
 import * as THREE from 'three';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { steadyShadows } from './render/shadowfix.js';
-import { G } from './render/materials.js';
+import { G, createToonMaterial } from './render/materials.js';
 import { AUDIT } from './core/builder.js';
 import { createSky } from './render/sky.js';
 import { createClouds } from './render/clouds.js';
 import { Pipeline } from './render/pipeline.js';
+import { SeaReflection } from './render/reflection.js';
 import { TimeOfDay, PRESETS } from './systems/timeofday.js';
 import { Weather } from './systems/weather.js';
 import { RainMap } from './render/rainmap.js';
@@ -16,7 +17,7 @@ import { AudioEngine } from './systems/audio.js';
 import { buildWorld } from './world/world.js';
 import { updateCrossings } from './world/railway.js';
 import { createPetals, createCats, createBirds, createShells, createSmallAnimations, createTraffic } from './world/life.js';
-import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY } from './world/layout.js';
+import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY, BOUNDS } from './world/layout.js';
 import { walkState } from './world/commercial.js';
 import { ambienceAt, PADS, BORE } from './world/routeplan.js';
 import { LapTimer, lapTime } from './systems/laptimer.js';
@@ -29,6 +30,7 @@ import { createResidents } from './world/residents.js';
 import { createPedestrians } from './world/pedestrians.js';
 import { createAvatar, OUTFITS } from './systems/avatar.js';
 import { Bicycle } from './systems/bicycle.js';
+import { Boat } from './systems/boat.js';
 import { Character } from './systems/character.js';
 import { VOICE_CREDITS } from './systems/voiceLines.js';
 import { GamepadInput, moveFocus, activateFocused, focusEl } from './systems/gamepad.js';
@@ -76,6 +78,8 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 sun.shadow.radius = 1.5;
 scene.add(sun);
+// (the sea's mirror draws layer 1 only, lit by the sun too)
+sun.layers.enable(1);
 
 const tod = new TimeOfDay(sun);
 // the weather lays its overcast over the light of each hour (?rain: raining from the start)
@@ -93,6 +97,7 @@ const clouds = createClouds();
 scene.add(clouds);
 
 const pipe = new Pipeline(renderer, { msaa: QUALITY[quality].msaa });
+const seaRefl = new SeaReflection();
 let petals = null;
 let rainfall = null;
 
@@ -106,6 +111,9 @@ function applyQuality(q) {
   pipe.lite = !!Q.lite;
   pipe.width = 0;
   pipe.setSize(innerWidth, innerHeight, ratio);
+  // the sea's mirror at half the resolution (a third on the light setting)
+  seaRefl.scale = Q.lite ? 0.34 : 0.5;
+  seaRefl.setSize(innerWidth * ratio, innerHeight * ratio);
   if (sun.shadow.mapSize.x !== Q.shadow) {
     sun.shadow.mapSize.set(Q.shadow, Q.shadow);
     if (sun.shadow.map) {
@@ -219,6 +227,16 @@ try {
   /* storage unavailable */
 }
 window.__bike = bike;
+// her boat さくら丸, tied up at the landing under さくら桟橋 (E there to go out on the water)
+const boat = new Boat(world, scene, {
+  audio,
+  mats: {
+    toon: world.materials.toon.material,
+    glow: world.materials.emissive.material,
+    name: (map) => createToonMaterial({ name: 'boatName', map, alphaTest: 0.5 }),
+  },
+});
+window.__boat = boat;
 petals = createPetals(world.petalEmitters, QUALITY.high.petals);
 petals.userData.max = QUALITY.high.petals;
 petals.geometry.instanceCount = QUALITY[quality].petals;
@@ -253,6 +271,7 @@ const avatarReady = createAvatar(world, scene, player, outfit)
   .then((a) => {
     avatar = a;
     a.bike = bike;
+    a.boat = boat;
     bike.setRider(a.ch);
     window.__avatar = a;
   })
@@ -268,7 +287,7 @@ Promise.allSettled([residentsReady, avatarReady])
   })
   .catch((e) => console.warn('passers-by not loaded:', e));
 ui.lots = world.lots;
-ui.minimap.build(world.landmarks, world.lots);
+ui.minimap.build(world.landmarks, world.lots, world.berths);
 
 // start position: on Sakura-zaka, looking down toward the crossing and the sea
 const START = { x: 30.6, z: -26, yaw: Math.PI, pitch: -0.03 };
@@ -412,6 +431,10 @@ function updateCounts() {
 
 function interact() {
   if (state.mode !== 'play' || bike.on) return;
+  if (boat.on) {
+    leaveBoat();
+    return;
+  }
   if (player.sitting) {
     player.stand();
     return;
@@ -557,6 +580,9 @@ function interact() {
     case 'bike':
       toggleBike();
       break;
+    case 'boat':
+      boardBoat();
+      break;
     default:
       break;
   }
@@ -568,7 +594,7 @@ function interact() {
 // ---------------------------------------------------------------------------
 let bikeTips = 0;
 function toggleBike() {
-  if (state.mode !== 'play') return;
+  if (state.mode !== 'play' || boat.on) return;
   if (bike.on) {
     bike.dismount();
     return;
@@ -610,6 +636,43 @@ bike.onBlocked = (why) => {
   else if (why === 'step') ui.toast('段差が高くて自転車では進めない。', 2.4);
   pad.rumble(0.25, 0.2, 120);
 };
+// ---------------------------------------------------------------------------
+// the boat
+// ---------------------------------------------------------------------------
+let boatTips = 0;
+function boardBoat() {
+  if (player.sitting) player.stand();
+  const r = boat.board(player);
+  if (r === 'far') ui.toast('ボートに近づいて。', 2);
+  if (r !== 'ok') return;
+  if (boatTips < 2) {
+    boatTips++;
+    const tip = usingPad()
+      ? '左スティックで前進・後進・かじ、RT で全速、桟橋の近くで A を押すと着ける'
+      : isTouch
+        ? 'スティックで前進・後進・かじ、「全速」で速く、桟橋の近くで「着ける」'
+        : 'W で前進・S で後進・A / D でかじ、Shift で全速、桟橋の近くで E を押すと着ける';
+    setTimeout(() => ui.toast(tip, 6), 1200);
+  }
+}
+function leaveBoat() {
+  const r = boat.leave();
+  if (r === 'fast') ui.toast('速すぎる。速度を落としてから着けよう。', 2.4);
+  else if (r === 'nowhere') ui.toast('ここには着けられない。桟橋や船着き場に寄せよう。', 2.6);
+}
+let boatToast = 0;
+boat.onBlocked = (why) => {
+  pad.rumble(why === 'edge' ? 0.12 : 0.3, why === 'edge' ? 0.12 : 0.25, 140);
+  if (performance.now() - boatToast < 6000) return;
+  boatToast = performance.now();
+  if (why === 'edge') ui.toast('ここから先は外洋。これ以上は沖に出られない。', 3);
+  else if (why === 'shore') ui.toast('浅瀬だ。これ以上は進めない。', 2.4);
+};
+boat.onLeave = (b) => {
+  // stepping out where she tied up
+  if (b?.name) ui.toast(tf('boatMoored', { p: b.name }), 2.4);
+};
+
 // people slowed for (passers-by and Mei), and those who hear the bell
 const bikeAgents = [];
 bike.agents = () => {
@@ -730,13 +793,20 @@ function backToPlay() {
   player.enabled = true;
   lockPointer();
 }
+// where she is for the maps: out on the water (or over on the island) the sea chart; the boat
+// where it is tied up
+function mapView() {
+  const x = player.pos.x, z = player.pos.z;
+  const away = x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1;
+  return { x, z, yaw: player.yaw, sea: boat.on || away, boat: boat.on ? null : { x: boat.x, z: boat.z } };
+}
 function openMap() {
   if (state.mode !== 'play' && state.mode !== 'menu') return;
   state.mode = 'map';
   player.enabled = false;
   releasePointer();
   ui.closeMenu();
-  ui.openMap({ x: player.pos.x, z: player.pos.z, yaw: player.yaw }, world.landmarks);
+  ui.openMap(mapView(), world.landmarks);
 }
 let fortuneT = null;
 function openOmikuji(f) {
@@ -780,7 +850,8 @@ pad.on('active', () => ui.setInputMode('pad'));
 pad.on('start', startPlay);
 pad.on('interact', interact);
 pad.on('back', () => {
-  if (bike.on) bike.dismount();
+  if (boat.on) leaveBoat();
+  else if (bike.on) bike.dismount();
   else if (player.sitting) player.stand();
 });
 pad.on('jump', () => (bike.on ? bike.ring() : player.jump()));
@@ -915,7 +986,7 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (state.mode !== 'play') return;
-  if (e.code === 'KeyB') toggleBike();
+  if (e.code === 'KeyB' && !boat.on) toggleBike();
   if (bike.on) {
     // on the bicycle: Q / E (or 1 2 3) change gear, Space rings the bell
     if (e.code === 'KeyQ') shiftGear(-1);
@@ -999,6 +1070,7 @@ function frame() {
   pipe.setIndoor(cameraIndoors(), dt);
   pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value, tod.leak * G.uSunDisk.value, tod.rays * G.uSunDisk.value);
   renderer.info.reset();
+  seaRefl.render(renderer, scene, camera, G.uTide.value, nearSea());
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   frames++;
   if (frames === 3) {
@@ -1008,6 +1080,13 @@ function frame() {
     if (params.has('still')) return;
   }
   requestAnimationFrame(frame);
+}
+
+// the sea's mirror is drawn when the camera is out over the beach or the sea (and not high
+// above it: from up there the town would be wanted in it too)
+function nearSea() {
+  const c = camera.position;
+  return c.z > 58 && c.y < 160 && !cameraIndoors();
 }
 
 // one step of the town, the walk and the sounds (everything but drawing the frame)
@@ -1040,8 +1119,9 @@ function simulate(dt) {
   player.padBrake = padOn ? pad.brake : 0;
   // the bicycle (its wheels, cranks and bars set before she is posed on it)
   bike.update(state.mode === 'play' ? dt : 0, player);
-  // a touch wider view the faster she rides
-  const fov = 62 + Math.max(0, Math.abs(bike.riding ? bike.v : 0) - 2) * 0.9;
+  boat.update(state.mode === 'play' ? dt : 0, player);
+  // a touch wider view the faster she rides (or sails)
+  const fov = 62 + Math.max(0, Math.abs(bike.riding ? bike.v : 0) - 2) * 0.9 + Math.max(0, Math.abs(boat.sailing ? boat.v : 0) - 1.5) * 0.7;
   if (Math.abs(camera.fov - fov) > 0.01) {
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 2);
     camera.updateProjectionMatrix();
@@ -1119,9 +1199,11 @@ function simulate(dt) {
     state.fortune = null;
   }
   if (state.mode === 'play') {
-    focus = bike.on ? null : findInteractable();
-    ui.setPrompt(player.sitting ? '立ち上がる' : focus ? focus.label : null);
+    focus = bike.on || boat.on ? null : findInteractable();
+    const dock = boat.dockTarget();
+    ui.setPrompt(player.sitting ? '立ち上がる' : boat.on ? (dock ? tf('boatDock', { p: dock.name }) : null) : focus ? focus.label : null);
     ui.setBike(bike.on ? { gear: bike.gear, kmh: Math.abs(bike.v) * 3.6, standing: bike.stand > 0.5 } : null);
+    ui.setBoat(boat.on ? { kmh: Math.abs(boat.v) * 3.6, throttle: boat.throttle, full: !!boat.boosting } : null);
     const lev = lap.update(dt, player.pos.x, player.pos.z, bike.on);
     if (lev?.kind === 'start') {
       ui.toast(tf('lapStart'));
@@ -1146,10 +1228,11 @@ function simulate(dt) {
       state.lastArea = name;
     }
     ui.setCrosshair(player.pointerLocked && player.view === 'first');
-    ui.minimap.update(dt, { x: player.pos.x, z: player.pos.z, yaw: player.yaw, bike: !bike.on && bike.parked ? bike.parked : null });
+    ui.minimap.update(dt, { ...mapView(), bike: !bike.on && bike.parked ? bike.parked : null });
   } else {
     ui.setPrompt(null);
     ui.setBike(null);
+    ui.setBoat(null);
     ui.setLap(null);
   }
   ui.setClock(tod.label, tod.period.label, tod.hour);
@@ -1269,11 +1352,13 @@ window.__setView = (cam, hour) => {
   pipe.setIndoor(cameraIndoors(), 0);
   pipe.updateFlare(camera, G.uSunDir.value, (1 - G.uNight.value) * G.uSunDisk.value, tod.leak * G.uSunDisk.value, tod.rays * G.uSunDisk.value);
   renderer.info.reset();
+  camera.updateMatrixWorld();
+  seaRefl.render(renderer, scene, camera, G.uTide.value, nearSea());
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   pipe.render(scene, camera, { exposure: tod.exposure, bloom: tod.bloom });
   return true;
 };
-window.__game = { world, player, tod, weather, rainMap, rainfall, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, THREE, i18n: { tr, tf, setLang } };
+window.__game = { world, player, tod, weather, rainMap, rainfall, state, ui, startPlay, updateCrossings, voice, town, audio, pipe, sun, G, scene, THREE, interact, i18n: { tr, tf, setLang } };
 // debug: subway trains standing at the platform with doors open (?subway)
 if (params.has('subway') && world.subway) {
   for (const tr of world.subway.trains) {

@@ -44,6 +44,20 @@ export const G = {
   uRainMap: { value: emptyRainMap() },
   uRainRect: { value: new THREE.Vector4(0, 0, 1, 1) }, // x0, z1, 1 / width, -1 / depth
   uRainRange: { value: new THREE.Vector2(-60, 400) }, // heights: y0 + v * span
+  // her boat on the sea (systems/boat.js): x, z, the sine and cosine of its heading; the sea is
+  // not drawn inside its hull (coast.js), whose half-breadths at the waterline these are, from
+  // the transom to the stem
+  uBoat: { value: new THREE.Vector4(1e5, 1e5, 0, 1) },
+  uBoatHull: { value: new Array(17).fill(0) },
+  // the sea's mirror (render/reflection.js): its texture, the matrix from the world into it,
+  // whether it was drawn this frame; uReflPass is 1 while it is being drawn
+  uReflMap: { value: null },
+  uReflMat: { value: new THREE.Matrix4() },
+  uReflOn: { value: 0 },
+  uReflPass: { value: 0 },
+  // 凪ノ島's sea floor (world/island.js): heights over its box (x0, z0, 1 / width, 1 / depth)
+  uIsleMap: { value: emptyRainMap() },
+  uIsleRect: { value: new THREE.Vector4(1e6, 1e6, 1e-6, 1e-6) },
 };
 
 function emptyRainMap() {
@@ -101,6 +115,8 @@ ${LIGHTING}
 uniform float uOutline;
 uniform float uSoft;
 uniform float uWrap;
+// 1 while the sea's reflection is drawn (render/reflection.js): everything there is solid
+uniform float uReflPass;
 varying vec3 vColor;
 varying vec2 vUv;
 varying float vPattern;
@@ -204,7 +220,7 @@ export function createToonMaterial(opts = {}) {
         #endif
         col = wetSheen(col, N, vWorldPos, wet, pd);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline * cov);
+        gl_FragColor = vec4(col, max(uOutline, uReflPass) * cov);
       }
     `,
   });
@@ -297,7 +313,7 @@ export function createWindowMaterial() {
           c3 += st2 * uHorizon * 0.18 * (1.0 - uNight);
           c3 = mix(c3, vec3(0.32, 0.34, 0.37) * (0.6 + 0.4 * sh), max(mull, tr));
           c3 = applyHaze(c3, vWorldPos);
-          gl_FragColor = vec4(c3, uOutline);
+          gl_FragColor = vec4(c3, max(uOutline, uReflPass));
           return;
         }
         if (vPattern > 149.5 && vPattern < 199.5) {
@@ -313,7 +329,7 @@ export function createWindowMaterial() {
           float st = smoothstep(0.06, 0.0, abs(fract((uv.x + uv.y * 0.5) * 1.4 + seed) - 0.3) - 0.03);
           c2 += st * uHorizon * 0.25;
           c2 = applyHaze(c2, vWorldPos);
-          gl_FragColor = vec4(c2, uOutline);
+          gl_FragColor = vec4(c2, max(uOutline, uReflPass));
           return;
         }
         if (vPattern > 235.5) {
@@ -342,7 +358,7 @@ export function createWindowMaterial() {
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
         #else
-          gl_FragColor = vec4(col, uOutline);
+          gl_FragColor = vec4(col, max(uOutline, uReflPass));
         #endif
       }
     `,
@@ -413,7 +429,7 @@ export function createGroundMaterial(groundMap, mapRect) {
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
         #else
-          gl_FragColor = vec4(col, uOutline);
+          gl_FragColor = vec4(col, max(uOutline, uReflPass));
         #endif
       }
     `,
@@ -636,7 +652,7 @@ export function createRoadMaterial() {
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
         #else
-          gl_FragColor = vec4(col, uOutline);
+          gl_FragColor = vec4(col, max(uOutline, uReflPass));
         #endif
       }
     `,
@@ -828,7 +844,7 @@ export function createPaddyMaterial() {
         float sd = max(dot(R, uSunDir), 0.0);
         col += (uSunColor * 1.5 + uSunGlow) * pow(sd, 220.0) * 2.0 * sh * (1.0 - uNight);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        gl_FragColor = vec4(col, max(uOutline, uReflPass));
       }
     `,
   });
@@ -901,7 +917,7 @@ export function createInteriorMaterial(opts = {}) {
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
         #else
-          gl_FragColor = vec4(col, uOutline);
+          gl_FragColor = vec4(col, max(uOutline, uReflPass));
         #endif
       }
     `,
@@ -1068,7 +1084,7 @@ export function createFoliageMaterial(tex, opts = {}) {
         // thin petals: daylight filtering through keeps the underside of a crown glowing pink
         col += albedo * uSunColor * uTrans * (1.0 - L) * smoothstep(-0.1, 0.5, uSunDir.y);
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        gl_FragColor = vec4(col, max(uOutline, uReflPass));
       }
     `,
   });
@@ -1165,7 +1181,7 @@ export function createGrassMaterial(tex, opts = {}) {
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
         #else
-          gl_FragColor = vec4(col, uOutline);
+          gl_FragColor = vec4(col, max(uOutline, uReflPass));
         #endif
       }
     `,
@@ -1234,7 +1250,7 @@ export function createBikeMaterial(opts = {}) {
           col += uSunColor * smoothstep(0.72, 0.92, dot(R, uSunDir)) * 0.14 * sh;
         }
         col = applyHaze(col, vWorldPos);
-        gl_FragColor = vec4(col, uOutline);
+        gl_FragColor = vec4(col, max(uOutline, uReflPass));
       }
     `,
   });
@@ -1248,7 +1264,8 @@ export function createUnlitMaterial(opts = {}) {
     transparent: !!opts.transparent,
     depthWrite: opts.depthWrite ?? true,
     blending: opts.blending ?? THREE.NormalBlending,
-    uniforms: { uNight: G.uNight, uOutline: { value: opts.outline ?? 0 }, uNightOnly: { value: opts.nightOnly ? 1 : 0 }, uBoost: { value: opts.boost ?? 1 } },
+    // (seen in the sea's mirror like anything solid: render/reflection.js)
+    uniforms: { uNight: G.uNight, uOutline: { value: opts.outline ?? 0 }, uNightOnly: { value: opts.nightOnly ? 1 : 0 }, uBoost: { value: opts.boost ?? 1 }, uReflPass: G.uReflPass, uReflSolid: { value: opts.transparent ? 0 : 1 } },
     vertexShader: /* glsl */ `
       varying vec3 vColor;
       void main() {
@@ -1261,10 +1278,12 @@ export function createUnlitMaterial(opts = {}) {
       uniform float uOutline;
       uniform float uNightOnly;
       uniform float uBoost;
+      uniform float uReflPass;
+      uniform float uReflSolid;
       varying vec3 vColor;
       void main() {
         float k = mix(1.0, uNight, uNightOnly);
-        gl_FragColor = vec4(vColor * uBoost * k, uOutline);
+        gl_FragColor = vec4(vColor * uBoost * k, max(uOutline, uReflPass * uReflSolid));
       }
     `,
   });
@@ -1438,7 +1457,7 @@ export function createCharacterMaterial(opts = {}) {
         #ifdef BLEND
           gl_FragColor = vec4(col, tx.a);
         #else
-          gl_FragColor = vec4(col, uOutline);
+          gl_FragColor = vec4(col, max(uOutline, uReflPass));
         #endif
       }
     `,

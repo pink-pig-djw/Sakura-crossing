@@ -308,6 +308,64 @@ kbd {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* in the boat: the throttle (astern to full ahead) and the speed */
+.boat-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 0.32rem 0.85rem 0.32rem 0.7rem;
+  box-shadow: var(--shadow);
+  font: 700 0.95rem var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.boat-ico {
+  width: 30px;
+  height: 20px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.boat-ico .wave {
+  stroke: var(--sky-deep, #3d7fb8);
+  stroke-width: 1.4;
+}
+.boat-chip.full .boat-ico {
+  stroke: var(--sakura-deep);
+}
+/* a bar from the middle: right for ahead, left for astern */
+.throttle {
+  position: relative;
+  width: 3.2rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  overflow: hidden;
+}
+.throttle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+.throttle i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--sakura-deep);
+}
+.throttle.astern i {
+  background: var(--ink-soft, #6b6f7a);
+}
 .lap-chip {
   display: flex;
   align-items: center;

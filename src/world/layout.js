@@ -15,6 +15,7 @@
 
 import { RNG, fbm2, noise2, smoothstep, clamp, softPlus, lerp } from '../core/rng.js';
 import { initSculpt, sculptDelta, sculptHeight, sculptReady, HARBOR, MIKAN, PAMPAS, BRIDGE, TEA, RICE, BORE, CAPE } from './routeplan.js';
+import { ISLAND, islandH } from './islandplan.js';
 
 export const RAIL_Z = 56;
 export const RAIL_Y = 3.0;
@@ -39,7 +40,38 @@ export const SHRINE = { x: 30, z0: -128.5, z1: -146, y: 20.6, terraceZ0: -146, t
 export const PARK = { x0: -67.5, x1: -37.5, z0: -47.5, z1: -17.5 };
 export const CROSSINGS = [-195, -70, 30, 115, 218, 324];
 export const BEACH_STAIRS = [-252, -195, -70, 30, 115, 218, 300, 330, 430, 505];
-export const BREAKWATER = { x: -150, z0: 84, z1: 178, w: 5.2 };
+// 防波堤: from the beach (z0) out to its head (z1), its top's height; on its east face a flight
+// of stairs down from a little platform (at z = stairs) to a floating landing where the boat can
+// tie up (world/pier.js), no armour stones along it (coast.js)
+export const BREAKWATER = { x: -150, z0: 84, z1: 178, w: 5.2, top: 2.6, stairs: 128 };
+// さくら桟橋: a wooden pier from the promenade at the foot of 桜坂's beach stairs out over the
+// sand into the sea (world/pier.js): deck x +- half, from the sea wall (z0) down a gentle
+// ramp to the deck's level at rampEnd, on to z1, then a T-head to z2 (from x - head to
+// x + headE: short on the east, where the boat lies at the floating landing below the stairs
+// and puts out to sea past it)
+export const PIER = { x: 44, half: 1.7, z0: SEAWALL_Z, rampEnd: 86, z1: 142, z2: 150, head: 6, headE: 3.9, deck: 2.75 };
+// The open water the boat may roam (systems/boat.js): from the coast out to z1, between x0 and
+// x1, its two far corners rounded (r). There it meets an invisible boundary; the sea itself
+// carries on past it to the horizon.
+export const SEA = { x0: -1250, x1: 1650, z1: 1500, r: 320 };
+
+// how far (m) a point lies outside the open water (negative inside) and the way out (nx, nz)
+export function seaEdge(x, z, out = {}) {
+  const { x0, x1, z1, r } = SEA;
+  const cx = x < x0 + r ? x0 + r : x > x1 - r ? x1 - r : x;
+  if (cx !== x && z > z1 - r) {
+    const dx = x - cx, dz = z - (z1 - r), l = Math.hypot(dx, dz) || 1;
+    out.d = l - r;
+    out.nx = dx / l;
+    out.nz = dz / l;
+    return out;
+  }
+  const dw = x0 - x, de = x - x1, ds = z - z1;
+  if (dw >= de && dw >= ds) Object.assign(out, { d: dw, nx: -1, nz: 0 });
+  else if (de >= ds) Object.assign(out, { d: de, nx: 1, nz: 0 });
+  else Object.assign(out, { d: ds, nx: 0, nz: 1 });
+  return out;
+}
 
 // Underground station 桜ヶ浜中央 under the avenue: B1 concourse at the north end, B2 island platform.
 export const SUBWAY = {
@@ -169,6 +201,23 @@ const SCULPT_RULES = {
   fix: (x, z) => (x >= SHRINE.terraceX0 && x <= SHRINE.terraceX1 && z >= SHRINE.terraceZ1 && z <= SHRINE.terraceZ0 ? SHRINE.y : null),
 };
 
+// Beyond the two capes the coast turns away: a shore wandering back north on either side (now a
+// cove, now a point), a beach berm along it and low wooded hills behind, here and there coming
+// right down to the sea. Seen from far out on the water (nothing there to walk to); blended in
+// well outside the town's valley (from r0 to r1 either side of cx)
+const FAR = { cx: 130, r0: 900, r1: 1350 };
+function farCoast(x, z) {
+  const a = Math.abs(x - FAR.cx);
+  // the shoreline's z: further back north the further out, in and out along the way
+  const zc = 165 - 0.32 * Math.max(0, a - 1000) + 110 * (fbm2(x * 0.0021 + 7.7, 3.1, 3) - 0.5);
+  const L = zc - z; // metres inland of it
+  if (L <= 0) return Math.max(-14, -0.35 + L * 0.04);
+  const n = fbm2(x * 0.0032 + 1.3, z * 0.0032 - 2.2, 4);
+  const rocky = smoothstep(0.55, 0.7, fbm2(x * 0.006 - 4.4, 9.2, 2));
+  const rise = lerp(smoothstep(8, 360, L), smoothstep(2, 90, L), rocky);
+  return -0.35 + 1.4 * smoothstep(0, 14, L) + (14 + 62 * n) * rise;
+}
+
 // the ground before the hills were shaped for the cycling loop
 export function baseGroundH(x, z) {
   let h;
@@ -186,6 +235,9 @@ export function baseGroundH(x, z) {
     else if (z > 49 && z < 71) hill = 0;
   }
   h += hill;
+  // beyond the capes, the far coast
+  const far = smoothstep(FAR.r0, FAR.r1, Math.abs(x - FAR.cx));
+  if (far > 0) h = lerp(h, farCoast(x, z), far);
 
   // shrine terrace
   const sx = SHRINE;
@@ -292,9 +344,16 @@ export function inRiver(x, z) {
   return Math.abs(x - RIVER.x) < riverHalfWidth(z);
 }
 
-// Terrain height (ground mesh): groundH with the river channel carved in.
+// Terrain height (ground mesh): groundH with the river channel carved in, and out in the bay
+// 凪ノ島 (islandplan.js; its ground is a mesh of its own, world/island.js).
 // Walkable overrides (stairs, platforms, bridges) live in collision.js.
 export function terrainH(x, z) {
+  const t = townTerrainH(x, z);
+  const ih = islandH(x, z);
+  return ih === null ? t : Math.max(t, ih);
+}
+
+function townTerrainH(x, z) {
   const g = groundH(x, z);
   const dx = Math.abs(x - RIVER.x);
   if (z < RIVER.zHead - 2) return g;
@@ -567,6 +626,7 @@ export const AREAS = [
   { name: '地下鉄 桜ヶ浜中央駅', sub: 'Sakuragahama-Chuo Station', x0: 232, x1: 272, z0: -50, z1: 24, under: true },
   // さくら一周ライン (the cycling loop round the hills, routeplan.js)
   { name: 'サイクルステーション', sub: 'Cycle Station · Sakura Loop', x0: 200, x1: 228, z0: 66, z1: 74 },
+  { name: 'さくら桟橋', sub: 'Sakura Pier', x0: PIER.x - PIER.head - 1, x1: PIER.x + PIER.head + 1, z0: PIER.z0 - 0.5, z1: PIER.z2 + 1 },
   { name: '漁港', sub: 'Fishing Harbour', x0: HARBOR.x0, x1: HARBOR.x1, z0: SEAWALL_Z + 0.5, z1: HARBOR.z1 },
   { name: 'みかんの段々畑', sub: 'Mikan Terraces', x0: MIKAN.x0 + 8, x1: MIKAN.x1, z0: MIKAN.z0, z1: 96 },
   { name: '沢の橋', sub: 'Gorge Bridge', x0: BRIDGE.x0, x1: BRIDGE.x1, z0: BRIDGE.z - 8, z1: BRIDGE.z + 8 },
@@ -602,7 +662,12 @@ export const AREAS = [
   { name: '中央通り', sub: 'Chuo-dori Avenue', x0: 243, x1: 261, z0: -125, z1: 50 },
   { name: '海岸通り', sub: 'Coastal Road', x0: TUNNEL.w - 10, x1: TUNNEL.e + 10, z0: 60, z1: 73 },
   { name: '防波堤', sub: 'Breakwater', x0: BREAKWATER.x - 8, x1: BREAKWATER.x + 8, z0: 95, z1: 190 },
-  { name: '桜ヶ浜海岸', sub: 'Sakuragahama Beach', x0: TUNNEL.w - 10, x1: TUNNEL.e + 10, z0: 73, z1: 220 },
+  { name: '桜ヶ浜海岸', sub: 'Sakuragahama Beach', x0: TUNNEL.w - 10, x1: TUNNEL.e + 10, z0: 73, z1: 150 },
+  // out on the boat, and the island
+  { name: '凪ノ島灯台', sub: 'Nagi Island Lighthouse', x0: ISLAND.x + ISLAND.top.u - 18, x1: ISLAND.x + ISLAND.top.u + 18, z0: ISLAND.z + ISLAND.top.w - 22, z1: ISLAND.z + ISLAND.top.w + 18 },
+  { name: '凪ノ島 港', sub: 'Nagi Island Harbour', x0: ISLAND.x - 50, x1: ISLAND.x + 24, z0: ISLAND.z - 122, z1: ISLAND.z - 71 },
+  { name: '凪ノ島', sub: 'Nagi Island', x0: ISLAND.x0 + 20, x1: ISLAND.x1 - 20, z0: ISLAND.z0 + 20, z1: ISLAND.z1 - 20 },
+  { name: '桜ヶ浜沖', sub: 'Off Sakuragahama', x0: SEA.x0 - 50, x1: SEA.x1 + 50, z0: 100, z1: SEA.z1 + 50 },
   { name: '桜ヶ浜中央', sub: 'Chuo Commercial District', x0: 198, x1: 320, z0: -130, z1: 50 },
   { name: '東町', sub: 'Higashimachi', x0: 320, x1: 482, z0: -130, z1: 50 },
   { name: '西町', sub: 'Nishimachi', x0: -240, x1: -150, z0: -130, z1: 50 },
