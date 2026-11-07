@@ -727,6 +727,7 @@ class BedRoutine extends Routine {
       this.spec.pose = (c) => {
         if (pin > 0) pinHips(c, this.Hs, pin);
         this.pillow(c, ct);
+        this.onBed(c);
       };
       void act;
       if (this.step === 'lieDown' && t >= T) {
@@ -751,6 +752,7 @@ class BedRoutine extends Routine {
       this.spec.pose = (c) => {
         pinHips(c, He, 1);
         this.pillow(c, T);
+        this.onBed(c);
       };
       if (this.step === 'drowse') {
         this.spec.eyes = ramp(t, 1.4, 2.6);
@@ -782,6 +784,23 @@ class BedRoutine extends Routine {
     if (this.step === 'end') {
       this.home.player.holdAt(null, { x: this.x, y: this.y0, z: this.z });
       this.finish();
+    }
+  }
+  // The clips were made on a floor: on the bed, as she goes down onto it (or comes up), the
+  // hands she props herself on and her seat would sink into the duvet. They are kept on it:
+  // the hips lifted, each hand brought up onto it, the elbow bending as much.
+  onBed(ch) {
+    const B = HOME.bed, top = this.surface;
+    const over = (p) => p.x > B.x0 + 0.03 && p.x < B.x1 - 0.03 && p.z > B.z0 + 0.03 && p.z < B.z1 - 0.03;
+    ch.root.updateMatrixWorld(true);
+    const hp = ch.node('hips').getWorldPosition(new THREE.Vector3());
+    if (over(hp) && hp.y < top + 0.1) pinHips(ch, hp.setY(top + 0.1));
+    for (const side of ['left', 'right']) {
+      const [u, l, h] = ARM[side];
+      const hand = ch.node(h).getWorldPosition(new THREE.Vector3());
+      if (!over(hand) || hand.y >= top + 0.035) continue;
+      const sh = ch.node(u).getWorldPosition(new THREE.Vector3()), el = ch.node(l).getWorldPosition(new THREE.Vector3());
+      reach(ch, side, hand.setY(top + 0.035), 1, el.sub(sh.lerp(hand, 0.5)));
     }
   }
   // her head on the pillow: lying, the neck bends a little so the head rests on it, not in it

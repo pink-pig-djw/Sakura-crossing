@@ -592,14 +592,40 @@ export class Player {
     if (this.pivotY === undefined || !this.onGround || Math.abs(want - this.pivotY) > 2) this.pivotY = want;
     else this.pivotY += (want - this.pivotY) * Math.min(1, (this._dt || 0.016) * 10);
     const py = this.pivotY;
-    const free = this.freeBoom(px, py, pz, this.yaw, this.pitch);
-    const cp = Math.cos(this.pitch);
-    const bx = Math.sin(this.yaw) * cp, by = -Math.sin(this.pitch), bz = Math.cos(this.yaw) * cp;
+    const dt = this._dt || 0.016;
+    // in a room too small for the boom (her bedroom, a hall), the camera goes up toward the
+    // ceiling and looks down at her instead of closing in on the back of her head (close in,
+    // she would have to be hidden)
+    let tilt = 0;
+    const feet = this.pos.y;
+    if (this.indoors.some((r) => px > r.x0 && px < r.x1 && pz > r.z0 && pz < r.z1 && feet > r.y0 && feet < r.y1)) {
+      let best = this.freeBoom(px, py, pz, this.yaw, this.pitch);
+      for (let k = 0.2; best < 1.5 && k <= 0.81; k += 0.2) {
+        const f = this.freeBoom(px, py, pz, this.yaw, Math.max(-1.25, this.pitch - k));
+        if (f > best + 0.12) {
+          best = f;
+          tilt = this.pitch - Math.max(-1.25, this.pitch - k);
+        }
+      }
+    }
+    this.tiltNow = (this.tiltNow ?? 0) + (tilt - (this.tiltNow ?? 0)) * Math.min(1, dt * 3);
+    const pitch = this.pitch - this.tiltNow;
+    const free = this.freeBoom(px, py, pz, this.yaw, pitch);
+    const cp = Math.cos(pitch);
+    const bx = Math.sin(this.yaw) * cp, by = -Math.sin(pitch), bz = Math.cos(this.yaw) * cp;
     if (free < this.boomNow) this.boomNow = free;
-    else this.boomNow += (free - this.boomNow) * Math.min(1, (this._dt || 0.016) * 3);
+    else this.boomNow += (free - this.boomNow) * Math.min(1, dt * 3);
     const d = this.boomNow;
-    c.position.set(px + bx * d, py + by * d, pz + bz * d);
-    c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    // still close in (a corner, by the stairs): up over her shoulder, looking down past her head
+    // (under the room's ceiling), so she stays in view instead of hiding her
+    let rise = 0;
+    if (d < 0.95) {
+      const room = this.indoors.find((r) => px > r.x0 && px < r.x1 && pz > r.z0 && pz < r.z1 && feet > r.y0 && feet < r.y1);
+      rise = Math.max(0, Math.min((0.95 - d) * 0.7, room ? room.y1 - 0.3 - (py + by * d) : 0.35));
+    }
+    this.riseNow = (this.riseNow ?? 0) + (rise - (this.riseNow ?? 0)) * Math.min(1, dt * 4);
+    c.position.set(px + bx * d, py + by * d + this.riseNow, pz + bz * d);
+    c.rotation.set(pitch - this.riseNow * 0.7, this.yaw, 0, 'YXZ');
   }
 
   // how far the camera can stand back from the pivot (px, py, pz) looking along yaw / pitch

@@ -1389,7 +1389,7 @@ function simulate(dt) {
     state.today.trains++;
   }
   lastTrainState = train.state;
-  updateCrossings(world.crossings, train, dt, t, walking ? player.pos : null);
+  updateCrossings(world.crossings, train, dt, t, walking ? player.pos : null, walkers);
   if (padOn && train.v > 2 && Math.abs(player.pos.z - 56) < 12) {
     const [a, b] = train.span();
     const dx = Math.max(a - player.pos.x, 0, player.pos.x - b);
@@ -1410,7 +1410,7 @@ function simulate(dt) {
   // the protagonist: shown in third person unless the camera is pulled in against her
   // (she stays on screen behind menus, the map and the fortune slip)
   const tpOn = !!avatar && state.mode !== 'title' && state.mode !== 'loading' && player.view === 'third';
-  const tpShown = tpOn && player.boomNow > 0.75;
+  const tpShown = tpOn && player.boomNow > 0.42;
   // umbrellas go up once the rain is really falling (and down once it has all but stopped)
   umbrellas = umbrellas ? weather.rain > 0.05 : weather.rain > 0.08;
   if (avatar) {

@@ -347,7 +347,7 @@ export function buildCrossings(ctx, scene) {
       const solid = ctx.colliders.addDynamicBox(armLen / 2, 0.1, 0, y + 1.25, y + 0.55);
       solid.cx = pivot.position.x + (side < 0 ? -1 : 1) * (armLen / 2);
       solid.cz = pivot.position.z;
-      state.arms.push({ arm, pivot, solid });
+      state.arms.push({ arm, pivot, solid, len: armLen });
       ctx.colliders.addCircle(px, z, 0.2);
       ctx.colliders.addBox(gx + side * -0.45, z - side * 0.45, 0.25, 0.22, 0);
     }
@@ -655,7 +655,9 @@ export class TrainController {
   }
 }
 
-export function updateCrossings(crossings, train, dt, t, player = null) {
+// (people: the feet of everyone about the crossing; an arm coming down stops short over the
+// head of anyone standing under it, and goes on down once they have stepped out from under it)
+export function updateCrossings(crossings, train, dt, t, player = null, people = null) {
   for (const c of crossings) {
     // whoever is already on the crossing can always get off it
     const inside = player && player.z > 50.6 && player.z < 61.0 && Math.abs(player.x - c.x) < c.half + 1.2;
@@ -669,7 +671,18 @@ export function updateCrossings(crossings, train, dt, t, player = null) {
     c.armT += (target - c.armT) * Math.min(1, dt * (target > c.armT ? 1.1 : 1.6));
     const ang = (1 - c.armT) * (Math.PI / 2 - 0.08);
     for (const a of c.arms) {
-      a.arm.rotation.z = ang;
+      let want = ang;
+      const dir = Math.cos(a.pivot.rotation.y), P = a.pivot.position;
+      for (const p of people ?? (player ? [player] : [])) {
+        if (Math.abs(p.z - P.z) > 0.45) continue;
+        const d = (p.x - P.x) * dir;
+        if (d < 0.1 || d > a.len + 0.35) continue;
+        const over = p.y + 1.85 - P.y;
+        if (over > 0) want = Math.max(want, Math.atan2(over, Math.max(0.05, d - 0.3)));
+      }
+      // (it lifts out of the way quickly, and comes down at its own pace)
+      a.ang = a.ang === undefined ? want : want > a.ang ? Math.min(want, a.ang + dt * 5) : Math.max(want, a.ang - dt * 1.4);
+      a.arm.rotation.z = a.ang;
       if (a.solid) a.solid.off = c.armT < 0.8 || inside;
     }
     const blink = c.active ? Math.floor(t * 1.7) % 2 : -1;

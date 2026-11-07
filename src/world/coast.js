@@ -12,8 +12,10 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 // Sea
 // ---------------------------------------------------------------------------
 export function createWater() {
-  // (big enough to reach the far plane from anywhere the boat can go)
-  const geo = new THREE.PlaneGeometry(40000, 20000, 1, 1);
+  // (big enough to reach the far plane from anywhere the boat can go; in 200 m squares: drawn
+  // as two triangles kilometres across, the position the GPU interpolates over them strays by
+  // centimetres, enough for the sea to show inside her boat along its planking)
+  const geo = new THREE.PlaneGeometry(40000, 20000, 200, 100);
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, 0, 10000 + 70);
   const mat = new THREE.ShaderMaterial({
