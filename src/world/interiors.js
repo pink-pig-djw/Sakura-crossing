@@ -834,9 +834,9 @@ function buildMall(ctx, block, doors) {
     c.fillStyle = '#273049';
     c.textAlign = 'left';
     c.font = `700 ${h * 0.055}px ${FONTS.maru}`;
-    c.fillText('2F  フードコート・本・音楽', 10, h * 0.26);
+    c.fillText('2F  フードコート・音楽', 10, h * 0.26);
     c.fillText('     おもちゃ・ガチャ', 10, h * 0.34);
-    c.fillText('1F  ファッション・雑貨', 10, h * 0.5);
+    c.fillText('1F  本・ファッション・雑貨', 10, h * 0.5);
     c.fillText('     クレープ・くすり', 10, h * 0.58);
     c.fillStyle = '#6a7076';
     c.font = `500 ${h * 0.045}px ${FONTS.gothic}`;
@@ -847,7 +847,7 @@ function buildMall(ctx, block, doors) {
   gb.boxMM(265.3, y1, -7.5, 266.7, y1 + 1.9, -7.3, { color: 0xd8d4cc });
   vsign(ctx, 'x', -7.29, 265.35, 266.65, y1 + 0.2, y1 + 1.85, 1, guide, 0.6);
   ctx.colliders.addBox(266.0, -7.4, 0.7, 0.15, 0, y1 + 1.9, y1 - 1);
-  ctx.interactables.push({ kind: 'sign', x: 266.0, z: -6.3, y: y1, r: 1.4, label: 'フロアガイドを見る', text: '1F ファッション・雑貨・クレープ / 2F フードコート・本・おもちゃ。屋上はないけれど、天窓から空が見える。' });
+  ctx.interactables.push({ kind: 'sign', x: 266.0, z: -6.3, y: y1, r: 1.4, label: 'フロアガイドを見る', text: '1F 本・ファッション・雑貨・クレープ / 2F フードコート・おもちゃ・音楽。屋上はないけれど、天窓から空が見える。' });
   // lights: 1F under the gallery, 2F ceiling
   ceilingLights(ctx, M.x0 + 0.5, M.z0 + 0.5, M.x1 - 0.5, A.z0 - 0.3, y2 - 0.5, 3.2);
   ceilingLights(ctx, M.x0 + 0.5, A.z1 + 0.3, M.x1 - 0.5, M.z1 - 0.5, y2 - 0.5, 3.2);

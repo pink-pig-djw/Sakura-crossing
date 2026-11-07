@@ -101,7 +101,6 @@
           <div class="count-chip" id="counts"></div>
         </div>
         <div id="prompt" class="prompt" hidden><kbd>E</kbd><span id="prompt-text"></span></div>
-        <div id="toast" class="toast" aria-live="polite"></div>
         <div id="subtitle" class="subtitle" aria-live="polite" hidden><span class="sub-who" id="sub-who"></span><span class="sub-text" id="sub-text"></span></div>
         <div id="crosshair" class="crosshair"></div>
         <button id="menu-btn" class="icon-btn" type="button" aria-label="メニュー" data-i18n-label>≡</button>
@@ -263,6 +262,9 @@
       </div>
       <!-- a sparkle: changing clothes -->
       <div id="sparkle" class="sparkle" hidden><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <!-- messages: over the HUD, the title screen and the map alike (not inside the HUD, which
+           is hidden until the walk begins) -->
+      <div id="toast" class="toast" aria-live="polite"></div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

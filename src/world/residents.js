@@ -191,6 +191,15 @@ export class Resident {
     this.setWalk(r < phone ? 'walkText' : r < phone + (c.trot || 0) ? 'jog' : 'walk');
   }
 
+  // could you not see her at (x, z)? Far off, out of view (beyond `near` metres), or you are
+  // indoors or asleep
+  unseen(player, x, z, near = 10) {
+    if (!player || player.hidden) return true;
+    const dx = x - player.pos.x, dz = z - player.pos.z, d = Math.hypot(dx, dz);
+    if (d > 30) return true;
+    return d > near && !!player.look && (dx * player.look.x + dz * player.look.z) / d < 0.26;
+  }
+
   // at one end of her walk, setting off along it
   spawn(end) {
     const p = this.path;
@@ -351,18 +360,25 @@ export class Resident {
   }
 
   // ---------------------------------------------------------------- update
-  // player: { pos, head, sitting } or null (title screen, menus); hour: time of day; block:
-  // where you stand while a menu or the map is open (she still doesn't walk through you)
+  // player: { pos, head, sitting, paused, hidden, look } or null (title screen); paused: a
+  // menu or the map is open (she says nothing then); hidden: you are indoors or asleep (you
+  // can't see her); look: { x, z } the way the camera faces. block: where you stand while a
+  // menu or the map is open (she still doesn't walk through you)
   update(dt, player, hour = 10, block = null) {
     const ch = this.ch;
-    // her day: out between her hours; she comes and goes while you are not near
+    const paused = !!player?.paused;
+    // her day: out between her hours; she comes and goes while you can't see her
     const HOURS = this.cast.hours;
     const out = hour >= HOURS[0] && hour < HOURS[1];
-    const far = !player || Math.hypot(player.pos.x - this.x, player.pos.z - this.z) > 30;
-    if (!out && !this.home && far) this.setHome(true);
-    if (out && this.home && far) {
-      this.setHome(false);
-      this.spawn(Math.random() < 0.5 ? 0 : this.path.length - 1);
+    if (!out && !this.home && this.unseen(player, this.x, this.z)) this.setHome(true);
+    if (out && this.home) {
+      // (from an end of her walk you can't see: never popping up in front of you)
+      const ends = Math.random() < 0.5 ? [0, this.path.length - 1] : [this.path.length - 1, 0];
+      const end = ends.find((e) => this.unseen(player, this.path[e][0], this.path[e][1], 8));
+      if (end !== undefined) {
+        this.setHome(false);
+        this.spawn(end);
+      }
     }
     if (this.home) return;
 
@@ -389,7 +405,7 @@ export class Resident {
     this.gazeT = Math.max(0, (this.gazeT || 0) - dt);
 
     // startled: you ran into her
-    if (player && this.startleCool <= 0 && dP < 0.8 && this.vP > 2.2 && this.state !== 'sitDown' && this.state !== 'standUp') {
+    if (player && !paused && this.startleCool <= 0 && dP < 0.8 && this.vP > 2.2 && this.state !== 'sitDown' && this.state !== 'standUp') {
       this.startleCool = 15;
       this.greeted = this.met = true;
       ch.setMood(0, 0, 0, 1);
@@ -521,14 +537,14 @@ export class Resident {
           this.fidgetT = fidget ? 3 + Math.random() * 3 : 4 + Math.random() * 5;
         }
         // looks at you while you are around, says hello, and goodbye when you go
-        if (player && dP < 6 && !this.greeted) {
+        if (player && !paused && dP < 6 && !this.greeted) {
           this.greeted = this.met = true;
           ch.setMood(0.7);
           this.resumeAfter = 'sit';
           this.act(null, this.say('hello'));
           break;
         }
-        if (player && this.greeted && !this.waved && dP > 9) {
+        if (player && !paused && this.greeted && !this.waved && dP > 9) {
           this.waved = true;
           ch.setMood(0.5);
           this.resumeAfter = 'sit';
@@ -574,7 +590,7 @@ export class Resident {
         }
         const err = this.turnToward(toP, 1.7, dt);
         ch.play(err > 0.55 ? 'walk' : 'idle', 0.4, 0.6);
-        if (!this.greeted && dP < 3.4 && err < 0.5) {
+        if (!paused && !this.greeted && dP < 3.4 && err < 0.5) {
           this.greeted = true;
           ch.setMood(0.7);
           const first = !this.met;

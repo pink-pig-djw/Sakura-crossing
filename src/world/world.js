@@ -95,6 +95,7 @@ function forest(ctx) {
 // Builds the whole town. `progress(p, label)` reports 0..1 for the loader.
 export async function buildWorld(scene, opts = {}) {
   const progress = opts.progress || (() => {});
+  const fontLoads = watchFontLoads();
   const atlas = new Atlas(2048, 0);
   const atlas2 = new Atlas(2048, 1, 4608);
   const signTex = atlas.texture();
@@ -278,6 +279,9 @@ export async function buildWorld(scene, opts = {}) {
 
   signTex.needsUpdate = true;
   signTex2.needsUpdate = true;
+  // the web fonts arrive while the town is built (a canvas asking for a face is what fetches
+  // it, and that first draw falls back): once they are in, the signs are drawn again
+  redrawOnFonts([atlas, atlas2], fontLoads);
   const group = new THREE.Group();
   group.name = 'static';
   const built = ctx.builders.build(materials, group);
@@ -315,4 +319,39 @@ export async function buildWorld(scene, opts = {}) {
   buildTrain(ctx, scene);
   progress(1, '完成');
   return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// web fonts: counting the faces that finish loading while the town is built
+function watchFontLoads() {
+  const F = document.fonts;
+  const w = { n: 0, stop: () => {} };
+  if (!F?.addEventListener) return w;
+  const on = () => w.n++;
+  F.addEventListener('loadingdone', on);
+  w.stop = () => F.removeEventListener('loadingdone', on);
+  return w;
+}
+
+// the atlases drawn again once every face asked for has loaded (and again if more come in
+// over the next minute: a sign first drawn later, a slow connection)
+function redrawOnFonts(atlases, w) {
+  const F = document.fonts;
+  w.stop();
+  if (!F?.ready) return;
+  let pending = w.n > 0 || F.status === 'loading';
+  let timer = 0;
+  const redraw = () => {
+    timer = 0;
+    pending = false;
+    for (const a of atlases) a.redraw();
+  };
+  F.ready.then(() => {
+    if (pending) redraw();
+  });
+  const later = () => {
+    if (!timer) timer = setTimeout(redraw, 400);
+  };
+  F.addEventListener?.('loadingdone', later);
+  setTimeout(() => F.removeEventListener?.('loadingdone', later), 60000);
 }

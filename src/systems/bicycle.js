@@ -859,7 +859,7 @@ export class Bicycle {
       const step = Math.min(0.7 * dt, dist);
       this.x += (dx / dist) * step;
       this.z += (dz / dist) * step;
-      v = (((dx * sx + dz * sz) / dist) * step) / dt;
+      v = (((dx * sx + dz * sz) / dist) * step) / Math.max(dt, 1e-4);
       if (dist - step < 0.005) {
         this.walkTo = false;
         v = 0;

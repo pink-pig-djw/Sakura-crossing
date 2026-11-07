@@ -41,6 +41,8 @@ export class VoiceSystem {
 
   setVolume(v) {
     this.volume = v;
+    this.audio.voiceVol = v; // (the reverb's voice send follows it too)
+    this.audio.applyVolumes(0.1);
     if (this.bus) this.bus.gain.setTargetAtTime(v, this.audio.ctx.currentTime, 0.1);
   }
 
@@ -197,7 +199,7 @@ export class VoiceSystem {
       tail.connect(this.bus);
       const send = ctx.createGain();
       send.gain.value = o.wet ?? 0.55;
-      tail.connect(send).connect(this.audio.revSend);
+      tail.connect(send).connect(this.audio.revVoice);
       return g;
     }
     if (kind === 'townpa') {
@@ -222,7 +224,7 @@ export class VoiceSystem {
       mix.connect(this.bus);
       const send = ctx.createGain();
       send.gain.value = 0.7;
-      mix.connect(send).connect(this.audio.revSend);
+      mix.connect(send).connect(this.audio.revVoice);
       return g;
     }
     if (kind === 'machine') {
@@ -258,12 +260,11 @@ export class VoiceSystem {
   update() {
     if (!this.audio.ctx || !this.bus) return;
     const ctx = this.audio.ctx;
-    const on = ctx.currentTime < (this.duckUntil || 0) ? 1 : 0;
+    // (with the voice turned off there is nothing to dip under)
+    const on = this.volume > 0.001 && ctx.currentTime < (this.duckUntil || 0) ? 1 : 0;
     if (on !== this.duck) {
       this.duck = on;
-      const t = ctx.currentTime;
-      this.audio.musicBus.gain.setTargetAtTime(this.audio.musicVol * 0.55 * (on ? 0.3 : 1), t, on ? 0.15 : 0.8);
-      this.audio.amb.gain.setTargetAtTime(this.audio.ambVol * (on ? 0.7 : 1), t, on ? 0.2 : 0.8);
+      this.audio.setDuck(!!on);
     }
   }
 }

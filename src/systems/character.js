@@ -58,6 +58,7 @@ const PROCEDURAL = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'lef
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
+const _ik = Array.from({ length: 9 }, () => new THREE.Vector3()); // (ik's scratch: no garbage per limb per frame)
 
 // typical brightness of a texture's opaque texels (the median, linear as the shader sees it:
 // stripes, buttons and stitching do not pull it off the cloth's own tone)
@@ -801,17 +802,22 @@ export class Character {
   // toward the direction `pole` (knees forward, elbows out and back).
   ik(upper, lower, end, target, pole) {
     const up = this.node(upper), lo = this.node(lower), en = this.node(end);
-    const a0 = up.getWorldPosition(new THREE.Vector3()), k0 = lo.getWorldPosition(new THREE.Vector3()), e0 = en.getWorldPosition(new THREE.Vector3());
+    const [a0, k0, e0, d, p, mid, k1, e1, tk] = _ik;
+    const tx = target.x, ty = target.y, tz = target.z; // (target and pole are only read)
+    up.getWorldPosition(a0);
+    lo.getWorldPosition(k0);
+    en.getWorldPosition(e0);
     const a = a0.distanceTo(k0), b = k0.distanceTo(e0);
     const c = THREE.MathUtils.clamp(a0.distanceTo(target), Math.abs(a - b) + 1e-3, a + b - 1e-3);
-    const d = target.clone().sub(a0).normalize();
-    const p = pole.clone().addScaledVector(d, -pole.dot(d)).normalize();
+    d.set(tx, ty, tz).sub(a0).normalize();
+    p.copy(pole).addScaledVector(d, -pole.dot(d)).normalize();
     const cosA = (a * a + c * c - b * b) / (2 * a * c), sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
-    const mid = a0.clone().addScaledVector(d, a * cosA).addScaledVector(p, a * sinA);
+    mid.copy(a0).addScaledVector(d, a * cosA).addScaledVector(p, a * sinA);
     this._rotateWorld(up, k0.sub(a0).normalize(), mid.sub(a0).normalize());
     up.updateMatrixWorld(true);
-    const k1 = lo.getWorldPosition(new THREE.Vector3()), e1 = en.getWorldPosition(new THREE.Vector3());
-    this._rotateWorld(lo, e1.sub(k1).normalize(), target.clone().sub(k1).normalize());
+    lo.getWorldPosition(k1);
+    en.getWorldPosition(e1);
+    this._rotateWorld(lo, e1.sub(k1).normalize(), tk.set(tx, ty, tz).sub(k1).normalize());
     lo.updateMatrixWorld(true);
   }
 

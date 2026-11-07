@@ -74,7 +74,10 @@ export class Player {
     this.yaw = yaw;
     this.pitch = pitch;
     this.vy = 0;
+    this.vel.set(0, 0, 0);
     this.sitting = null;
+    // (set down somewhere dry: that is where the deep-water safety net brings her back to)
+    if (!this._deep(x, z, this.pos.y)) (this.dry ||= new THREE.Vector3()).copy(this.pos);
     this.applyCamera();
   }
 
@@ -176,6 +179,9 @@ export class Player {
   sit(spot) {
     this.sitting = spot;
     this.vy = 0;
+    // (no stride carried over: standing up she does not lurch on the way she came)
+    this.vel.set(0, 0, 0);
+    this._jumpReq = false;
     // where she sat down from: always a place she can stand (see stand)
     this.sitFrom = { x: this.pos.x, y: this.pos.y, z: this.pos.z };
     // first person: looking out the way the seat faces; third person: the camera swings round
@@ -209,6 +215,8 @@ export class Player {
     if (!this.sitting) return;
     const s = this.sitting;
     this.sitting = null;
+    this.vel.set(0, 0, 0);
+    this._jumpReq = false;
     // step off the seat (whatever the camera looks at): off the front of a bench, back from a
     // counter or a table, to a side in a booth; only onto clear floor at the seat's own level,
     // with nothing (a wall, a railing) between the seat and there. Failing all of those, back
@@ -300,6 +308,7 @@ export class Player {
       const boost = this.run || this.padRun || K.has('ShiftLeft') || K.has('ShiftRight') || Math.hypot(this.touchMove.x, this.touchMove.y) > 0.92;
       this.running = false;
       this.ride.drive(dt, { ix: kx, iz: kz, boost, brake: this.padBrake }, this);
+      this._jumpReq = false; // (a jump pressed in the boat is not kept for the landing)
       this.applyCamera();
       return;
     }
@@ -324,6 +333,7 @@ export class Player {
         this.pos.set(s.x, s.y - 0.45, s.z);
         this.eyeY += (s.y + 0.78 - this.eyeY) * Math.min(1, dt * 6);
         this.speed = 0;
+        this._jumpReq = false; // (nor one pressed on the bench, for when she gets up)
         this.applyCamera();
         return;
       }
@@ -376,14 +386,33 @@ export class Player {
     const near = A && A.near > 0 && (A.done || Math.hypot(A.x - this.pos.x, A.z - this.pos.z) < A.near);
     const rad = near ? A.r : RADIUS;
     if (this.ease > 0) this.ease -= dt;
+    // easing out of a margin: how deep in she is now; a move never takes her deeper than that
+    // (else pushing into a wall meanwhile, she could end up through it)
+    let pen0 = 0;
+    if (this.ease > 0) {
+      const c = { x: this.pos.x, z: this.pos.z };
+      this.col.resolve(c, rad, this.pos.y);
+      pen0 = Math.hypot(c.x - this.pos.x, c.z - this.pos.z);
+    }
+    // moved in short steps (no further than half her width each), so a frame hitch while
+    // running at a thin railing cannot carry her past its middle and out the far side
+    const mx = this.vel.x * dt, mz = this.vel.z * dt;
+    const steps = Math.max(1, Math.min(8, Math.ceil(Math.hypot(mx, mz) / (RADIUS * 0.5))));
+    const kEase = Math.min(1, (dt / steps) * 6);
     const tryMove = (dx, dz) => {
       const nx = this.pos.x + dx, nz = this.pos.z + dz;
       const p = { x: nx, z: nz };
       this.col.resolve(p, rad, this.pos.y);
       if (this.ease > 0) {
-        const k = Math.min(1, dt * 6);
-        p.x = nx + (p.x - nx) * k;
-        p.z = nz + (p.z - nz) * k;
+        const fx0 = p.x, fz0 = p.z; // (fully pushed out)
+        p.x = nx + (p.x - nx) * kEase;
+        p.z = nz + (p.z - nz) * kEase;
+        const pen = Math.hypot(p.x - fx0, p.z - fz0);
+        if (pen > pen0) {
+          const k = pen0 / pen;
+          p.x = fx0 + (p.x - fx0) * k;
+          p.z = fz0 + (p.z - fz0) * k;
+        }
       }
       const g = this.col.groundAt(p.x, p.z, this.pos.y);
       if (g - this.pos.y > STEP && !(this.vy > 0 && g - this.pos.y < 1.1)) return false;
@@ -392,11 +421,19 @@ export class Player {
       this.pos.z = p.z;
       return true;
     };
-    const mx = this.vel.x * dt, mz = this.vel.z * dt;
     const x0 = this.pos.x, z0 = this.pos.z;
-    if (!tryMove(mx, mz)) {
-      if (!tryMove(mx, 0)) this.vel.x = 0;
-      if (!tryMove(0, mz)) this.vel.z = 0;
+    let sx = mx / steps, sz = mz / steps;
+    // (at least once even standing still: easing out of a margin goes on meanwhile)
+    for (let i = 0; i < steps && (i === 0 || sx || sz); i++) {
+      if (tryMove(sx, sz)) continue;
+      if (!tryMove(sx, 0)) {
+        this.vel.x = 0;
+        sx = 0;
+      }
+      if (!tryMove(0, sz)) {
+        this.vel.z = 0;
+        sz = 0;
+      }
     }
     // the way she really went (against a wall: nowhere, or sliding along it), so she does not
     // walk on the spot into it and her steps are not heard
@@ -561,6 +598,8 @@ export class Player {
   }
 
   jump() {
+    // (sitting, in the boat, or held by a routine at home: no jump, and none kept for later)
+    if (this.sitting || this.ride || this.held) return;
     this._jumpReq = true;
   }
 

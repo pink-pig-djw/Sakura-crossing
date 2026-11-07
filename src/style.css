@@ -560,6 +560,15 @@ kbd {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+/* (outside the HUD, so above the title screen and the map; out of the way of clicks; hidden
+   with the HUD in photo mode) */
+#toast {
+  z-index: 38;
+  pointer-events: none;
+}
+#hud.photo ~ #toast {
+  visibility: hidden;
+}
 .crosshair {
   position: absolute;
   left: 50%;

@@ -7,6 +7,12 @@ import { route, HARBOR } from '../world/routeplan.js';
 import { tr, tf, getLang, setLang, onLang, applyStatic } from './i18n.js';
 import { dateLabel, dateShort } from '../systems/calendar.js';
 
+// a phone or tablet: its main pointer is a finger (or it has no mouse or trackpad at all).
+// Not just 'ontouchstart': laptops with a touchscreen have that too, and are played by mouse
+export function isTouchDevice() {
+  return matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window && !matchMedia('(any-pointer: fine)').matches);
+}
+
 const $ = (id) => document.getElementById(id);
 
 // The controls page in the menu: per input, sections of [keys, what they do]. Keys are key
@@ -150,7 +156,7 @@ export class UI {
     this.minimap = new Minimap(this.el.minimap);
     this.areaTimer = 0;
     this.toastTimer = 0;
-    this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    this.isTouch = isTouchDevice();
     this.handlers = {};
     this._bind();
   }
@@ -297,12 +303,20 @@ export class UI {
     canvas.addEventListener('touchend', (ev) => {
       for (const t of ev.changedTouches) if (t.identifier === lid) lid = null;
     });
-    $('t-act').addEventListener('click', () => this.emit('interact'));
-    $('t-jump').addEventListener('click', () => this.emit('jump'));
-    $('t-bike').addEventListener('click', () => this.emit('bike'));
-    $('t-gear').addEventListener('click', () => this.emit('gear'));
+    // (on the finger going down, not a click: a phone makes no click of a second finger's tap
+    // while the first holds the stick, so the bell or the gear would not answer while riding)
+    const tap = (id, fn) =>
+      $(id).addEventListener('pointerdown', (ev) => {
+        if (ev.button > 0) return;
+        ev.preventDefault();
+        fn();
+      });
+    tap('t-act', () => this.emit('interact'));
+    tap('t-jump', () => this.emit('jump'));
+    tap('t-bike', () => this.emit('bike'));
+    tap('t-gear', () => this.emit('gear'));
     const run = $('t-run');
-    run.addEventListener('click', () => {
+    tap('t-run', () => {
       run.classList.toggle('on');
       this.emit('runToggle', run.classList.contains('on'));
     });

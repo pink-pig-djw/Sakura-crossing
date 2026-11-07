@@ -138,7 +138,7 @@ export class Avatar {
   // active: third person (in play, or behind a menu); visible: drawn (not when the camera is
   // pulled in against her); still: the walker is paused (menus); look: a point to turn her
   // head to, or null
-  update(dt, { active, visible, look, still = false }) {
+  update(dt, { active, visible, look, still = false, homeStill = still }) {
     const ch = this.ch, p = this.player;
     if (!ch) return;
     ch.root.visible = active && visible;
@@ -166,7 +166,7 @@ export class Avatar {
     if (this.home?.active) {
       const R = this.home.rider();
       if (R) {
-        this._home(dt, R);
+        this._home(homeStill ? 0 : dt, R);
         return;
       }
     }
@@ -436,7 +436,8 @@ export class Avatar {
     const gust = 1 + 0.3 * Math.sin(ch.t * 5.1) * Math.sin(ch.t * 1.7 + 0.4);
     wind.set(-Math.sin(B.h) * (B.v + 0.8), 0.02 * v, -Math.cos(B.h) * (B.v + 0.8)).multiplyScalar(0.07 * gust);
     ch.wind = still ? null : wind;
-    ch.update(dt);
+    // (getting in or out behind a menu: the boat's steps wait, and her clip with them)
+    ch.update(still && B.state !== 'sailing' ? 0 : dt);
     this.drips.update(dt, this.umbrella, 0);
   }
 

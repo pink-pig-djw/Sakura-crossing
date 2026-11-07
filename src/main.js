@@ -22,7 +22,7 @@ import { areaAt, AREAS, shoreZ, STATION, groundH, RIVER, WEIRS, SUBWAY, BOUNDS }
 import { walkState } from './world/commercial.js';
 import { ambienceAt, PADS, BORE } from './world/routeplan.js';
 import { LapTimer, lapTime } from './systems/laptimer.js';
-import { UI } from './ui/ui.js';
+import { UI, isTouchDevice } from './ui/ui.js';
 import { fullscreenSupported, isFullscreen, isIPhone, setFullscreen, onFullscreenChange } from './ui/fullscreen.js';
 import { tr, tf, setLang, getLang } from './ui/i18n.js';
 import { VoiceSystem } from './systems/voice.js';
@@ -56,7 +56,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.info.autoReset = false;
 
-const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const isTouch = isTouchDevice();
 const QUALITY = {
   low: { ratio: 0.8, maxRatio: 1, msaa: 0, shadow: 1024, petals: 1800, lite: true },
   medium: { ratio: 1, maxRatio: 1.25, msaa: 4, shadow: 2048, petals: 3800 },
@@ -118,7 +118,9 @@ if (params.has('rain')) {
   weather.rain = weather.amount;
   weather.wet = 1;
 }
-tod.setHour(params.has('t') ? parseFloat(params.get('t')) : 10.4);
+// (?t=hour for screenshots; a missing or bad value: the usual morning)
+const tParam = parseFloat(params.get('t'));
+tod.setHour(Number.isFinite(tParam) ? tParam : 10.4);
 // how long she has been up (sleep, tiredness: systems/body.js)
 const body = new Body(tod);
 window.__body = body;
@@ -183,7 +185,8 @@ const state = {
 };
 // what she has done today (since she last got up), for her diary
 function newDay() {
-  return { places: [], cats: new Set(), shells: 0, drinks: 0, drink: null, trains: 0, luck: null, sailed: false, rode: false, lap: null, rained: false, nights: body.nights };
+  // (rain that began in the night, still falling when she gets up, is today's rain too)
+  return { places: [], cats: new Set(), shells: 0, drinks: 0, drink: null, trains: 0, luck: null, sailed: false, rode: false, lap: null, rained: !!weather?.raining, nights: body.nights };
 }
 function seeToday(name) {
   if (!state.today.places.includes(name)) state.today.places.push(name);
@@ -313,6 +316,8 @@ const avatarReady = createAvatar(world, scene, player, outfit)
     a.boat = boat;
     bike.setRider(a.ch);
     window.__avatar = a;
+    // an outfit picked in the menu while she was still loading: put on now
+    if (a.outfit !== undefined && a.outfit !== outfit) wearOutfit(outfit);
     // her house: the door, the bed, the wardrobe, the desk ... (systems/home.js)
     home = new HomeLife(world, scene, {
       player, avatar: a, body, tod, weather, audio, ui: homeUI(),
@@ -354,7 +359,7 @@ if (restore && typeof restore.x === 'number') {
 // kept in the browser. Not with ?t= (a link that sets the hour: shots, tests), and nothing is
 // kept until she is out walking. (The title screen's clock runs on from the day kept.)
 const DAYS_KEY = 'sakura-days';
-const keepDays = !params.has('t');
+const keepDays = !Number.isFinite(tParam);
 const kept = keepDays ? loadDays() : null;
 if (kept) {
   tod.abs = kept.abs;
@@ -401,10 +406,8 @@ document.addEventListener('visibilitychange', () => {
 // today's date (systems/calendar.js), and the calendar on her wall turned to it
 let shownDate = null;
 function theDate() {
-  if (shownDate?.n !== dayIndex(tod.abs)) {
-    shownDate = dateOf(tod.abs);
-    HOME.calendar?.show(shownDate);
-  }
+  if (shownDate?.n !== dayIndex(tod.abs)) shownDate = dateOf(tod.abs);
+  HOME.calendar?.show(shownDate); // (only drawn when the page changes, or its font arrived)
   return shownDate;
 }
 theDate();
@@ -518,6 +521,9 @@ function findInteractable() {
     // things on other floors (subway concourse, platform, street above) are out of reach
     const iy = it.y ?? (it.sit ? it.sit.y - 0.45 : null);
     if (iy !== null ? Math.abs(iy - py) > 2.2 : below) continue;
+    // (a shop's counter or seat: from inside the shop, not through its window)
+    const w = it.wall;
+    if (w && (player.pos.x - w.x) * w.nx + (player.pos.z - w.z) * w.nz < 0) continue;
     const dx = it.x - player.pos.x, dz = it.z - player.pos.z;
     const d = Math.hypot(dx, dz);
     if (d > it.r + 0.6) continue;
@@ -830,8 +836,11 @@ try {
 player.setView(viewMode);
 ui.setView(viewMode);
 function toggleView(v = player.view === 'third' ? 'first' : 'third') {
-  // (busy at home she is seen doing it)
-  if (home?.busy && v === 'first') return;
+  // (busy at home she is seen doing it; the menu's checkbox put back as it is)
+  if (home?.busy && v === 'first') {
+    ui.setView(player.view);
+    return;
+  }
   player.setView(v);
   ui.setView(v);
   try {
@@ -880,6 +889,17 @@ function releasePointer() {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 
+// Sound: the browser may hold the audio context suspended until a gesture (or interrupt it:
+// iOS, a phone call); every key, click and tap asks again. In a hidden tab nothing is drawn,
+// so the loops would hang on their last level: the sound sleeps until the tab is back.
+for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => audio.resume(), { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => {
+  audio.hidden = document.hidden;
+  if (!audio.ctx) return;
+  if (document.hidden) audio.ctx.suspend?.().catch?.(() => {});
+  else audio.resume();
+});
+
 function startPlay() {
   if (state.mode !== 'title') return;
   if (kept) {
@@ -891,6 +911,8 @@ function startPlay() {
   audio.start();
   audio.setVolumes(volumes.amb, volumes.music);
   voice.setVolume(volumes.voice);
+  // (the Space that started the walk is not also a jump)
+  player.keys.delete('Space');
   ui.enterGame();
   state.mode = 'play';
   player.enabled = true;
@@ -1037,6 +1059,8 @@ function goHome() {
   backToPlay();
   if (player.sitting) player.stand();
   lap.running = false;
+  // (the boat left at the island comes back to the pier: there is no other way back to it)
+  boat.bringBack();
   player.place(HOME.arrive.x, HOME.arrive.z, HOME.arrive.yaw, -0.06);
   if (avatar) {
     avatar.heading = HOME.arrive.yaw + Math.PI;
@@ -1047,13 +1071,12 @@ function goHome() {
 
 function cycleTime(dir) {
   if (ui.sleeping) return;
-  let i = 0, best = 99;
+  // the period it is now: the last preset already begun (give or take 0.6 h); before the
+  // morning one, still last night's (so at 1:00 or 5:00 the next is the morning ahead, not
+  // the day's noon)
+  let i = PRESETS.length - 1;
   PRESETS.forEach((p, k) => {
-    const d = Math.abs(p.hour - tod.hour);
-    if (d < best) {
-      best = d;
-      i = k;
-    }
+    if (p.hour <= tod.hour + 0.6) i = k;
   });
   const next = PRESETS[(i + dir + PRESETS.length) % PRESETS.length];
   tod.setHour(next.hour);
@@ -1102,7 +1125,10 @@ ui.on('closeMap', backToPlay);
 ui.on('goHome', goHome);
 ui.on('closeOmikuji', backToPlay);
 ui.on('time', (h) => {
-  tod.setHour(h);
+  // (the clock only goes forward: the period it is now, shown selected though its hour has
+  // just gone by, is not a jump to the same hour tomorrow)
+  const ahead = (((h - tod.hour) % 24) + 24) % 24;
+  if (ahead < 24 - 0.6) tod.setHour(h);
   ui.syncMenu(menuState());
 });
 ui.on('flow', (v) => (tod.flowing = v));
@@ -1264,6 +1290,20 @@ function onResize() {
   world.wireMaterial?.resolution.set(innerWidth, innerHeight);
 }
 addEventListener('resize', onResize);
+// the window dragged to a screen of another pixel density: no resize event, so the canvas and
+// its render targets would stay at the old ratio (a media query for the current ratio, renewed
+// each time it stops matching)
+(function watchDpr() {
+  const mq = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+  mq.addEventListener?.(
+    'change',
+    () => {
+      onResize();
+      watchDpr();
+    },
+    { once: true },
+  );
+})();
 world.wireMaterial?.resolution.set(innerWidth, innerHeight);
 
 player.onStep = (surface, running) => audio.step(surface, running);
@@ -1338,6 +1378,8 @@ function nearSea() {
   return c.z > 58 && c.y < 160 && !cameraIndoors();
 }
 
+const resView = { pos: null, head: null, sitting: null, paused: false, hidden: false, look: { x: 0, z: 1 } };
+const _resLook = new THREE.Vector3();
 // one step of the town, the walk and the sounds (everything but drawing the frame)
 function simulate(dt) {
   const t = (G.uTime.value += dt);
@@ -1440,9 +1482,25 @@ function simulate(dt) {
     saveDays();
   }
   G.uRoomLight.value.copy(home?.roomLight ?? WHITE);
-  avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play' });
+  // (homeStill: her routine at home is held behind a menu or the map; her clip with it, so
+  // they stay in step; the wardrobe and the diary are part of the routine and run on)
+  const homeStill = !(state.mode === 'play' || state.mode === 'wardrobe' || state.mode === 'diary' || home?.sleeping);
+  avatar?.update(dt, { active: tpOn, visible: tpShown, look: focusPoint(focus), still: state.mode !== 'play', homeStill });
   const head = tpShown ? avatar.head(headPos) : camera.position;
-  residents?.update(dt, state.mode === 'play' ? { pos: player.pos, head, sitting: player.sitting } : null, tod.hour, here);
+  // (behind a menu or the map you are still standing there: she neither vanishes in front of
+  // you nor says goodbye; indoors or asleep you can't see her come and go)
+  if (residents) {
+    camera.getWorldDirection(_resLook);
+    const ll = Math.hypot(_resLook.x, _resLook.z) || 1;
+    resView.look.x = _resLook.x / ll;
+    resView.look.z = _resLook.z / ll;
+    resView.pos = player.pos;
+    resView.head = head;
+    resView.sitting = player.sitting;
+    resView.paused = state.mode !== 'play';
+    resView.hidden = !!ui.sleeping || isIndoors(player.pos.x, player.pos.y + 1, player.pos.z);
+    residents.update(dt, walking ? resView : null, tod.hour, here);
+  }
   // the passers-by keep clear of you and of Mei (you take up room behind a menu or the map too)
   aroundThem.length = 0;
   if (walking) {
@@ -1582,7 +1640,19 @@ function simulate(dt) {
       },
     });
   }
+  // this frame's train and subway events have been heard (or there was nobody to hear them:
+  // the title screen, the sound not allowed yet): never kept for a later frame, where they
+  // would replay every frame or all at once
+  train.events.length = 0;
+  if (world.subway?.events) world.subway.events.length = 0;
+  // (the sound suspended by the browser: asked again now and then, e.g. after the game was
+  // started from a controller, which is no user gesture)
+  if (audio.started && audio.ctx.state !== 'running' && (audioRetry -= dt) <= 0) {
+    audioRetry = 2;
+    audio.resume();
+  }
 }
+let audioRetry = 0;
 // the cycling loop's places as heard from (x, z) (the turbine's hub high on its tower)
 function routeAmbience(x, z) {
   const r = ambienceAt(x, z);

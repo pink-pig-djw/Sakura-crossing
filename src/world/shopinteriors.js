@@ -32,6 +32,9 @@ export function shopFrame(ctx, axis, c, a0, a1, dir, y, seed, fn) {
   for (const b of B) b.pushTRS(x, y, z, ry);
   const cs = Math.cos(ry), sn = Math.sin(ry);
   const toW = (lx, lz) => [x + lx * cs + lz * sn, z - lx * sn + lz * cs];
+  // the shop front: a point on it and the way in (the local -z): what is inside is reached
+  // from inside only, not through the glass from the street (see main.js, findInteractable)
+  const wall = { x, z, nx: -sn, nz: -cs };
   const F = {
     b: B[0], sb: B[1], gb: B[2], eb: B[3], W: a1 - a0, y, rng: new RNG(seed), toW, ctx,
     // a collider over a local rect, h high
@@ -44,12 +47,12 @@ export function shopFrame(ctx, axis, c, a0, a1, dir, y, seed, fn) {
     seat(lx, lz, sy, fx, fz, label) {
       const [wx, wz] = toW(lx, lz);
       const dx = fx * cs + fz * sn, dz = -fx * sn + fz * cs;
-      ctx.interactables.push({ kind: 'bench', x: wx + dx * 0.45, z: wz + dz * 0.45, y, r: 0.8, label, sit: { x: wx, y: y + sy, z: wz, yaw: Math.atan2(-dx, -dz) } });
+      ctx.interactables.push({ kind: 'bench', x: wx + dx * 0.45, z: wz + dz * 0.45, y, r: 0.8, label, wall, sit: { x: wx, y: y + sy, z: wz, yaw: Math.atan2(-dx, -dz) } });
     },
     // something to look at or buy; inside a fitted-out shop it speaks for that kind of shop
     item(lx, lz, o) {
       const [wx, wz] = toW(lx, lz);
-      const it = { x: wx, z: wz, y, r: 1.4, ...o };
+      const it = { x: wx, z: wz, y, r: 1.4, wall, ...o };
       if (F.kind) Object.assign(it, { kind: 'shop', shopKind: F.kind, inside: true });
       ctx.interactables.push(it);
     },

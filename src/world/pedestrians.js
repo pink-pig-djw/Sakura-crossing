@@ -117,7 +117,10 @@ function wardrobe() {
         const T = M.male ? MAN_TOPS : TOPS, B = M.male ? MAN_BOTTOMS : BOTTOMS;
         for (const h of HAIR) for (const t of T) for (const b of B) combos.push({ hair: h, tops: t, bottoms: b });
       }
-      lists[model] = shuffle(combos, model.length * 7919 + model.charCodeAt(0));
+      // (seeded by the whole name: woman1 / woman2 / woman3 each dressed their own way)
+      let seed = 7919;
+      for (let i = 0; i < model.length; i++) seed = (Math.imul(seed, 31) + model.charCodeAt(i)) >>> 0;
+      lists[model] = shuffle(combos, seed);
       used[model] = 0;
     }
     return lists[model][used[model]++ % lists[model].length];
@@ -146,6 +149,9 @@ const inHours = (h, hours) => (Array.isArray(hours[0]) ? hours : [hours]).some((
 // in front of the camera (within 75° of where it looks), or right beside it
 const inView = (cam, x, z, d) => d < 4 || cam.fx === undefined || ((x - cam.x) * cam.fx + (z - cam.z) * cam.fz) / d > 0.26;
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const LOOK_AHEAD = [0, 0.7]; // (now and in a moment: someone crossing in front)
+const SIDES = [['left', 0, 1], ['right', 1, -1]]; // (a cyclist's legs and arms)
+const _q2 = new THREE.Quaternion(), _rq = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 
 // ------------------------------------------------------------------------------- safe ground
@@ -565,11 +571,30 @@ class Person {
     if (this.arrived === undefined) {
       this.arrived = true;
       if (!out) this.setAway(true);
+      else this.solid.off = false; // (about from the start: solid, like those who come back)
     }
     if (!out && !this.away && (this.dc > 45 || !inView(cam, this.x, this.z, this.dc))) this.setAway(true);
     if (out && this.away && this.dc > 45) {
-      this.setAway(false);
-      this.respawn?.();
+      // back somewhere on their way, but never where the camera would see them pop up
+      if (!this.respawn) this.setAway(false);
+      else {
+        const x0 = this.x, z0 = this.z, h0 = this.heading;
+        for (let k = 0; k < 8; k++) {
+          this.respawn();
+          const d = Math.hypot(cam.x - this.x, cam.z - this.z);
+          if (d > 45 || !inView(cam, this.x, this.z, d)) {
+            this.dc = d;
+            this.setAway(false);
+            break;
+          }
+        }
+        if (this.away) {
+          // (every try in plain view: stay away and try again later, from where they left)
+          this.x = x0;
+          this.z = z0;
+          this.heading = h0;
+        }
+      }
     }
     return !this.away;
   }
@@ -705,7 +730,7 @@ class Walker extends Person {
     for (const o of agents) {
       if (o.self === this) continue;
       // where they are now and where they will be in a moment (someone crossing in front)
-      for (const t of [0, 0.7]) {
+      for (const t of LOOK_AHEAD) {
         const dx = o.x + (o.vx || 0) * t - this.x, dz = o.z + (o.vz || 0) * t - this.z;
         const fwd = dx * fx + dz * fz, lat = dx * fz - dz * fx;
         if (fwd < -0.3 || fwd > (this.jog ? 3.5 : 2.2)) continue;
@@ -909,8 +934,8 @@ class Rider extends Person {
     for (const s of ['left', 'right']) for (const b of ['UpperLeg', 'LowerLeg', 'Foot', 'UpperArm', 'LowerArm', 'Hand']) n(s + b).quaternion.identity();
     const root = ch.root;
     root.updateMatrixWorld(true);
-    const rq = root.getWorldQuaternion(new THREE.Quaternion());
-    for (const [s, i, sx] of [['left', 0, 1], ['right', 1, -1]]) {
+    const rq = root.getWorldQuaternion(_rq);
+    for (const [s, i, sx] of SIDES) {
       // the foot: on its pedal (the ankle above and behind the ball of the foot), or down
       // on the ground beside the bike when stopped
       let target;
@@ -921,12 +946,12 @@ class Rider extends Person {
         const p = B.pedals[i].position;
         target = _v2.set(p.x - sx * 0.01, p.y + F.ankleUp, p.z - F.ankleBack).applyMatrix4(root.matrixWorld);
       }
-      ch.ik(s + 'UpperLeg', s + 'LowerLeg', s + 'Foot', target.clone(), _v.set(sx * 0.12, 0.25, 1).applyQuaternion(rq));
-      ch.setWorldQuaternion(s + 'Foot', _q.copy(rq).multiply(new THREE.Quaternion().setFromEuler(_e.set(this.stopped && s === 'left' ? 0 : 0.12 + 0.12 * Math.sin(this.phi + i * Math.PI), 0, 0))));
+      ch.ik(s + 'UpperLeg', s + 'LowerLeg', s + 'Foot', target, _v.set(sx * 0.12, 0.25, 1).applyQuaternion(rq));
+      ch.setWorldQuaternion(s + 'Foot', _q.copy(rq).multiply(_q2.setFromEuler(_e.set(this.stopped && s === 'left' ? 0 : 0.12 + 0.12 * Math.sin(this.phi + i * Math.PI), 0, 0))));
       // the hand on its grip, elbows out and a little bent
       const grip = _v2.set(sx * 0.29, F.gripY + 0.02, F.gripZ - 0.06).applyMatrix4(root.matrixWorld);
-      ch.ik(s + 'UpperArm', s + 'LowerArm', s + 'Hand', grip.clone(), _v.set(sx * 0.5, -0.6, -0.5).applyQuaternion(rq));
-      ch.setWorldQuaternion(s + 'Hand', _q.copy(rq).multiply(new THREE.Quaternion().setFromEuler(_e.set(0, -sx * (Math.PI / 2 - 0.25), -sx * 0.5, 'YXZ'))));
+      ch.ik(s + 'UpperArm', s + 'LowerArm', s + 'Hand', grip, _v.set(sx * 0.5, -0.6, -0.5).applyQuaternion(rq));
+      ch.setWorldQuaternion(s + 'Hand', _q.copy(rq).multiply(_q2.setFromEuler(_e.set(0, -sx * (Math.PI / 2 - 0.25), -sx * 0.5, 'YXZ'))));
       // fingers round the grip
       for (const fg of ['Index', 'Middle', 'Ring', 'Little']) {
         for (const [j, a] of [['Proximal', 0.95], ['Intermediate', 1.0], ['Distal', 0.6]]) n(s + fg + j)?.quaternion.setFromAxisAngle(_v.set(0, 0, 1), -sx * a);
@@ -994,6 +1019,7 @@ class Chat {
     if (this.arrived === undefined) {
       this.arrived = true;
       if (!out) for (const p of m) p.setAway(true);
+      else for (const p of m) p.solid.off = false;
     } else if (!out && !m[0].away && (near > 45 || !seen)) for (const p of m) p.setAway(true);
     else if (out && m[0].away && near > 45) for (const p of m) p.setAway(false);
     if (m[0].away) return;
@@ -1097,7 +1123,7 @@ export async function createPedestrians(world, scene, near = null) {
   const bufs = new Map(), protos = new Map();
   const look = wardrobe();
   const list = [], groups = [];
-  const agents = [];
+  const agents = [], pool = [];
   const view = { x: 0, z: 0, fx: 0, fz: 1 };
   const api = {
     list,
@@ -1119,9 +1145,22 @@ export async function createPedestrians(world, scene, near = null) {
         view.fz = _v.z / l;
         cam = view;
       }
+      // (the same few objects every frame: no garbage for 34 people at 60 fps)
       agents.length = 0;
-      for (const p of list) if (!p.away) agents.push({ x: p.x, z: p.z, vx: Math.sin(p.heading) * p.speed, vz: Math.cos(p.heading) * p.speed, self: p });
-      for (const o of others) agents.push({ x: o.x, z: o.z, vx: o.vx || 0, vz: o.vz || 0, bike: !!o.bike, self: null });
+      let n = 0;
+      const put = (x, z, vx, vz, bike, self) => {
+        const a = pool[n] || (pool[n] = {});
+        n++;
+        a.x = x;
+        a.z = z;
+        a.vx = vx;
+        a.vz = vz;
+        a.bike = bike;
+        a.self = self;
+        agents.push(a);
+      };
+      for (const p of list) if (!p.away) put(p.x, p.z, Math.sin(p.heading) * p.speed, Math.cos(p.heading) * p.speed, false, p);
+      for (const o of others) put(o.x, o.z, o.vx || 0, o.vz || 0, !!o.bike, null);
       for (const g of groups) g.tick(dt, cam, hour);
       for (const p of list) p.update(dt, player, cam, hour, agents);
     },
@@ -1138,11 +1177,15 @@ export async function createPedestrians(world, scene, near = null) {
       }
     },
   };
-  const make = async (model) => {
+  // each person's colours, dealt in the list's order (not the order they load in, which
+  // depends on where she starts): the same people dressed the same way every time
+  const lookOf = new Map();
+  for (const spec of PEOPLE) lookOf.set(spec, spec.act === 'chat' ? spec.members.map((m) => look(m)) : look(spec.model));
+  const make = async (model, lk) => {
     const file = MODELS[model].file;
     if (!bufs.has(file)) bufs.set(file, loadAsset(file));
     const gltf = await loader.parseAsync(await bufs.get(file), '');
-    const ch = new Character(gltf, motions, { name: 'passerby', recolor: painter(look(model)) });
+    const ch = new Character(gltf, motions, { name: 'passerby', recolor: painter(lk) });
     if (protos.has(model)) share(ch, protos.get(model));
     else protos.set(model, ch);
     return ch;
@@ -1159,30 +1202,36 @@ export async function createPedestrians(world, scene, near = null) {
   if (from) order.sort((a, b) => Math.hypot(where(a)[0] - from.x, where(a)[1] - from.z) - Math.hypot(where(b)[0] - from.x, where(b)[1] - from.z));
   (async () => {
     for (const spec of order) {
-      if (spec.act === 'chat') {
-        const c = spotNear(C, G.safe, spec.at[0], spec.at[1], 1.1);
-        if (!c) continue;
-        const n = spec.members.length, r = n > 2 ? 0.62 : 0.5, a0 = Math.random() * Math.PI * 2;
-        const members = [];
-        for (let i = 0; i < n; i++) {
-          const ms = { model: spec.members[i], hours: spec.hours };
-          const a = a0 + (i / n) * Math.PI * 2;
-          const p = new Stander(await make(ms.model), world, ms, [c[0] + Math.sin(a) * r, c[1] + Math.cos(a) * r], a + Math.PI);
-          members.push(p);
-          add(p);
-        }
-        groups.push(new Chat(members));
-      } else if (spec.act === 'wait') {
-        // beside the bus stop's bench, facing the road
-        const it = world.interactables.find((i) => i.sit && Math.hypot(i.x - spec.at[0], i.z - spec.at[1]) < 1.5);
-        const yaw = it?.sit.yaw ?? 0, h = Math.atan2(-Math.sin(yaw), -Math.cos(yaw));
-        const at = spotNear(C, G.safe, spec.at[0] + Math.cos(h) * 1.3, spec.at[1] - Math.sin(h) * 1.3, 0.35);
-        if (at) add(new Stander(await make(spec.model), world, spec, at, h));
-      } else if (spec.act === 'sit') {
-        const it = world.interactables.find((i) => i.kind === 'bench' && i.sit && Math.hypot(i.x - spec.at[0], i.z - spec.at[1]) < 1.5);
-        if (it) add(new Sitter(await make(spec.model), world, spec, it));
-      } else if (spec.act === 'cycle') add(new Rider(await make(spec.model), world, spec, material, G.safe));
-      else add(new Walker(await make(spec.model), world, spec, G));
+      // (one model failing to load, a network hiccup: the others still come)
+      try {
+        const lk = lookOf.get(spec);
+        if (spec.act === 'chat') {
+          const c = spotNear(C, G.safe, spec.at[0], spec.at[1], 1.1);
+          if (!c) continue;
+          const n = spec.members.length, r = n > 2 ? 0.62 : 0.5, a0 = Math.random() * Math.PI * 2;
+          const members = [];
+          for (let i = 0; i < n; i++) {
+            const ms = { model: spec.members[i], hours: spec.hours };
+            const a = a0 + (i / n) * Math.PI * 2;
+            const p = new Stander(await make(ms.model, lk[i]), world, ms, [c[0] + Math.sin(a) * r, c[1] + Math.cos(a) * r], a + Math.PI);
+            members.push(p);
+            add(p);
+          }
+          groups.push(new Chat(members));
+        } else if (spec.act === 'wait') {
+          // beside the bus stop's bench, facing the road
+          const it = world.interactables.find((i) => i.sit && Math.hypot(i.x - spec.at[0], i.z - spec.at[1]) < 1.5);
+          const yaw = it?.sit.yaw ?? 0, h = Math.atan2(-Math.sin(yaw), -Math.cos(yaw));
+          const at = spotNear(C, G.safe, spec.at[0] + Math.cos(h) * 1.3, spec.at[1] - Math.sin(h) * 1.3, 0.35);
+          if (at) add(new Stander(await make(spec.model, lk), world, spec, at, h));
+        } else if (spec.act === 'sit') {
+          const it = world.interactables.find((i) => i.kind === 'bench' && i.sit && Math.hypot(i.x - spec.at[0], i.z - spec.at[1]) < 1.5);
+          if (it) add(new Sitter(await make(spec.model, lk), world, spec, it));
+        } else if (spec.act === 'cycle') add(new Rider(await make(spec.model, lk), world, spec, material, G.safe));
+        else add(new Walker(await make(spec.model, lk), world, spec, G));
+      } catch (e) {
+        console.warn('a passer-by not loaded:', e);
+      }
       await new Promise((r) => setTimeout(r, 250));
     }
   })().catch((e) => console.warn('passers-by not loaded:', e));

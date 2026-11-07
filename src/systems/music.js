@@ -149,7 +149,7 @@ class Band {
       tail.connect(out);
       const s = ctx.createGain();
       s.gain.value = rev;
-      tail.connect(s).connect(e.revSend);
+      tail.connect(s).connect(e.revMusic);
       return g;
     };
     this.keysBus = bus(1, o.keysRev ?? 0.55);

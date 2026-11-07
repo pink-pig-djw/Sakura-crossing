@@ -29,6 +29,7 @@ export class Atlas {
     this.full = false;
     this.used = 0;
     this.top = 0;
+    this.drawn = []; // [rect, fn]: to draw again once the web fonts have arrived (redraw)
   }
 
   // skyline bottom-left packing
@@ -99,6 +100,7 @@ export class Atlas {
     ctx.clip();
     fn(ctx, r.w, r.h);
     ctx.restore();
+    this.drawn.push([r, fn]);
     // shrink half a texel to avoid bleeding
     const s = this.size, sh = this.height;
     const uv = {
@@ -111,6 +113,27 @@ export class Atlas {
     };
     if (key) this.cache.set(key, uv);
     return uv;
+  }
+
+  // everything drawn again in its place: signs drawn while the web fonts (the brush and bold
+  // faces, the Japanese subsets) were still on their way came out in a fallback face
+  redraw() {
+    const ctx = this.ctx;
+    for (const [r, fn] of this.drawn) {
+      ctx.save();
+      ctx.translate(r.x, r.y);
+      ctx.clearRect(0, 0, r.w, r.h);
+      ctx.beginPath();
+      ctx.rect(0, 0, r.w, r.h);
+      ctx.clip();
+      try {
+        fn(ctx, r.w, r.h);
+      } catch (e) {
+        console.warn('sign not redrawn:', e);
+      }
+      ctx.restore();
+    }
+    if (this._tex) this._tex.needsUpdate = true;
   }
 
   texture() {

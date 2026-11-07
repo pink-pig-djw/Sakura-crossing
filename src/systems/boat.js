@@ -1004,8 +1004,20 @@ export class Boat {
     this.walkT = d > 0.2 ? d / WALK + 0.2 : 0;
     this.phase = this.walkT > 0 ? 'walk' : 'step';
     this.pt = 0;
+    // (where she is this frame: still on the landing, not yet in the boat, for the camera)
+    this._updateRider();
     this._place(player);
     return 'ok';
+  }
+
+  // she went home by the map, leaving the boat tied up out at the island (no way back to it
+  // from there): it is brought round to the town's pier, where she can find it again
+  bringBack() {
+    if (this.state !== 'moored' || this.berth.id !== 'island') return false;
+    const b = this.berths.find((x) => x.id === 'pier') || this.berths.find((x) => x.id !== 'island');
+    if (!b) return false;
+    this._moor(b, true);
+    return true;
   }
 
   // the landing near enough to come alongside (at a walking pace), or null
@@ -1056,6 +1068,7 @@ export class Boat {
 
   // mooring lines from her bow and stern cleats to the landing's
   _lines(on) {
+    for (const m of this.lines.children) m.geometry.dispose();
     this.lines.clear();
     if (!on) return;
     const b = this.berth, sx = Math.sin(b.h), sz = Math.cos(b.h), lx = Math.cos(b.h), lz = -Math.sin(b.h);

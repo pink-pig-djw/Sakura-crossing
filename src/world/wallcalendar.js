@@ -23,6 +23,12 @@ export class WallCalendar {
     t.anisotropy = 4;
     this.texture = t;
     this.key = '';
+    // (drawn before its rounded face had loaded: the page is drawn again once it has)
+    const F = document.fonts;
+    const again = () => (this.key = '');
+    F?.ready?.then(again);
+    F?.addEventListener?.('loadingdone', again);
+    setTimeout(() => F?.removeEventListener?.('loadingdone', again), 60000);
   }
 
   // turn to the page for the date { y, m, d } (only redrawn when the date changes)

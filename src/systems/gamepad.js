@@ -130,7 +130,7 @@ export class GamepadInput {
       if (now && !this.prev[i]) pressed.push(i);
       this.prev[i] = now;
     }
-    const menuish = mode === 'menu' || mode === 'map' || mode === 'omikuji';
+    const menuish = mode === 'menu' || mode === 'map' || mode === 'omikuji' || mode === 'wardrobe' || mode === 'diary';
     for (const i of pressed) {
       if (i === BTN.LS) this.runToggle = !this.runToggle;
       if (mode === 'title') {

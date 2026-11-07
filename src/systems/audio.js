@@ -7,6 +7,8 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 // how far ahead (s) rhythmic sounds are laid out on the audio clock
 const LOOK = 0.3;
+// the sliders' defaults, where the reverb sends were tuned
+const AMB0 = 0.7, MUSIC0 = 0.45, VOICE0 = 0.8;
 
 export class AudioEngine {
   constructor() {
@@ -14,6 +16,8 @@ export class AudioEngine {
     this.started = false;
     this.ambVol = 0.7;
     this.musicVol = 0.45;
+    this.voiceVol = 0.8;
+    this.ducked = false; // music and ambience dipped under a voice (voice.js)
     this.timers = { sparrow: 3, uguisu: 8, tonbi: 14, chime: 5, knock: 2, lark: 6, gull: 4, drip: 1, lap: 1, eave: 1, rfrog: 2 };
     this.wet = 0; // the ground (wet footsteps and tyres)
     this.baked = {}; // short sounds rendered once (bakeSheet)
@@ -22,9 +26,15 @@ export class AudioEngine {
     this.clocks = { frog: {}, pfrog: {}, clack: {}, walk: {} };
   }
 
+  // the browser may start the context suspended (no user gesture yet: a gamepad press does
+  // not count) or interrupt it (iOS: a call, another app): asked again on every gesture
+  resume() {
+    if (this.ctx && this.ctx.state !== 'running' && !this.hidden) this.ctx.resume?.().catch?.(() => {});
+  }
+
   start() {
     if (this.started) {
-      this.ctx?.resume?.();
+      this.resume();
       return;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -53,18 +63,29 @@ export class AudioEngine {
     this.amb = ctx.createGain();
     this.amb.gain.value = this.ambVol;
     this.amb.connect(this.master);
+    // footsteps, the bicycle, the boat, the UI: with the ambience slider
     this.sfxBus = ctx.createGain();
-    this.sfxBus.gain.value = 0.8;
+    this.sfxBus.gain.value = 0.8 * (this.ambVol / AMB0);
     this.sfxBus.connect(this.master);
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = this.musicVol * 0.55;
     this.musicBus.connect(this.master);
-    // reverb
+    // reverb: one hall, fed by a send for each slider (revSend: the ambience and the sounds,
+    // revMusic, revVoice), each following its slider and the duck (as tuned at the defaults)
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this.impulse(2.8, 2.2);
-    this.revSend = ctx.createGain();
-    this.revSend.gain.value = 0.5;
-    this.revSend.connect(this.reverb).connect(this.master);
+    const revIn = ctx.createGain();
+    revIn.gain.value = 0.5;
+    revIn.connect(this.reverb).connect(this.master);
+    const send = (v) => {
+      const g = ctx.createGain();
+      g.gain.value = v;
+      g.connect(revIn);
+      return g;
+    };
+    this.revSend = send(this.ambVol / AMB0);
+    this.revMusic = send(this.musicVol / MUSIC0);
+    this.revVoice = send(this.voiceVol / VOICE0);
     // noise buffers
     this.white = this.noiseBuffer('white', 4);
     this.pink = this.noiseBuffer('pink', 6);
@@ -82,13 +103,31 @@ export class AudioEngine {
     this.music = new MusicDirector(this);
   }
 
-  setVolumes(amb, music) {
+  setVolumes(amb, music, voice = this.voiceVol) {
     this.ambVol = amb;
     this.musicVol = music;
+    this.voiceVol = voice;
+    this.applyVolumes(0.1);
+  }
+
+  // music (and a little ambience) dips under a voice line
+  setDuck(on) {
+    if (on === this.ducked) return;
+    this.ducked = on;
+    this.applyVolumes(on ? 0.15 : 0.8);
+  }
+
+  // every bus and reverb send from the three sliders and the duck (tc: how quickly)
+  applyVolumes(tc) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.amb.gain.setTargetAtTime(amb, t, 0.1);
-    this.musicBus.gain.setTargetAtTime(music * 0.55, t, 0.1);
+    const dm = this.ducked ? 0.3 : 1, da = this.ducked ? 0.7 : 1;
+    this.amb.gain.setTargetAtTime(this.ambVol * da, t, tc);
+    this.sfxBus.gain.setTargetAtTime(0.8 * (this.ambVol / AMB0), t, 0.1);
+    this.musicBus.gain.setTargetAtTime(this.musicVol * 0.55 * dm, t, tc);
+    this.revSend.gain.setTargetAtTime((this.ambVol / AMB0) * da, t, tc);
+    this.revMusic.gain.setTargetAtTime((this.musicVol / MUSIC0) * dm, t, tc);
+    this.revVoice.gain.setTargetAtTime(this.voiceVol / VOICE0, t, 0.1);
   }
 
   noiseBuffer(type, seconds) {
